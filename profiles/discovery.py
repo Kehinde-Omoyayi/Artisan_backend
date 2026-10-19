@@ -78,11 +78,11 @@ def _service_filter_queryset(params, institution, *, available_anywhere):
 
     category_name = _text_param(params, "category_name", 100)
     if category_name:
-        rows = rows.filter(service__category__name__iexact=category_name)
+        rows = rows.filter(service__category__name__icontains=category_name)
 
     service_name = _text_param(params, "service_name", 150)
     if service_name:
-        rows = rows.filter(service__name__iexact=service_name)
+        rows = rows.filter(service__name__icontains=service_name)
 
     legacy_service_id = str(params.get("artisan_services__service") or "").strip()
     if legacy_service_id:
@@ -107,11 +107,11 @@ def _service_filter_queryset(params, institution, *, available_anywhere):
     # available anywhere; it is not the artisan's registered/physical location.
     local_match = Q(location__isnull=False)
     if country:
-        local_match &= Q(location__country__iexact=country)
+        local_match &= Q(location__country__icontains=country)
     if state:
-        local_match &= Q(location__state__iexact=state)
+        local_match &= Q(location__state__icontains=state)
     if area:
-        local_match &= Q(location__area__iexact=area)
+        local_match &= Q(location__area__icontains=area)
     if institution:
         local_match &= Q(location_id=institution.location_id)
 
@@ -125,6 +125,24 @@ def _service_filter_queryset(params, institution, *, available_anywhere):
         rows = rows.filter(Q(location__isnull=True) | local_match)
 
     return rows
+
+
+def _registered_base_q(country, state, area):
+    """Match the artisan's own registered country/state/area.
+
+    The public profile carries the artisan's base (``ArtisanProfile.country/state/area``).
+    Location filters must consider it: an artisan registered in Ikeja belongs in an
+    "Ikeja" result even when none of their service rows repeat that location, and an
+    artisan with no service rows yet must not become invisible to every filter.
+    """
+    query = Q()
+    if country:
+        query &= Q(country__icontains=country)
+    if state:
+        query &= Q(state__icontains=state)
+    if area:
+        query &= Q(area__icontains=area)
+    return query
 
 
 def _public_queryset():
@@ -148,23 +166,44 @@ def _public_queryset():
     )
 
 
+def _search_terms(search):
+    """Split a search phrase into bounded tokens so "pipe ikeja" matches both words."""
+    terms = [term for term in str(search or "").split() if term][:6]
+    return [term[:60] for term in terms]
+
+
 def _profile_search_q(search):
-    return (
-        Q(user__first_name__icontains=search)
-        | Q(user__last_name__icontains=search)
-        | Q(business_name__icontains=search)
-        | Q(bio__icontains=search)
-    )
+    """Partial (icontains) match against the artisan's public identity and registered base.
+
+    The registered country/state/area are included because visitors search for places
+    ("Ikeja", "Ogun") as often as they search for a trade or business name.
+    """
+    query = Q()
+    for term in _search_terms(search):
+        query &= (
+            Q(user__first_name__icontains=term)
+            | Q(user__last_name__icontains=term)
+            | Q(business_name__icontains=term)
+            | Q(bio__icontains=term)
+            | Q(country__icontains=term)
+            | Q(state__icontains=term)
+            | Q(area__icontains=term)
+        )
+    return query
 
 
 def _service_search_q(search):
-    return (
-        Q(service__name__icontains=search)
-        | Q(service__category__name__icontains=search)
-        | Q(location__area__icontains=search)
-        | Q(location__state__icontains=search)
-        | Q(location__country__icontains=search)
-    )
+    """Partial (icontains) match against service names, categories and service coverage."""
+    query = Q()
+    for term in _search_terms(search):
+        query &= (
+            Q(service__name__icontains=term)
+            | Q(service__category__name__icontains=term)
+            | Q(location__area__icontains=term)
+            | Q(location__state__icontains=term)
+            | Q(location__country__icontains=term)
+        )
+    return query
 
 
 @extend_schema_view(
@@ -243,19 +282,23 @@ class ArtisanDiscoveryListView(generics.ListAPIView):
             institution,
             available_anywhere=available_anywhere,
         ).order_by("service__name", "pk")
-        has_service_filter = any(
+        catalogue_filter = any(
             _text_param(params, name, limit)
             for name, limit in (
                 ("category_name", 100),
                 ("service_name", 150),
-                ("country", 100),
-                ("state", 100),
-                ("area", 150),
                 ("artisan_services__service", 32),
                 ("artisan_services__service__category", 100),
                 ("artisan_services__location", 64),
             )
-        ) or bool(institution) or available_anywhere is not None
+        )
+
+        filter_country = _text_param(params, "country", 100)
+        filter_state = _text_param(params, "state", 100)
+        filter_area = _text_param(params, "area", 150)
+        has_location_filter = bool(filter_country or filter_state or filter_area or institution)
+
+        has_service_filter = catalogue_filter or has_location_filter or available_anywhere is not None
 
         queryset = _public_queryset()
         if available_anywhere is False:
@@ -265,7 +308,18 @@ class ArtisanDiscoveryListView(generics.ListAPIView):
             queryset = queryset.filter(~Exists(anywhere_offers))
         search = _text_param(params, "q", 160)
         if has_service_filter:
-            queryset = queryset.filter(Exists(service_rows.filter(artisan_id=OuterRef("pk"))))
+            covers_filter = Exists(service_rows.filter(artisan_id=OuterRef("pk")))
+            if has_location_filter:
+                # A location filter matches the artisan's registered base *or* their
+                # service coverage. Institutions have no profile field, so an
+                # institution filter still relies on coverage alone.
+                if filter_country or filter_state or filter_area:
+                    base_match = _registered_base_q(filter_country, filter_state, filter_area)
+                    queryset = queryset.filter(base_match | covers_filter)
+                else:
+                    queryset = queryset.filter(covers_filter)
+            else:
+                queryset = queryset.filter(covers_filter)
 
         if search:
             search_rows = service_rows.filter(_service_search_q(search)).filter(artisan_id=OuterRef("pk"))

@@ -168,6 +168,40 @@ class DiscoveryFilterTests(TestCase):
         self.assertEqual(page.data["count"], 2)
         self.assertEqual(len(page.data["results"]), 1)
 
+    def test_search_is_partial_and_matches_places_services_and_multi_word_phrases(self):
+        artisan = self.make_artisan(
+            "partial-search@example.test",
+            business_name="Hagioz Craftworks",
+            base=self.abeokuta,
+            service_locations=[None],
+        )
+
+        for term in ("HAGIOZ", "hagioz", "hagi", "craftworks", "Abeokuta", "abeok", "Ogun", "Nigeria"):
+            with self.subTest(term=term):
+                response = self.client.get(self.url, {"q": term})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self.result_ids(response), {str(artisan.id)}, msg=f"no match for {term!r}")
+
+        # Service name/category fragments match even when the service has no coverage row.
+        for term in ("pipe", "repair", "home rep"):
+            with self.subTest(term=term):
+                response = self.client.get(self.url, {"q": term})
+                self.assertEqual(self.result_ids(response), {str(artisan.id)}, msg=f"no match for {term!r}")
+
+        # Multi-word phrases require every token to match somewhere on the artisan.
+        self.assertEqual(self.result_ids(self.client.get(self.url, {"q": "hagioz abeokuta"})), {str(artisan.id)})
+        self.assertEqual(self.result_ids(self.client.get(self.url, {"q": "hagioz abuja"})), set())
+
+        # Catalogue filters are forgiving substrings too.
+        self.assertEqual(
+            self.result_ids(self.client.get(self.url, {"category_name": "home rep"})),
+            {str(artisan.id)},
+        )
+        self.assertEqual(
+            self.result_ids(self.client.get(self.url, {"service_name": "pipe"})),
+            {str(artisan.id)},
+        )
+
     def test_public_list_excludes_links_and_biography_but_detail_exposes_links(self):
         artisan = self.make_artisan(
             "links@example.test", business_name="Linked Artisan", base=self.ikeja, service_locations=[self.ikeja]

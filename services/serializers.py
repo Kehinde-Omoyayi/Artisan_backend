@@ -70,9 +70,9 @@ def resolve_existing_location(value):
 
     matches = list(
         Locations.objects.filter(
-            country__iexact=value["country"].strip(),
-            state__iexact=value["state"].strip(),
-            area__iexact=value["area"].strip(),
+            country__iexact=str(value.get("country", "")).strip(),
+            state__iexact=str(value.get("state", "")).strip(),
+            area__iexact=str(value.get("area", "")).strip(),
         ).order_by("pk")[:2]
     )
 
@@ -89,10 +89,25 @@ def resolve_existing_location(value):
     return matches[0]
 
 
-class LocationReferenceSerializer(serializers.Serializer):
-    country = serializers.CharField(max_length=100)
-    state = serializers.CharField(max_length=100)
-    area = serializers.CharField(max_length=150)
+class LocationSerializer(serializers.ModelSerializer):
+    """The single location payload used everywhere the API reads or writes a location.
+
+    Read::
+
+        {"id": "...", "country": "Nigeria", "state": "Lagos", "area": "Ikeja",
+         "closest_institution": {"id": "...", "name": "...", "campus": "...", "abbreviation": "..."}}
+
+    Every location is a catalogue row, so artisan service coverage, service requests,
+    bookings and discovery describe a place the same way, and the closest institution
+    travels with the location instead of being re-derived by each caller.
+    """
+
+    closest_institution = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Locations
+        fields = ["id", "country", "state", "area", "closest_institution"]
+        read_only_fields = ["id"]
 
     def validate_country(self, value):
         value = value.strip()
@@ -112,6 +127,65 @@ class LocationReferenceSerializer(serializers.Serializer):
             raise serializers.ValidationError("Area is required.")
         return value
 
+    def get_closest_institution(self, location):
+        """The institution registered at this location, or None."""
+        if location is None:
+            return None
+        cache = getattr(self, "_closest_institution_cache", None)
+        if cache is None:
+            cache = self._closest_institution_cache = {}
+        key = str(location.pk)
+        if key not in cache:
+            row = (
+                Institution.objects
+                .filter(location=location, is_active=True)
+                .order_by("name", "campus")
+                .values("id", "name", "campus", "abbreviation")
+                .first()
+            )
+            if row:
+                row["id"] = str(row["id"])
+            cache[key] = row
+        return cache[key]
+
+
+class LocationField(serializers.Field):
+    """Nested location input/output that always resolves to one catalogue location.
+
+    Accepts ``{"id": "<uuid>"}`` or the legacy ``{"country", "state", "area"}`` pair,
+    and always renders through :class:`LocationSerializer`, so exactly one location
+    shape exists in every response.
+    """
+
+    default_error_messages = {
+        "invalid": "Provide a location id, or country, state and area.",
+        "missing": "No matching location exists. Select a location from the catalogue.",
+        "incomplete": "Country, state and area are all required.",
+    }
+
+    def to_internal_value(self, data):
+        if isinstance(data, Locations):
+            return data
+        if not isinstance(data, dict):
+            self.fail("invalid")
+
+        identifier = str(data.get("id") or "").strip()
+        if identifier:
+            try:
+                return Locations.objects.get(pk=identifier)
+            except (Locations.DoesNotExist, ValueError, TypeError, ValidationError):
+                self.fail("missing")
+
+        if not all(str(data.get(field) or "").strip() for field in ("country", "state", "area")):
+            self.fail("incomplete")
+        return resolve_existing_location(data)
+
+    def to_representation(self, value):
+        if value is None:
+            return None
+        return LocationSerializer(value).data
+
+
 class UppercaseChoiceField(serializers.ChoiceField):
     def to_internal_value(self, data):
         if isinstance(data, str):
@@ -124,7 +198,7 @@ class ArtisanMatchedServiceRequestSerializer(serializers.ModelSerializer):
 
     category_name = serializers.CharField(source="category.name", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True, allow_null=True)
-    location = LocationReferenceSerializer(read_only=True)
+    location = LocationField(read_only=True)
 
     class Meta:
         model = ServiceRequest
@@ -170,7 +244,7 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
 
-    location = LocationReferenceSerializer(required=False)
+    location = LocationField(required=False)
     
     urgency = UppercaseChoiceField(
     choices=ServiceRequest._meta.get_field("urgency").choices,
@@ -201,9 +275,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-
-    def validate_location(self, value):
-        return resolve_existing_location(value)
 
     def validate(self, attrs):
         service = attrs.get(
@@ -301,31 +372,6 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
         return value
 
 
-class LocationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Locations
-        fields = ["id", "country", "state", "area"]
-        read_only_fields = ["id"]
-
-    def validate_country(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Country is required.")
-        return value
-
-    def validate_state(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("State is required.")
-        return value
-
-    def validate_area(self, value):
-        value = value.strip()
-        if not value:
-            raise serializers.ValidationError("Area is required.")
-        return value
-
-
 class InstitutionSerializer(serializers.ModelSerializer):
     location_id = serializers.UUIDField(source="location.id", read_only=True)
     country = serializers.CharField(source="location.country", read_only=True)
@@ -382,7 +428,7 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
-    location = LocationReferenceSerializer(
+    location = LocationField(
         required=False,
         allow_null=True,
     )
@@ -397,9 +443,6 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
             "location",
             "starting_price",
         ]
-
-    def validate_location(self, value):
-        return resolve_existing_location(value)
 
     def validate(self, attrs):
         service = attrs.get(
@@ -503,4 +546,3 @@ class ArtisanDiscoverySerializer(serializers.ModelSerializer):
             many=True,
             context=self.context,
         ).data
-

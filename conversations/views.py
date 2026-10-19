@@ -11,6 +11,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from booking.models import Booking
 from core.audit import audit_request_action
+from home.models import ArtisanService
 from home.profile_completion import RequireCompleteCustomerProfile, RequireCompleteMarketplaceProfile
 from core.idempotency import begin, finish, idempotent_action
 from payments.models import EscrowPayment
@@ -187,8 +188,33 @@ class ConversationListView(generics.ListAPIView):
             # The numeric count follows the per-user read watermark used by message retrieval.
             conversation._unread_count = int(unread_counts.get(conversation.id, 0))
 
-        payload = [ConversationListSerializer(item, context={"request": request}).data for item in conversations]
+        # One batched lookup supplies the "trade" line under each counterparty name.
+        person_ids = set()
+        for conversation in conversations:
+            person_ids.update(person.id for person in self._participant_cache(conversation))
+            if conversation.customer_id:
+                person_ids.add(conversation.customer_id)
+            if conversation.artisan_id and conversation.artisan:
+                person_ids.add(conversation.artisan.user_id)
+        service_labels = {}
+        if person_ids:
+            rows = (
+                ArtisanService.objects.filter(artisan__user_id__in=person_ids, service__is_active=True)
+                .order_by("service__name")
+                .values_list("artisan__user_id", "service__name")
+            )
+            for user_id, service_name in rows:
+                service_labels.setdefault(user_id, service_name)
+
+        payload = [
+            ConversationListSerializer(item, context={"request": request, "service_labels": service_labels}).data
+            for item in conversations
+        ]
         return self.get_paginated_response(payload) if page is not None else Response(payload)
+
+    @staticmethod
+    def _participant_cache(conversation):
+        return conversation.participants.all()
 
 class ConversationDetailView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]

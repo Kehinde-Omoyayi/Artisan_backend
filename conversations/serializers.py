@@ -268,6 +268,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
     unread_count = serializers.SerializerMethodField()
     last_message_at = serializers.SerializerMethodField()
     last_message_preview = serializers.SerializerMethodField()
+    last_message_text = serializers.SerializerMethodField()
     conversation_type = serializers.CharField(read_only=True)
     title = serializers.SerializerMethodField()
     counterparty = serializers.SerializerMethodField()
@@ -277,7 +278,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Conversation
-        fields = ["id", "conversation_type", "viewer_role", "title", "counterparty", "participants", "artisan_name", "artisan_business_name", "state", "unread", "unread_count", "last_message_at", "last_message_preview", "created_at", "updated_at"]
+        fields = ["id", "conversation_type", "viewer_role", "title", "counterparty", "participants", "artisan_name", "artisan_business_name", "state", "unread", "unread_count", "last_message_at", "last_message_preview", "last_message_text", "created_at", "updated_at"]
         read_only_fields = fields
 
     def _viewer(self):
@@ -338,9 +339,22 @@ class ConversationListSerializer(serializers.ModelSerializer):
             "first_name": user.first_name,
             "last_name": user.last_name,
             "business_name": getattr(artisan, "business_name", "") if artisan else "",
+            "service_label": self._service_label(user, obj) if role == "artisan" else "",
             "profile_photo": profile_photo,
             "role": role,
         }
+
+    def _service_label(self, user, obj=None):
+        """First active service title so the inbox can show "Trade · Business" like a chat list.
+
+        The inbox view resolves these in one batched query and passes them through the
+        serializer context; other endpoints simply omit the label instead of paying an
+        extra query per row.
+        """
+        labels = self.context.get("service_labels")
+        if isinstance(labels, dict):
+            return labels.get(user.id, "")
+        return ""
 
     def get_viewer_role(self, obj) -> str | None:
         request = self.context.get("request")
@@ -354,6 +368,10 @@ class ConversationListSerializer(serializers.ModelSerializer):
     def get_unread(self, obj) -> bool: return bool(getattr(obj, "_unread", False))
     def get_unread_count(self, obj) -> int: return int(getattr(obj, "_unread_count", 0))
     def get_last_message_at(self, obj) -> datetime | None: return getattr(obj, "_last_message_at", None)
+
+    def get_last_message_text(self, obj) -> str:
+        """Raw latest message body, without the sender prefix used by last_message_preview."""
+        return " ".join(str(getattr(obj, "last_message_body", "") or "").split())
 
     def get_last_message_preview(self, obj) -> str:
         body = " ".join(str(getattr(obj, "last_message_body", "") or "").split())

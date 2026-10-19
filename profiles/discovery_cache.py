@@ -12,8 +12,8 @@ from django.core.cache import cache
 logger = logging.getLogger(__name__)
 
 DISCOVERY_CACHE_TTL = 5 * 60
-_DISCOVERY_CACHE_VERSION_KEY = "artisan-discovery:cache-generation:v3"
-_DISCOVERY_CACHE_PREFIX = "artisan-discovery:results:v3"
+_DISCOVERY_CACHE_VERSION_KEY = "artisan-discovery:cache-generation:v4"
+_DISCOVERY_CACHE_PREFIX = "artisan-discovery:results:v4"
 
 
 def normalize_text(value, *, limit=160):
@@ -100,7 +100,7 @@ def discovery_cache_key(request, paginator, *, default_ordering):
     host = f"{request.scheme}://{request.get_host()}"
     payload = {
         "generation": generation,
-        "eligibility": "active-verified-organic-results-separate-promotions-v3",
+        "eligibility": "active-verified-organic-results-separate-promotions-v4",
         "filters": filters,
         "limit": limit,
         "offset": offset,

@@ -14,7 +14,10 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rest_framework import generics, serializers, status
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
+
+# Every artisan may publish at most three service offerings.
+MAX_ARTISAN_SERVICES = 3
 from rest_framework.parsers import (
     FormParser,
     JSONParser,
@@ -1458,6 +1461,16 @@ class ArtisanServiceListCreateView(generics.ListCreateAPIView):
                 "Your artisan profile cannot manage service offerings "
                 "while inactive, suspended or restricted."
             )
+
+        # Every artisan may publish at most three service offerings.
+        existing = ArtisanService.objects.filter(artisan=artisan).count()
+        if existing >= MAX_ARTISAN_SERVICES:
+            raise ValidationError({
+                "detail": (
+                    f"You can publish at most {MAX_ARTISAN_SERVICES} services. "
+                    "Remove one of your current offerings before adding another."
+                )
+            })
 
         serializer.save(artisan=artisan)
 
