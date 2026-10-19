@@ -1,0 +1,11 @@
+# Development and verification tools; production images install requirements.txt only.
+-r requirements.txt
+
+bandit==1.9.4
+coverage==7.16.2
+hypothesis==6.168.5
+mypy==2.4.0
+pip-audit==2.10.1
+pytest==9.1.1
+pytest-django==4.14.0
+ruff==0.16.10

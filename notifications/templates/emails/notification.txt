@@ -1,0 +1,18 @@
+ARTISAN MARKET
+===============
+
+Hello {{ recipient_name }},
+
+{{ subject }}
+
+{{ message }}
+
+{% if action_url %}
+{{ action_label|default:"Open Artisan Market" }}:
+{{ action_url }}
+{% endif %}
+
+You are receiving this email because of an activity on your Artisan Market account.
+Please do not reply to this automated message.
+
+A marketplace for artisan work in Nigeria.

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#faf7f1;color:#2d211b;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">{{ subject }} · An update from Artisan Market.</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#faf7f1" style="width:100%;background-color:#faf7f1;">
+    <tr>
+      <td align="center" style="padding:34px 14px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border:1px solid #e5dacf;border-radius:18px;background-color:#fffdf9;overflow:hidden;">
+          <tr>
+            <td bgcolor="#4c3025" style="padding:22px 30px;background-color:#4c3025;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle" style="padding-right:12px;">
+                    <span style="display:inline-block;width:38px;height:38px;border:1px solid #b98b69;border-radius:12px;background-color:#f4ede3;color:#4c3025;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:bold;line-height:38px;text-align:center;">A</span>
+                  </td>
+                  <td valign="middle">
+                    <strong style="display:block;color:#fffdf9;font-size:18px;letter-spacing:-.3px;line-height:1.2;">Artisan Market</strong>
+                    <span style="display:block;margin-top:4px;color:#ddc3a8;font-size:9px;font-weight:bold;letter-spacing:1.7px;line-height:1.2;">MARKETPLACE UPDATE</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:34px 32px 30px;">
+              <span style="display:inline-block;padding:7px 11px;border:1px solid #e7d9ca;border-radius:999px;background-color:#f4ede3;color:#74432f;font-size:9px;font-weight:bold;letter-spacing:1.1px;line-height:1.2;text-transform:uppercase;">Account update</span>
+              <p style="margin:18px 0 8px;color:#4c3025;font-size:14px;line-height:1.6;">Hello <strong>{{ recipient_name }}</strong>,</p>
+              <h1 style="margin:0 0 17px;color:#4c3025;font-family:Georgia,'Times New Roman',serif;font-size:27px;font-weight:normal;letter-spacing:-.3px;line-height:1.2;">{{ subject }}</h1>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f0e8" style="width:100%;border:1px solid #e5dacf;border-radius:13px;background-color:#f7f0e8;">
+                <tr>
+                  <td style="padding:18px 19px;color:#5f5146;font-size:14px;line-height:1.75;">{{ message|linebreaksbr }}</td>
+                </tr>
+              </table>
+              {% if action_url %}
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+                <tr>
+                  <td align="center" bgcolor="#74432f" style="border-radius:10px;background-color:#74432f;">
+                    <a href="{{ action_url }}" style="display:inline-block;padding:13px 20px;border:1px solid #5d3828;border-radius:10px;color:#fffdf9;font-size:12px;font-weight:bold;line-height:1.2;text-decoration:none;">{{ action_label|default:"Open Artisan Market" }}</a>
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#f4ede3" style="padding:19px 30px;background-color:#f4ede3;border-top:1px solid #e5dacf;">
+              <p style="margin:0;color:#75665a;font-size:10px;line-height:1.65;">You are receiving this email because of an activity on your Artisan Market account.<br>Please do not reply to this automated message.</p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:14px 0 0;color:#897c71;font-size:10px;line-height:1.5;text-align:center;">A marketplace for artisan work in Nigeria.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

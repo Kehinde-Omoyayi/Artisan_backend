@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{{ subject }}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#faf7f1;color:#2d211b;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">{{ preview_text }}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#faf7f1" style="width:100%;background-color:#faf7f1;">
+    <tr>
+      <td align="center" style="padding:34px 14px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;border:1px solid #e5dacf;border-radius:18px;background-color:#fffdf9;overflow:hidden;">
+          <tr>
+            <td bgcolor="#4c3025" style="padding:22px 30px;background-color:#4c3025;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle" style="padding-right:12px;">
+                    <span style="display:inline-block;width:38px;height:38px;border:1px solid #b98b69;border-radius:12px;background-color:#f4ede3;color:#4c3025;font-family:Georgia,'Times New Roman',serif;font-size:22px;font-weight:bold;line-height:38px;text-align:center;">A</span>
+                  </td>
+                  <td valign="middle">
+                    <strong style="display:block;color:#fffdf9;font-family:Arial,Helvetica,sans-serif;font-size:18px;letter-spacing:-.3px;line-height:1.2;">{{ brand_name }}</strong>
+                    <span style="display:block;margin-top:4px;color:#ddc3a8;font-size:9px;font-weight:bold;letter-spacing:1.7px;line-height:1.2;">CRAFTED WITH CARE</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:34px 32px 30px;">
+              <span style="display:inline-block;padding:7px 11px;border:1px solid #e7d9ca;border-radius:999px;background-color:#f4ede3;color:#74432f;font-size:9px;font-weight:bold;letter-spacing:1.1px;line-height:1.2;text-transform:uppercase;">{{ purpose_label }}</span>
+              <h1 style="margin:17px 0 10px;color:#4c3025;font-family:Georgia,'Times New Roman',serif;font-size:28px;font-weight:normal;letter-spacing:-.35px;line-height:1.18;">{{ heading }}</h1>
+              <p style="margin:0 0 8px;color:#4c3025;font-size:14px;line-height:1.6;">Hello <strong>{{ recipient_name }}</strong>,</p>
+              <p style="margin:0 0 22px;color:#75665a;font-size:14px;line-height:1.75;">{{ intro }}</p>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f0e8" style="width:100%;border:1px solid #e5dacf;border-radius:14px;background-color:#f7f0e8;">
+                <tr>
+                  <td align="center" style="padding:21px 18px 18px;">
+                    <span style="display:block;margin-bottom:10px;color:#80644f;font-size:9px;font-weight:bold;letter-spacing:1.5px;line-height:1.25;text-transform:uppercase;">{{ code_label }}</span>
+                    <div style="margin:0;color:#4c3025;font-family:'Courier New',Courier,monospace;font-size:31px;font-weight:bold;letter-spacing:7px;line-height:1.3;">
+                      <bdi dir="ltr">{{ code }}</bdi>
+                    </div>
+                    <span style="display:block;margin-top:9px;color:#75665a;font-size:11px;line-height:1.5;">Expires in 5 minutes · single use</span>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:17px;">
+                <tr>
+                  <td valign="top" width="4" bgcolor="#965237" style="width:4px;border-radius:4px;background-color:#965237;">&nbsp;</td>
+                  <td style="padding:1px 0 1px 12px;color:#5f5146;font-size:12px;line-height:1.7;">
+                    <strong style="color:#4c3025;">Keep this code private.</strong> {{ security_note }}
+                  </td>
+                </tr>
+              </table>
+
+              {% if action_url %}
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top:24px;">
+                <tr>
+                  <td align="center" bgcolor="#74432f" style="border-radius:10px;background-color:#74432f;">
+                    <a href="{{ action_url }}" style="display:inline-block;padding:13px 20px;border:1px solid #5d3828;border-radius:10px;color:#fffdf9;font-size:12px;font-weight:bold;line-height:1.2;text-decoration:none;">{{ action_label }}</a>
+                  </td>
+                </tr>
+              </table>
+              {% endif %}
+              <p style="margin:23px 0 0;color:#897c71;font-size:11px;line-height:1.6;">If you did not request this, you can ignore this email. Your account remains protected unless the code is used.</p>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#f4ede3" style="padding:19px 30px;background-color:#f4ede3;border-top:1px solid #e5dacf;">
+              <p style="margin:0;color:#75665a;font-size:10px;line-height:1.65;">This automated security message was sent by <strong style="color:#4c3025;">Artisan Market</strong>.<br>A marketplace for artisan work in Nigeria.</p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:14px 0 0;color:#897c71;font-size:10px;line-height:1.5;text-align:center;">We will never ask you to share a one-time code in a chat or phone call.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

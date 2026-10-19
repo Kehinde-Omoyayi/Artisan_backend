@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Finish creating your account · Artisan Market{% endblock %}
+{% block content %}
+<section class="auth-wrap">
+  <article class="auth-card register-card" aria-labelledby="social-profile-title">
+    <div class="eyebrow">One last step</div>
+    <h1 id="social-profile-title">Finish your profile</h1>
+    <p>Your provider didn’t share all the name details required for an account. Add the missing information to continue{% if social_email %} for {{ social_email }}{% endif %}.</p>
+    <form method="post" class="js-submit-form social-profile-form">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+      {% for field in form %}
+        <div class="form-field {% if field.errors %}has-error{% endif %}">
+          {{ field.label_tag }}{{ field }}
+          {% if field.errors %}<div class="field-error">{{ field.errors|striptags }}</div>{% endif %}
+        </div>
+      {% endfor %}
+      <button class="button button-primary full" type="submit">Finish registration</button>
+    </form>
+  </article>
+</section>
+{% endblock %}

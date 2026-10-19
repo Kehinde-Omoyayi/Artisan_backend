@@ -1,0 +1,36 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "Artisan_platform.api_settings"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+addopts = "-q --strict-markers"
+testpaths = ["home", "services", "booking", "payments", "notifications", "reviews", "support", "risk", "conversations", "profiles", "promotions", "social_auth", "core", "health", "tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["home", "services", "booking", "payments", "notifications", "reviews", "support", "risk", "conversations", "core"]
+
+[tool.ruff]
+line-length = 160
+target-version = "py313"
+exclude = ["*/migrations/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "S"]
+ignore = [
+    "E501", "S101",
+    # Known, pre-existing style debt (compact one-line statements and star imports used for re-exports).
+    # Not auto-fixed: several modules re-export names through star imports, so mechanical cleanup is risky.
+    "E701", "E702", "F401", "F403", "F405",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests.py" = ["S105", "S106", "B017"]
+"**/test_*.py" = ["S105", "S106", "B017"]
+"tests/**" = ["S105", "S106", "B017"]
+"scripts/**" = ["S603", "S607"]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = false
+warn_return_any = false

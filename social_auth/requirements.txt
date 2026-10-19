@@ -1,0 +1,3 @@
+# In addition to the Django/DRF/SimpleJWT dependencies already used by the API.
+requests>=2.31,<3
+PyJWT[crypto]>=2.8,<3
