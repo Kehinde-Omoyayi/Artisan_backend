@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from datetime import date
 from decimal import Decimal
 
@@ -136,13 +137,19 @@ class LocationSerializer(serializers.ModelSerializer):
             cache = self._closest_institution_cache = {}
         key = str(location.pk)
         if key not in cache:
-            row = (
-                Institution.objects
-                .filter(location=location, is_active=True)
-                .order_by("name", "campus")
-                .values("id", "name", "campus", "abbreviation")
-                .first()
-            )
+            candidates = Institution.objects.filter(location=location, is_active=True)
+            request = self.context.get('request')
+            selected = getattr(request, 'query_params', {}).get('institution_id') if request else None
+            if selected:
+                try:
+                    from uuid import UUID
+                    candidates = candidates.filter(pk=UUID(str(selected)))
+                except ValueError:
+                    candidates = candidates.none()
+            matches = list(candidates.order_by('name', 'campus').values('id', 'name', 'campus', 'abbreviation')[:2])
+            # A city can host many institutions. Alphabetical order does not prove
+            # which one is nearest; return no inferred choice when ambiguous.
+            row = matches[0] if len(matches) == 1 else None
             if row:
                 row["id"] = str(row["id"])
             cache[key] = row
@@ -169,21 +176,44 @@ class LocationField(serializers.Field):
         if not isinstance(data, dict):
             self.fail("invalid")
 
+        institution_id = str(data.get('institution_id') or '').strip()
+        if institution_id:
+            try:
+                institution = Institution.objects.select_related('location').get(pk=institution_id, is_active=True)
+            except (Institution.DoesNotExist, ValueError, TypeError, DjangoValidationError):
+                raise serializers.ValidationError('Choose an active institution from the catalogue.')
+            location = institution.location
+            if data.get('id') and str(data['id']).replace('-', '') != str(location.pk).replace('-', ''):
+                raise serializers.ValidationError('The institution does not belong to the selected location.')
+            for key in ('country', 'state', 'area'):
+                if data.get(key) and str(data[key]).strip().casefold() != getattr(location, key).casefold():
+                    raise serializers.ValidationError('The institution does not belong to the selected location.')
+            return location
         identifier = str(data.get("id") or "").strip()
         if identifier:
             try:
                 return Locations.objects.get(pk=identifier)
-            except (Locations.DoesNotExist, ValueError, TypeError, ValidationError):
+            except (Locations.DoesNotExist, ValueError, TypeError, DjangoValidationError):
                 self.fail("missing")
 
         if not all(str(data.get(field) or "").strip() for field in ("country", "state", "area")):
             self.fail("incomplete")
+        if getattr(getattr(self.parent, 'Meta', None), 'model', None) is ServiceRequest:
+            try:
+                return resolve_existing_location(data)
+            except serializers.ValidationError:
+                from .geography import canonical_location
+                location = canonical_location(data.get('country'), data.get('state'), data.get('area'))
+                if location is None:
+                    raise serializers.ValidationError('Choose a location from the geographic catalogue.')
+                # Resolve to the same canonical Locations model when the request is saved.
+                return location
         return resolve_existing_location(data)
 
     def to_representation(self, value):
         if value is None:
             return None
-        return LocationSerializer(value).data
+        return LocationSerializer(value, context=self.context).data
 
 
 class UppercaseChoiceField(serializers.ChoiceField):
@@ -195,6 +225,12 @@ class UppercaseChoiceField(serializers.ChoiceField):
 
 class ArtisanMatchedServiceRequestSerializer(serializers.ModelSerializer):
     """Public request details for an artisan whose active services match the request."""
+
+    age_seconds = serializers.SerializerMethodField()
+
+    def get_age_seconds(self, obj):
+        from django.utils import timezone
+        return max(0, int((timezone.now() - obj.created_at).total_seconds()))
 
     category_name = serializers.CharField(source="category.name", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True, allow_null=True)
@@ -215,6 +251,7 @@ class ArtisanMatchedServiceRequestSerializer(serializers.ModelSerializer):
             "budget",
             "description",
             "additional_details",
+            "age_seconds",
             "created_at",
             "updated_at",
         ]
@@ -266,12 +303,18 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
             "budget",
             "description",
             "additional_details",
+            "status",
+            "attended_at",
+            "archived_at",
             "created_at",
             "updated_at",
         ]
         read_only_fields = [
             "id",
             "requester_id",
+            "status",
+            "attended_at",
+            "archived_at",
             "created_at",
             "updated_at",
         ]
@@ -334,6 +377,21 @@ class ServiceRequestSerializer(serializers.ModelSerializer):
 
         return attrs
 
+    def _resolve_geographic_location(self, validated_data):
+        location = validated_data.get('location')
+        if isinstance(location, dict):
+            # Case-insensitive reuse avoids a second representation for an existing place.
+            existing = Locations.objects.filter(**{f'{key}__iexact': value for key, value in location.items()}).first()
+            validated_data['location'] = existing or Locations.objects.get_or_create(**location)[0]
+
+    def create(self, validated_data):
+        self._resolve_geographic_location(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        self._resolve_geographic_location(validated_data)
+        return super().update(instance, validated_data)
+
     def validate_preferred_date(self, value):
         if value < date.today():
             raise serializers.ValidationError(
@@ -382,7 +440,7 @@ class InstitutionSerializer(serializers.ModelSerializer):
         model = Institution
         fields = [
             "id", "name", "campus", "abbreviation", "location_id",
-            "country", "state", "area",
+            "country", "state", "area", "abbreviations", "aliases", "source_url",
         ]
         read_only_fields = fields
 
@@ -546,3 +604,4 @@ class ArtisanDiscoverySerializer(serializers.ModelSerializer):
             many=True,
             context=self.context,
         ).data
+

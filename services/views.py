@@ -31,7 +31,11 @@ from home.authentication import MarketplaceJWTAuthentication
 from home.permissions import IsPlatformSuperuser
 from rest_framework.filters import OrderingFilter
 
-from notifications.events import notify_service_request_created
+from notifications.events import (
+    notify_service_request_created,
+    notify_service_request_updated,
+    notify_service_request_withdrawn,
+)
 from home.models import *
 from home.profile_completion import RequireCompleteCustomerProfile
 
@@ -852,6 +856,15 @@ class ServiceRequestListCreateView(generics.ListCreateAPIView):
 
         params = self.request.query_params
 
+        # Attended and archived requests stay in the database but leave every
+        # customer-facing list. `status=all` (or a specific status) exposes the
+        # history for reporting and support.
+        requested_status = str(params.get("status", "") or "").strip().upper()
+        if requested_status in {"", "OPEN"}:
+            queryset = queryset.filter(status=ServiceRequest.Status.OPEN)
+        elif requested_status != "ALL":
+            queryset = queryset.filter(status=requested_status)
+
         service_name = params.get("service_name")
         category_name = params.get("category_name")
         country = params.get("location_country")
@@ -914,9 +927,7 @@ class ServiceRequestListCreateView(generics.ListCreateAPIView):
                 requester=self.request.user
             )
 
-            transaction.on_commit(
-                lambda: notify_service_request_created(service_request)
-            )
+            notify_service_request_created(service_request)
 
 
 class ArtisanMatchedServiceRequestListView(generics.ListAPIView):
@@ -947,27 +958,27 @@ class ArtisanMatchedServiceRequestListView(generics.ListAPIView):
         if getattr(self, "swagger_fake_view", False):
             return ServiceRequest.objects.none()
         artisan = get_authenticated_artisan(self.request.user)
-        matching_offerings = (
-            ArtisanService.objects
-            .filter(
-                artisan=artisan,
-                artisan__profile_status="ACTIVE",
-                artisan__verification__verification_status="VERIFIED",
-                artisan__user__is_active=True,
-                service__is_active=True,
-                service__category_id=OuterRef("category_id"),
-            )
-            .filter(
-                Q(location_id=OuterRef("location_id"))
-                | Q(location__isnull=True)
-            )
-        )
-        return (
-            ServiceRequest.objects
-            .filter(Exists(matching_offerings))
-            .select_related("service", "category", "location")
-            .order_by("-created_at", "-pk")
-        )
+        from .request_matching import matched_requests_for
+        queryset = matched_requests_for(artisan)
+        from .request_filters import filter_matched_requests
+        return filter_matched_requests(queryset, self.request.query_params)
+
+
+class ArtisanRequestDismissView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=['Service Requests'], summary='Hide a matched request for this artisan only', request=None, responses={200: OpenApiResponse(description='Personal not-interested choice saved; customer request remains open.')})
+    def post(self, request, pk):
+        from .models import ArtisanRequestDismissal
+        from .request_matching import matched_requests_for
+        from notifications.events import notify_request_not_interested
+        artisan = get_authenticated_artisan(request.user)
+        with transaction.atomic():
+            item = get_object_or_404(matched_requests_for(artisan, include_dismissed=True).select_for_update(of=('self',)), pk=pk)
+            dismissal, created = ArtisanRequestDismissal.objects.get_or_create(request=item, artisan=artisan)
+            if created:
+                notify_request_not_interested(item, artisan)
+        return Response({'request_id': item.pk, 'hidden': True, 'detail': 'Hidden from your matches only. The request remains available to other eligible artisans.'}, status=status.HTTP_200_OK)
 
 
 @extend_schema_view(
@@ -1005,7 +1016,8 @@ class ArtisanMatchedServiceRequestListView(generics.ListAPIView):
         description=(
             "Updates submitted fields on a request belonging to the "
             "authenticated customer. Use service_name to select a service "
-            "and location to select a country, state and area."
+            "and location to select a country, state and area. Every matching "
+            "artisan in the request's category and area is notified of the change."
         ),
         request=ServiceRequestSerializer(partial=True),
         responses={
@@ -1015,8 +1027,30 @@ class ArtisanMatchedServiceRequestListView(generics.ListAPIView):
             404: OpenApiResponse(description="Service request not found."),
         },
     ),
+    delete=extend_schema(
+        tags=["Service Requests"],
+        operation_id="service_request_withdraw",
+        summary="Withdraw a service request",
+        description=(
+            "Soft-deletes the request. The row is marked ARCHIVED, disappears from "
+            "every customer-facing list, and is kept on record for reference and "
+            "future analysis. Matching artisans in the same category and area are "
+            "told that the request is no longer available."
+        ),
+        responses={
+            200: OpenApiResponse(description="Service request archived."),
+            401: OpenApiResponse(description="Authentication required."),
+            404: OpenApiResponse(description="Service request not found."),
+        },
+    ),
 )
-class ServiceRequestDetailView(generics.RetrieveUpdateAPIView):
+class ServiceRequestDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Read, edit or withdraw one of the customer's own requests.
+
+    Delete is a soft delete: the row becomes ARCHIVED and leaves the frontend, while
+    bookings, conversations and reports keep their reference to it.
+    """
+
     serializer_class = ServiceRequestSerializer
     permission_classes = [IsAuthenticated, RequireCompleteCustomerProfile]
 
@@ -1030,6 +1064,37 @@ class ServiceRequestDetailView(generics.RetrieveUpdateAPIView):
                 "category",
                 "location",
             )
+        )
+
+    def perform_update(self, serializer):
+        current = self.get_object()
+        if current.status != ServiceRequest.Status.OPEN:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "This request has been attended to or withdrawn and can no "
+                        "longer be edited."
+                    )
+                }
+            )
+        with transaction.atomic():
+            service_request = serializer.save()
+            notify_service_request_updated(service_request)
+
+    def destroy(self, request, *args, **kwargs):
+        service_request = self.get_object()
+        with transaction.atomic():
+            changed = service_request.archive()
+            if changed:
+                notify_service_request_withdrawn(service_request)
+        return Response(
+            {
+                "id": service_request.id,
+                "status": service_request.status,
+                "archived_at": service_request.archived_at,
+                "detail": "Service request withdrawn.",
+            },
+            status=status.HTTP_200_OK,
         )
 
 
@@ -1213,6 +1278,16 @@ class InstitutionListView(generics.ListAPIView):
     permission_classes = [AllowAny]
     pagination_class = None
 
+    def list(self, request, *args, **kwargs):
+        if 'limit' not in request.query_params:
+            return super().list(request, *args, **kwargs)
+        from rest_framework.pagination import LimitOffsetPagination
+        paginator = LimitOffsetPagination()
+        paginator.default_limit = 50
+        paginator.max_limit = 100
+        rows = paginator.paginate_queryset(self.get_queryset(), request, view=self)
+        return paginator.get_paginated_response(self.get_serializer(rows, many=True).data)
+
     def get_queryset(self):
         queryset = Institution.objects.filter(is_active=True).select_related("location")
         params = self.request.query_params
@@ -1222,16 +1297,29 @@ class InstitutionListView(generics.ListAPIView):
                 Q(name__icontains=search)
                 | Q(campus__icontains=search)
                 | Q(abbreviation__icontains=search)
+                | Q(abbreviations__icontains=search)
+                | Q(aliases__icontains=search)
                 | Q(location__area__icontains=search)
                 | Q(location__state__icontains=search)
                 | Q(location__country__icontains=search)
             )
         country = str(params.get("country") or "").strip()
         state = str(params.get("state") or "").strip()
+        area = str(params.get("area") or "").strip()
+        identifier = str(params.get("id") or "").strip()
+        if identifier:
+            from uuid import UUID
+            try:
+                identifier = UUID(identifier)
+            except ValueError:
+                raise ValidationError({'id': 'Choose a valid institution.'})
+            queryset = queryset.filter(pk=identifier)
         if country:
             queryset = queryset.filter(location__country__iexact=country)
         if state:
             queryset = queryset.filter(location__state__iexact=state)
+        if area:
+            queryset = queryset.filter(location__area__iexact=area)
         return queryset.order_by("name", "campus", "pk")
 
 

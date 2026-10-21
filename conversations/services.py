@@ -739,6 +739,8 @@ def accept_offer(*, conversation, user, offer_id):
         service_request = conversation.service_request
         if service_request is None:
             raise ValidationError("Complete the service request before accepting an offer.")
+        if service_request.status != ServiceRequest.Status.OPEN:
+            raise ValidationError("This request is no longer open for booking.")
         artisan = conversation.artisan
         if artisan.profile_status != "ACTIVE" or not artisan.user.is_active or getattr(artisan, "verification", None) is None or artisan.verification.verification_status != "VERIFIED":
             raise PermissionDenied("The artisan is no longer eligible for booking.")
@@ -766,6 +768,9 @@ def accept_offer(*, conversation, user, offer_id):
                 return booking, existing_payment, offer
         if booking_created:
             BookingStatusHistory.objects.create(booking=booking, status=Booking.Status.ACCEPTED, changed_by="CUSTOMER", changed_by_user=user, notes="Booking created automatically from accepted offer.")
+            # The request has been attended to: it leaves the customer's request
+            # list, but the row stays for bookings, history and reporting.
+            service_request.mark_attended()
         offer.status = Offer.Status.ACCEPTED
         offer.save(update_fields=["status", "updated_at"])
         Offer.objects.filter(conversation=conversation, status=Offer.Status.PROPOSED).exclude(pk=offer.pk).update(status=Offer.Status.CANCELLED)

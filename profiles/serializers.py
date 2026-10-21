@@ -54,6 +54,21 @@ def _schedule_unshared_profile_photo_cleanup(storage, name, using=None):
     transaction.on_commit(cleanup, using=using)
 
 
+def _validate_profile_institution(attrs, instance):
+    from home.models import Institution
+    selected = attrs.get('nearest_institution', getattr(instance, 'nearest_institution', None))
+    if selected:
+        if not Institution.objects.filter(pk=selected.pk, is_active=True).exists():
+            raise serializers.ValidationError({'nearest_institution': 'Choose an active institution from the catalogue.'})
+        location = selected.location
+        mismatch = any(str(attrs.get(key, getattr(instance, key, '')) or '').strip().casefold() != str(getattr(location, key) or '').strip().casefold() for key in ('country', 'state', 'area'))
+        if mismatch:
+            if 'nearest_institution' in attrs:
+                raise serializers.ValidationError({'nearest_institution': 'Choose an institution matching your country, state and area.'})
+            attrs['nearest_institution'] = None
+    return attrs
+
+
 class ArtisanProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
     first_name = serializers.CharField(source="user.first_name")
@@ -86,11 +101,13 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     cancellation_rate = serializers.FloatField(read_only=True)
     profile_status = serializers.CharField(read_only=True)
 
+    nearest_institution_name = serializers.CharField(source='nearest_institution.name', read_only=True, default='')
+
     class Meta:
         model = ArtisanProfile
         fields = [
             "id","first_name", "last_name", "phone_number", "email", "profile_photo",
-            "business_name", "bio", "years_experience", "country", "state", "area",
+            "business_name", "bio", "years_experience", "country", "state", "area", "nearest_institution", "nearest_institution_name",
             "social_media_1_platform", "social_media_1_platform_label", "social_media_1_url",
             "social_media_2_platform", "social_media_2_platform_label", "social_media_2_url", "portfolio_url",
             "average_rating", "completion_rate", "cancellation_rate", "profile_status",
@@ -102,6 +119,7 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
         return normalize_phone(value)
 
     def validate(self, attrs):
+        attrs = _validate_profile_institution(attrs, self.instance)
         errors = {}
         for index in (1, 2):
             platform_field = f"social_media_{index}_platform"
@@ -229,11 +247,22 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
     phone_number = serializers.CharField(source="user.phone_number", allow_blank=True, allow_null=True, required=False)
     profile_photo = serializers.ImageField(required=False, allow_null=True)
 
+    nearest_institution_name = serializers.CharField(source='nearest_institution.name', read_only=True, default='')
+
+    def validate_date_of_birth(self, value):
+        from django.utils import timezone
+        if value and value > timezone.localdate():
+            raise serializers.ValidationError('Date of birth cannot be in the future.')
+        return value
+
+    def validate(self, attrs):
+        return _validate_profile_institution(attrs, self.instance)
+
     class Meta:
         model = CustomerProfile
         fields = [
             "id", "first_name", "last_name", "email", "phone_number", "profile_photo",
-            "date_of_birth", "country", "state", "area", "gender",
+            "date_of_birth", "country", "state", "area", "nearest_institution", "nearest_institution_name", "gender",
             "cancellation_rate", "cancellation_risk_score",
             "cancellation_risk_max", "cancellation_risk_level",
         ]

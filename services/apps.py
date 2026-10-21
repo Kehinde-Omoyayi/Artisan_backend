@@ -5,4 +5,4 @@ class ServicesConfig(AppConfig):
     name = 'services'
 
     def ready(self):
-        from . import active
+        from . import active, lifecycle_signals

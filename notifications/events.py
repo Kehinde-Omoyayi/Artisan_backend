@@ -1,3 +1,4 @@
+from uuid import uuid4
 from django.conf import settings
 from django.db import transaction
 
@@ -38,6 +39,31 @@ def schedule_email(*, event_key, recipient, subject, message, action_url=None, a
         return
     transaction.on_commit(_safe_dispatch_outbox, robust=True)
 
+def _queue_service_request_fanout(service_request, variant):
+    """Ask every matching artisan in the request's category and area to look again.
+
+    `variant` keeps the outbox key distinct per lifecycle event, so an update or a
+    withdrawal is never swallowed as a duplicate of the original "new request" fan-out.
+    """
+    revision = uuid4().hex
+    variant = f"{variant}:{revision}"
+    try:
+        with transaction.atomic():
+            enqueue_outbox(
+                event_type="automation.fanout_service_request",
+                event_key=f"service-demand:{service_request.id}:fanout:{variant}",
+                payload={"service_request_id": str(service_request.id), "variant": variant},
+            )
+    except Exception:
+        logger.exception(
+            "service_request_fanout_enqueue_failed request=%s variant=%s",
+            service_request.id,
+            variant,
+        )
+        return
+    transaction.on_commit(_safe_dispatch_outbox, robust=True)
+
+
 def notify_service_request_created(service_request):
     customer = service_request.requester
     category_name = service_request.category.name
@@ -50,14 +76,47 @@ def notify_service_request_created(service_request):
         action_url=service_request_link(service_request),
     )
 
-    try:
-        with transaction.atomic(): enqueue_outbox(event_type="automation.fanout_service_request", event_key=f"service-demand:{service_request.id}:fanout", payload={"service_request_id": str(service_request.id)})
-    except Exception:
-        logger.exception("service_request_fanout_enqueue_failed request=%s", service_request.id)
-        return
-    transaction.on_commit(_safe_dispatch_outbox, robust=True)
+    _queue_service_request_fanout(service_request, "created")
 
-def notify_artisan_service_demand(service_request, artisan_user):
+
+def notify_service_request_updated(service_request):
+    """The customer changed a live request: tell the same artisans who saw it first."""
+    category_name = service_request.category.name
+    customer = service_request.requester
+
+    schedule_email(
+        event_key=f"{NotificationEvent.SERVICE_REQUEST_UPDATED}:{service_request.id}:{uuid4().hex}:customer",
+        recipient=customer,
+        subject="Your service request has been updated",
+        message=(
+            f"Your {category_name} request has been updated. Artisans serving this "
+            "category and area have been notified of the change."
+        ),
+        action_url=service_request_link(service_request),
+    )
+
+    _queue_service_request_fanout(service_request, "updated")
+
+
+def notify_service_request_withdrawn(service_request):
+    """The customer deleted a request: the record is archived, artisans are told to stop."""
+    category_name = service_request.category.name
+    customer = service_request.requester
+
+    schedule_email(
+        event_key=f"{NotificationEvent.SERVICE_REQUEST_WITHDRAWN}:{service_request.id}:customer",
+        recipient=customer,
+        subject="Your service request has been withdrawn",
+        message=(
+            f"Your {category_name} request has been withdrawn and no longer appears in "
+            "your workspace. It is kept on record for your history and reporting."
+        ),
+        action_url=service_request_link(service_request),
+    )
+
+    _queue_service_request_fanout(service_request, "withdrawn")
+
+def notify_artisan_service_demand(service_request, artisan_user, revision="created"):
     """Tell one matching artisan that a customer request exists in their category and area (once per artisan)."""
     category_name = service_request.category.name
     schedule_email(
@@ -65,6 +124,42 @@ def notify_artisan_service_demand(service_request, artisan_user):
         recipient=artisan_user,
         subject=f"New {category_name} request in your service area",
         message=f"A customer has posted a {category_name} request in an area you serve. Keep your profile active and check your conversations: the customer may contact you directly.",
+        action_url=dashboard_link(),
+        action_label="Open dashboard",
+    )
+
+
+def notify_artisan_service_request_changed(service_request, artisan_user, revision="updated"):
+    """An open request this artisan could quote for was edited by the customer."""
+    category_name = service_request.category.name
+    area = service_request.location.area if service_request.location_id else ""
+    where = f" in {area}" if area else ""
+    schedule_email(
+        event_key=f"service-demand:{service_request.id}:updated:{revision}:artisan:{artisan_user.id}",
+        recipient=artisan_user,
+        subject=f"{category_name} request updated{where}",
+        message=(
+            f"A {category_name} request you can serve{where} has been updated by the customer. "
+            "Budget, date or description may have changed, so review it before you respond."
+        ),
+        action_url=dashboard_link(),
+        action_label="Open dashboard",
+    )
+
+
+def notify_artisan_service_request_withdrawn(service_request, artisan_user, revision="withdrawn"):
+    """An open request this artisan could quote for was withdrawn by the customer."""
+    category_name = service_request.category.name
+    area = service_request.location.area if service_request.location_id else ""
+    where = f" in {area}" if area else ""
+    schedule_email(
+        event_key=f"service-demand:{service_request.id}:withdrawn:{revision}:artisan:{artisan_user.id}",
+        recipient=artisan_user,
+        subject=f"{category_name} request withdrawn{where}",
+        message=(
+            f"The {category_name} request{where} you could serve has been withdrawn by the "
+            "customer and is no longer available to quote for. No further action is needed."
+        ),
         action_url=dashboard_link(),
         action_label="Open dashboard",
     )
@@ -663,4 +758,38 @@ def notify_promotion_campaign_update(campaign, *, action, reason=""):
         message=base_message + detail,
         action_url=promotion_center_link(),
         action_label="View My Promotions",
+    )
+
+
+def notify_service_request_attended(service_request):
+    from .matching import get_matching_artisans
+    users = set()
+    for offering in get_matching_artisans(service_request).iterator():
+        user = offering.artisan.user
+        if user.id in users:
+            continue
+        users.add(user.id)
+        schedule_email(
+            event_key=f"service-demand:{service_request.id}:attended:{user.id}",
+            recipient=user,
+            subject=f"{service_request.category.name} request is no longer available",
+            message=f"Request #{service_request.id} has been attended to and is no longer open for responses.",
+            action_url=dashboard_link(),
+        )
+
+
+def notify_request_not_interested(service_request, artisan):
+    """Two durable alerts, once per personal dismissal; no global rejection."""
+    key = f'request-not-interested:{service_request.pk}:{artisan.pk}'
+    schedule_email(
+        event_key=key + ':artisan', recipient=artisan.user,
+        subject=f'Request #{service_request.pk} hidden from your matches',
+        message='You marked this request as not interested. It is hidden only from your matched-request board and remains open to other eligible artisans.',
+        action_url='/account/artisan/requests/', action_label='Open matching requests',
+    )
+    schedule_email(
+        event_key=key + ':customer', recipient=service_request.requester,
+        subject=f'An artisan passed on request #{service_request.pk}',
+        message='One eligible artisan marked your request as not interested. Your request has not been rejected or closed for everyone; other eligible artisans can still respond.',
+        action_url=f'/requests/{service_request.pk}/', action_label='View your request',
     )

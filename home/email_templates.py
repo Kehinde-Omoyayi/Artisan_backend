@@ -1,7 +1,7 @@
 """Shared, fully branded multipart email delivery for security codes."""
 
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives
+from .email_brand import BrandedEmailMultiAlternatives as EmailMultiAlternatives
 from django.template.loader import render_to_string
 
 

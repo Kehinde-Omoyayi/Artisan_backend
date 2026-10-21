@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>{{ subject }}</title>
+  <style>
+    @media only screen and (max-width:600px){.email-gutter{padding:20px 12px!important}.email-nav{padding:20px 12px!important}.email-hero{padding:25px 24px!important}.email-content{padding:30px 24px!important}.email-heading{font-size:31px!important;line-height:1.12!important}.email-hero-heading{font-size:32px!important}.email-footer{padding:20px 24px!important}.email-detail{padding:20px!important}.email-code{font-size:30px!important;letter-spacing:5px!important}}
+    @media only screen and (min-width:481px) and (max-width:600px){.email-gutter{padding:32px 40px!important}.email-nav{padding:23px 24px!important}}
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#faf7f1;color:#4c3025;font-family:Arial,Helvetica,sans-serif;-webkit-text-size-adjust:100%;">
+  <!-- Artisan email design: signin-v32 -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;mso-hide:all;">{% block preheader %}{{ subject }} · An update from Artisan Market.{% endblock %}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#faf7f1" style="width:100%;background-color:#faf7f1;">
+    <tr><td align="center" style="border-bottom:1px solid #e5dacf;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px;"><tr><td class="email-nav email-header" style="padding:23px 8px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td valign="middle" width="33"><img src="cid:artisan-mark-v32" width="32" height="32" alt="A" style="display:block;width:32px;height:32px;border:0;"></td><td valign="middle" style="padding-left:9px;color:#74432f;font-size:16px;letter-spacing:-.5px;"><strong>Artisan</strong> Market</td></tr></table>
+        </td><td align="right" style="color:#8a715e;font-size:9px;font-weight:bold;letter-spacing:1px;">ACCOUNT EMAIL</td></tr></table>
+      </td></tr></table>
+    </td></tr>
+    <tr><td class="email-gutter" align="center" style="padding:32px 16px;">
+      <!--[if mso]><table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <table class="email-paper" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fffdf9" style="width:100%;max-width:640px;border:1px solid #e5dacf;border-radius:18px;background-color:#fffdf9;overflow:hidden;">
+        <tr><td class="email-hero" background="cid:artisan-hero-v32" bgcolor="#74432f" style="padding:30px 30px 26px;background-color:#74432f;background-image:url('cid:artisan-hero-v32');background-size:cover;background-position:center;border-radius:17px 17px 0 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="34" valign="middle"><img src="cid:artisan-mark-light-v32" width="32" height="32" alt="A" style="display:block;width:32px;height:32px;border:0;"></td><td valign="middle" style="padding-left:9px;color:#fffaf1;font-size:15px;letter-spacing:-.5px;"><strong>Artisan</strong> Market</td></tr></table>
+          <p style="margin:30px 0 12px;color:#ddc3a8;font-size:9px;font-weight:bold;letter-spacing:1.5px;line-height:1.5;">A MARKETPLACE FOR ARTISAN WORK</p>
+          <h2 class="email-hero-heading" style="margin:0 0 10px;color:#fffaf1;font-family:Georgia,'Times New Roman',serif;font-size:36px;font-weight:bold;letter-spacing:-1px;line-height:1.12;">Good to have you back.</h2>
+          <p style="margin:0;color:#e5d5c7;font-size:13px;line-height:1.8;">Your account, requests, bookings and conversations,<br>right where you left them.</p>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:22px;"><tr>
+            <td width="50%" valign="top" style="padding:12px 10px 12px 0;border-top:1px solid #aa795f;color:#fff4e7;font-size:10px;line-height:1.7;"><span style="color:#ddc3a8;">01 &nbsp;</span> Keep your account secure</td>
+            <td width="50%" valign="top" style="padding:12px 0 12px 8px;border-top:1px solid #aa795f;color:#fff4e7;font-size:10px;line-height:1.7;"><span style="color:#ddc3a8;">02 &nbsp;</span> Review marketplace updates</td>
+          </tr><tr><td colspan="2" style="padding:12px 0 0;border-top:1px solid #aa795f;color:#fff4e7;font-size:10px;line-height:1.7;"><span style="color:#ddc3a8;">03 &nbsp;</span> Manage your connections</td></tr></table>
+          <p style="margin:21px 0 0;color:#e5d5c7;font-size:10px;line-height:1.6;"><span style="color:#d8b38d;">●</span> &nbsp;For customers and artisans</p>
+        </td></tr>
+        <tr><td class="email-content" bgcolor="#fffdf9" style="padding:34px 30px;background-color:#fffdf9;">
+          <p style="margin:0 0 17px;color:#965237;font-size:9px;font-weight:bold;letter-spacing:1.5px;line-height:1.5;text-transform:uppercase;">{% block eyebrow %}Your marketplace{% endblock %}</p>
+          <h1 class="email-heading" style="margin:0 0 13px;color:#4c3025;font-family:Georgia,'Times New Roman',serif;font-size:35px;font-weight:bold;letter-spacing:-1px;line-height:1.1;overflow-wrap:anywhere;">{% block heading %}{{ subject }}{% endblock %}</h1>
+          <p style="margin:0 0 14px;color:#75665a;font-size:13px;line-height:1.7;">Hello <strong style="color:#4c3025;">{{ recipient_name|default:'there' }}</strong>,</p>
+          {% block email_content %}{% endblock %}
+          {% block email_action %}{% if action_url %}{% include 'emails/partials/marketplace_button.html' %}{% endif %}{% endblock %}
+          {% block email_note %}{% endblock %}
+        </td></tr>
+        <tr><td class="email-footer" bgcolor="#f4ede3" style="padding:21px 30px;background-color:#f4ede3;border-top:1px solid #e5dacf;">
+          <p style="margin:0 0 9px;color:#74432f;font-size:13px;line-height:1.5;"><strong>Artisan</strong> Market</p>
+          <p style="margin:0;color:#75665a;font-size:10px;line-height:1.7;">{% block footer_note %}You are receiving this email because of activity on your Artisan Market account. Please do not reply to this automated message.{% endblock %}</p>
+        </td></tr>
+      </table>
+      <!--[if mso]></td></tr></table><![endif]-->
+      <p style="margin:17px 0 0;color:#8b7a6a;font-size:10px;line-height:1.6;text-align:center;">{% block outside_note %}A marketplace for artisan work in Nigeria.{% endblock %}</p>
+    </td></tr>
+  </table>
+</body>
+</html>

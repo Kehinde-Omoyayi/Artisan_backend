@@ -3,7 +3,7 @@ import uuid
 
 from celery import shared_task
 from redis.exceptions import RedisError
-from django.core.mail import EmailMultiAlternatives
+from home.email_brand import BrandedEmailMultiAlternatives as EmailMultiAlternatives
 from django.template.loader import render_to_string
 
 from .email_backend import (
@@ -142,7 +142,7 @@ FANOUT_MAX_RECIPIENTS = 50
     retry_backoff_max=900,
     retry_jitter=True,
 )
-def fanout_service_request(self, service_request_id):
+def fanout_service_request(self, service_request_id, variant="created"):
     from django.contrib.auth import get_user_model
 
     from services.models import ServiceRequest
@@ -162,6 +162,9 @@ def fanout_service_request(self, service_request_id):
         )
         return {"status": "not_found"}
 
+    kind = variant.split(":", 1)[0]
+    if kind in {"created", "updated"} and service_request.status != ServiceRequest.Status.OPEN:
+        return {"status": "closed"}
     artisans = get_matching_artisans(service_request)
 
     if not artisans:
@@ -169,24 +172,34 @@ def fanout_service_request(self, service_request_id):
             "No matching artisans found for service request %s",
             service_request_id,
         )
-        notify_service_request_no_match(service_request)
+        if kind == "created":
+            notify_service_request_no_match(service_request)
         return {"status": "no_match"}
 
-    from .events import notify_artisan_service_demand
+    from .events import (
+        notify_artisan_service_demand,
+        notify_artisan_service_request_changed,
+        notify_artisan_service_request_withdrawn,
+    )
+
+    notify = {
+        "created": notify_artisan_service_demand,
+        "updated": notify_artisan_service_request_changed,
+        "withdrawn": notify_artisan_service_request_withdrawn,
+    }.get(kind, notify_artisan_service_demand)
 
     seen_users = set()
     task_count = 0
-    for artisan_service in artisans[:FANOUT_MAX_RECIPIENTS * 3]:
+    for artisan_service in artisans.iterator():
         user = artisan_service.artisan.user
         if user.id in seen_users or not user.is_active:
             continue
         seen_users.add(user.id)
-        notify_artisan_service_demand(service_request, user)
+        notify(service_request, user, revision=variant)
         task_count += 1
-        if task_count >= FANOUT_MAX_RECIPIENTS:
-            break
 
     return {
         "status": "queued",
+        "variant": variant,
         "recipients": task_count,
     }

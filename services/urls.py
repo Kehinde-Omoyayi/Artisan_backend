@@ -5,6 +5,7 @@ from .views import (
     ArtisanServiceDetailView,
     ArtisanServiceListCreateView,
     ArtisanMatchedServiceRequestListView,
+    ArtisanRequestDismissView,
     ArtisanVerificationStatusView,
     BVNDetailsView,
     BVNInitiateView,
@@ -29,6 +30,7 @@ urlpatterns = [
 
     path("get_artisan_services/", ArtisanServiceListCreateView.as_view(), name="artisan-service-list-create"),
     path("get_artisan_services/<int:pk>/", ArtisanServiceDetailView.as_view(), name="artisan-service-detail"),
+    path("artisan/requests/<int:pk>/dismiss/", ArtisanRequestDismissView.as_view(), name="artisan-request-dismiss"),
     path("artisan/requests/", ArtisanMatchedServiceRequestListView.as_view(), name="artisan-matched-service-requests"),
 
     path("categories/", ServiceCategoryListView.as_view(), name="service-category-list"),

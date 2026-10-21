@@ -19,7 +19,10 @@ def _dispatch(event):
         reconcile_stale_payments.delay()
     elif event.event_type == "automation.fanout_service_request":
         from notifications.tasks import fanout_service_request
-        fanout_service_request.delay(event.payload["service_request_id"])
+        fanout_service_request.delay(
+            event.payload["service_request_id"],
+            event.payload.get("variant", "created"),
+        )
     elif event.event_type == "media.scan":
         from conversations.signals_tasks import scan_conversation_attachment
         scan_conversation_attachment.delay(event.payload["attachment_id"])

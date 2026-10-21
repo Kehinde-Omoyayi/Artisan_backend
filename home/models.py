@@ -188,6 +188,10 @@ class ArtisanProfile(models.Model):
     country = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=100, blank=True)
     area = models.CharField(max_length=150, blank=True)
+    nearest_institution = models.ForeignKey(
+        'home.Institution', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='artisan_profiles',
+    )
     profile_photo = models.ImageField(upload_to="artisan_profiles/%Y/%m/", null=True, blank=True)
     social_media_1_platform = models.CharField(
         max_length=20, choices=SOCIAL_MEDIA_PLATFORM_CHOICES, blank=True, default=""
@@ -262,6 +266,11 @@ class Institution(models.Model):
     name = models.CharField(max_length=180)
     campus = models.CharField(max_length=180, blank=True, default="")
     abbreviation = models.CharField(max_length=40, blank=True, default="")
+    abbreviations = models.JSONField(default=list, blank=True)
+    aliases = models.JSONField(default=list, blank=True)
+    source_id = models.CharField(max_length=100, null=True, blank=True, unique=True)
+    source_url = models.URLField(blank=True, default="")
+
     location = models.ForeignKey(
         Locations,
         on_delete=models.PROTECT,
@@ -349,6 +358,11 @@ class CustomerProfile(models.Model):
     country = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=100, blank=True)
     area = models.CharField(max_length=150, blank=True)
+
+    nearest_institution = models.ForeignKey(
+        'home.Institution', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='customer_profiles',
+    )
 
     GENDER_CHOICE = [
         ("M", "Male"),

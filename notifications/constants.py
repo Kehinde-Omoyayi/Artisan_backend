@@ -1,5 +1,7 @@
 class NotificationEvent:
     SERVICE_REQUEST_CREATED = "service_request_created"
+    SERVICE_REQUEST_UPDATED = "service_request_updated"
+    SERVICE_REQUEST_WITHDRAWN = "service_request_withdrawn"
     SERVICE_REQUEST_NO_MATCH = "service_request_no_match"
 
     BOOKING_CREATED = "booking_created"
