@@ -151,6 +151,8 @@ class FlutterwaveClient:
             raise
         except FlutterwaveError as exc:
             # Provider messages can contain submitted account details; do not propagate them.
+            # Log real provider message for debugging (never expose raw to client in prod)
+            import logging; logging.getLogger(__name__).error("Flutterwave resolve failed: %s", exc)
             raise FlutterwaveError("Unable to verify the bank account details.") from exc
 
     def create_beneficiary(self, *, account_number, bank_code, beneficiary_name, bank_name):

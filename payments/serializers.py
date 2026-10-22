@@ -66,6 +66,17 @@ class ArtisanPayoutAccountSerializer(serializers.ModelSerializer):
     )
     bank_name = serializers.CharField(read_only=True)
     account_number_last4 = serializers.CharField(read_only=True)
+    # One-time security code emailed to the artisan; required only when changing
+    # an existing payout account. Never stored or returned.
+    otp = serializers.RegexField(
+        regex=r"^\d{6}$",
+        max_length=6,
+        min_length=6,
+        write_only=True,
+        required=False,
+        allow_blank=True,
+    )
+    payout_change_locked_until = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = ArtisanPayoutAccount
@@ -75,6 +86,8 @@ class ArtisanPayoutAccountSerializer(serializers.ModelSerializer):
             "account_number",
             "account_number_last4",
             "account_name",
+            "otp",
+            "payout_change_locked_until",
             "status",
             "is_active",
             "is_verified",
@@ -84,6 +97,7 @@ class ArtisanPayoutAccountSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "bank_name",
             "account_number_last4",
+            "payout_change_locked_until",
             "status",
             "is_active",
             "is_verified",
@@ -94,7 +108,7 @@ class ArtisanPayoutAccountSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         submitted = getattr(self, "initial_data", None)
         if submitted is not None:
-            allowed = {"account_name", "bank_code", "account_number"}
+            allowed = {"account_name", "bank_code", "account_number", "otp"}
             unknown = set(submitted.keys()) - allowed
             if unknown:
                 raise serializers.ValidationError({

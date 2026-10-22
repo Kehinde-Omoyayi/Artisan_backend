@@ -682,3 +682,39 @@ def reconcile_financial_ledger(batch_size=500):
         "balanced": balanced,
         "failures": failures[:25],
     }
+
+
+_PAYOUT_CHANGE_EMAIL_RETRY_KWARGS = {
+    "autoretry_for": (Exception,),
+    "retry_backoff": True,
+    "retry_backoff_max": 300,
+    "retry_jitter": True,
+    "max_retries": 5,
+}
+
+
+@shared_task(**_PAYOUT_CHANGE_EMAIL_RETRY_KWARGS)
+def send_payout_change_email(first_name, email, encrypted_code):
+    """Deliver the one-time code that authorises a payout account change."""
+    from home.email_templates import send_security_code_email
+    from home.security_mail import decrypt_email_code
+
+    otp_code = decrypt_email_code(encrypted_code)
+    send_security_code_email(
+        recipient_email=email,
+        recipient_name=first_name,
+        subject="Confirm your payout account change",
+        heading="Verify your payout account change",
+        intro=(
+            "Enter this one-time code in the payout account screen to confirm you want to "
+            "replace the saved payout account on your Artisan Market profile."
+        ),
+        code=otp_code,
+        code_label="PAYOUT CHANGE CODE",
+        purpose_label="Payout account change",
+        security_note=(
+            "If you did not request this change, ignore this email and do not share the code. "
+            "Your saved payout account will remain unchanged unless the code is entered."
+        ),
+    )
+    return {"sent": True, "purpose": "payout_change"}

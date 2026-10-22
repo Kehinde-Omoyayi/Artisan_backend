@@ -3,7 +3,10 @@ import hashlib
 import hmac
 import json
 import logging
+import secrets
 import uuid
+
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import cache
@@ -24,6 +27,14 @@ from rest_framework.views import APIView
 
 from booking.models import Booking, BookingAdditionalOrder
 from home.models import ArtisanProfile, CustomUser
+from home.otp_security import (
+    hash_otp_code,
+    otp_attempts_cache_key,
+    otp_cache_key,
+    otp_cooldown_cache_key,
+    verify_otp_code,
+)
+from home.security_mail import encrypt_email_code
 from notifications.events import notify_payment_initialized
 from services.identity_names import (
     ACCOUNT_NAME_MISMATCH_MESSAGE,
@@ -50,6 +61,7 @@ from .services import prepare_booking_payment, prepare_additional_order_payment
 from .tasks import (
     initialize_prepared_payment,
     reconcile_artisan_payout,
+    send_payout_change_email,
     verify_flutterwave_payment,
 )
 
@@ -410,6 +422,87 @@ def _provider_error_response(*, verification_step=False, unknown=False):
     return Response({"detail": detail}, status=status.HTTP_503_SERVICE_UNAVAILABLE if unknown else status.HTTP_400_BAD_REQUEST)
 
 
+# Payout-account change protection: after every successful save the details are
+# locked for a cooldown window, and replacing an existing account always
+# requires a one-time code emailed to the artisan.
+PAYOUT_CHANGE_LOCK_DURATION = timedelta(days=3)
+PAYOUT_CHANGE_OTP_PURPOSE = "payout_change"
+PAYOUT_CHANGE_OTP_TTL_SECONDS = 600
+PAYOUT_CHANGE_OTP_RESEND_SECONDS = 60
+PAYOUT_CHANGE_OTP_MAX_ATTEMPTS = 5
+PAYOUT_CHANGE_OTP_REQUIRED_MESSAGE = (
+    "Enter the 6-digit security code emailed to you to change your payout account."
+)
+
+
+def _payout_change_lock_response(locked_until):
+    now = timezone.now()
+    remaining = max(1, int((locked_until - now).total_seconds()))
+    days = remaining // 86400
+    hours = (remaining % 86400) // 3600
+    if days:
+        wait = f"{days} day{'s' if days != 1 else ''}"
+    elif hours:
+        wait = f"{hours} hour{'s' if hours != 1 else ''}"
+    else:
+        wait = "a few minutes"
+    return Response(
+        {
+            "detail": (
+                "Payout account details are locked for your protection. "
+                f"You can change them again in about {wait}."
+            ),
+            "payout_change_locked_until": locked_until.isoformat(),
+            "retry_after_seconds": remaining,
+        },
+        status=423,  # Locked
+    )
+
+
+def _payout_change_locked_until(account):
+    locked_until = getattr(account, "payout_change_locked_until", None)
+    if locked_until and locked_until > timezone.now():
+        return locked_until
+    return None
+
+
+def _record_failed_payout_otp_attempt(email):
+    key = otp_attempts_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email)
+    try:
+        return cache.incr(key)
+    except ValueError:
+        cache.set(key, 1, timeout=PAYOUT_CHANGE_OTP_TTL_SECONDS)
+        return 1
+
+
+def _consume_payout_change_otp(user, submitted_code):
+    """Return True on a valid code, False on an invalid/expired one, None when missing.
+
+    A successful check deletes the stored digest so each code is single-use; failures
+    are counted and past the cap the stored code is invalidated to stop guessing.
+    """
+    email = (getattr(user, "email", "") or "").strip().casefold()
+    submitted = str(submitted_code or "").strip()
+    if not email:
+        return False
+    if not submitted:
+        return None
+    attempts_key = otp_attempts_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email)
+    attempts = int(cache.get(attempts_key) or 0)
+    if attempts >= PAYOUT_CHANGE_OTP_MAX_ATTEMPTS:
+        cache.delete(otp_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email))
+        return False
+    stored_digest = cache.get(otp_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email))
+    if not stored_digest:
+        return False
+    if verify_otp_code(PAYOUT_CHANGE_OTP_PURPOSE, email, submitted, stored_digest):
+        cache.delete(otp_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email))
+        cache.delete(attempts_key)
+        return True
+    _record_failed_payout_otp_attempt(email)
+    return False
+
+
 class PayoutBankListView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -538,6 +631,22 @@ class ArtisanPayoutAccountView(APIView):
                 status=status.HTTP_409_CONFLICT,
             )
 
+        if existing is not None:
+            # Changing an existing account is gated twice: a cooldown window
+            # after the last change, then a one-time code emailed to the artisan.
+            locked_until = _payout_change_locked_until(existing)
+            if locked_until is not None:
+                return _payout_change_lock_response(locked_until)
+            otp_result = _consume_payout_change_otp(
+                artisan.user, serializer.validated_data.get("otp")
+            )
+            if otp_result is None:
+                raise ValidationError({"otp": PAYOUT_CHANGE_OTP_REQUIRED_MESSAGE})
+            if not otp_result:
+                raise ValidationError(
+                    {"otp": "That security code is invalid or expired. Request a new code and try again."}
+                )
+
         try:
             banks = get_supported_nigerian_banks()
         except FlutterwaveUnknownError:
@@ -646,6 +755,7 @@ class ArtisanPayoutAccountView(APIView):
             account.is_verified = False
             account.provider_beneficiary_id = None
             account.provider_subaccount_id = ""
+            account.payout_change_locked_until = timezone.now() + PAYOUT_CHANGE_LOCK_DURATION
             account.save()
             response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
 
@@ -654,6 +764,102 @@ class ArtisanPayoutAccountView(APIView):
             "Flutterwave confirmed the bank account name. The account is pending protected finance verification; payouts are not enabled yet."
         )
         return Response(response_data, status=response_status)
+
+
+class ArtisanPayoutChangeOTPView(APIView):
+    """Issue the one-time code that authorises replacing a saved payout account."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Payout Accounts"],
+        request=None,
+        responses={
+            202: OpenApiResponse(description="A security code was emailed to the artisan."),
+            400: OpenApiResponse(description="No saved payout account exists to change."),
+            403: OpenApiResponse(description="An eligible artisan profile is required."),
+            423: OpenApiResponse(description="Payout changes are still locked from the last change."),
+            429: OpenApiResponse(description="A code was sent recently; wait before resending."),
+        },
+    )
+    def post(self, request):
+        artisan = getattr(request.user, "artisan_profile", None)
+        if artisan is None:
+            raise PermissionDenied("An artisan profile is required for payout account management.")
+        if artisan.profile_status == "SUSPENDED":
+            raise PermissionDenied("Suspended artisan profiles cannot manage payout accounts.")
+
+        account = ArtisanPayoutAccount.objects.filter(artisan=artisan).first()
+        if account is None:
+            return Response(
+                {"detail": "Save your first payout account without a code. A security code is only needed to replace saved details."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        locked_until = _payout_change_locked_until(account)
+        if locked_until is not None:
+            return _payout_change_lock_response(locked_until)
+
+        email = (getattr(request.user, "email", "") or "").strip()
+        if not email:
+            return Response(
+                {"detail": "Add an email address to your account before changing payout details."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        now = timezone.now()
+        cooldown_key = otp_cooldown_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email)
+        cooldown_until = cache.get(cooldown_key)
+        if cooldown_until and cooldown_until > now:
+            retry_after = max(1, int((cooldown_until - now).total_seconds()))
+            return Response(
+                {
+                    "detail": "A security code was already sent. Check your email or wait a moment before requesting another.",
+                    "retry_after_seconds": retry_after,
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
+        code = f"{secrets.randbelow(900000) + 100000:06d}"
+        cache.set(
+            otp_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email),
+            hash_otp_code(PAYOUT_CHANGE_OTP_PURPOSE, email, code),
+            timeout=PAYOUT_CHANGE_OTP_TTL_SECONDS,
+        )
+        cache.set(
+            otp_attempts_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email),
+            0,
+            timeout=PAYOUT_CHANGE_OTP_TTL_SECONDS,
+        )
+        cache.set(
+            cooldown_key,
+            now + timedelta(seconds=PAYOUT_CHANGE_OTP_RESEND_SECONDS),
+            timeout=PAYOUT_CHANGE_OTP_RESEND_SECONDS,
+        )
+        try:
+            send_payout_change_email.delay(
+                request.user.first_name, email, encrypt_email_code(code)
+            )
+        except Exception:
+            # Never turn a committed action into a 500 because the broker is down;
+            # never log the code, email or ciphertext.
+            logger.exception("payout_change_email_enqueue_failed user_id=%s", request.user.pk)
+
+        audit_request_action(
+            request=request,
+            action="PAYOUT_CHANGE_OTP_REQUESTED",
+            resource_type="ArtisanPayoutAccount",
+            resource_id=str(account.pk),
+            metadata={"expires_in_seconds": PAYOUT_CHANGE_OTP_TTL_SECONDS},
+        )
+        return Response(
+            {
+                "detail": "A 6-digit security code was sent to your email. It expires in 10 minutes.",
+                "expires_in_seconds": PAYOUT_CHANGE_OTP_TTL_SECONDS,
+                "resend_after_seconds": PAYOUT_CHANGE_OTP_RESEND_SECONDS,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
 
 class ArtisanPayoutAccountStatusView(APIView):

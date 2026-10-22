@@ -172,6 +172,9 @@ class ArtisanPayoutAccount(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     is_active = models.BooleanField(default=False)
     is_verified = models.BooleanField(default=False)
+    # Changing the payout account is locked for a cooldown window after every
+    # successful save; the first save starts the window too.
+    payout_change_locked_until = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

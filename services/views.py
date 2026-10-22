@@ -1320,6 +1320,15 @@ class InstitutionListView(generics.ListAPIView):
             queryset = queryset.filter(location__state__iexact=state)
         if area:
             queryset = queryset.filter(location__area__iexact=area)
+        # Alphabetical with Nigeria first when no explicit country filter
+        from django.db.models import Case, When, IntegerField
+        if not country:
+            return queryset.order_by(
+                Case(When(location__country__iexact="Nigeria", then=0), default=1, output_field=IntegerField()),
+                "name",
+                "campus",
+                "pk",
+            )
         return queryset.order_by("name", "campus", "pk")
 
 

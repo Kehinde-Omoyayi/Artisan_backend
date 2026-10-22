@@ -531,6 +531,7 @@ CELERY_TASK_ROUTES = {
     "payments.tasks.reconcile_financial_ledger": {"queue": "maintenance"},
     "support.tasks.reconcile_support_refund": {"queue": "payments"},
     "promotions.tasks.initialize_promotion_payment": {"queue": "payments"},
+    "payments.tasks.send_payout_change_email": {"queue": "notifications"},
     "promotions.tasks.reconcile_promotion_payment_initialization": {
         "queue": "payments"
     },
