@@ -1,7 +1,11 @@
 import uuid
 
 from django.conf import settings
-from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.contrib.auth.models import (
+    AbstractBaseUser,
+    BaseUserManager,
+    PermissionsMixin,
+)
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
@@ -15,23 +19,33 @@ from .profile_links import (
     validate_social_media_url,
 )
 
+
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, first_name, last_name, password=None, **kwargs):
         if not email:
             raise ValueError("Email is Required")
         email = self.normalize_email(email)
-        user = self.model(email=email, first_name=first_name, last_name=last_name, **kwargs)
+        user = self.model(
+            email=email, first_name=first_name, last_name=last_name, **kwargs
+        )
         user.set_password(password)
         user.save(using=self._db)
         return user
 
     def create_superuser(self, email, first_name, last_name, password=None, **kwargs):
-        user = self.create_user(email=email, first_name=first_name, last_name=last_name, password=password, **kwargs)
+        user = self.create_user(
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            password=password,
+            **kwargs,
+        )
         user.is_staff = True
         user.is_superuser = True
         user.is_active = True
         user.save(using=self._db)
         return user
+
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
@@ -49,7 +63,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         ("LOCKED", "Locked"),
     ]
 
-    security_status = models.CharField(max_length=10, choices=SECURITY_STATUS, default="NORMAL")
+    security_status = models.CharField(
+        max_length=10, choices=SECURITY_STATUS, default="NORMAL"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     objects = CustomUserManager()
@@ -64,11 +80,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         if not self.pk and self.password and self.password_changed_at is None:
             self.password_changed_at = timezone.now()
         elif self.pk and password_is_being_saved:
-            previous_password = type(self).objects.filter(pk=self.pk).values_list("password", flat=True).first()
+            previous_password = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values_list("password", flat=True)
+                .first()
+            )
             if previous_password is not None and previous_password != self.password:
                 self.password_changed_at = timezone.now()
                 if update_fields is not None:
-                    kwargs["update_fields"] = set(update_fields) | {"password_changed_at"}
+                    kwargs["update_fields"] = set(update_fields) | {
+                        "password_changed_at"
+                    }
         return super().save(*args, **kwargs)
 
     def get_full_name(self):
@@ -80,6 +103,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
 
 class StaffSecurityProfile(models.Model):
     """Three registered prompts with one-way password hashes for their answers."""
@@ -143,10 +167,15 @@ class StaffSecurityChallenge(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["user", "purpose", "expires_at"], name="staff_challenge_user_exp_idx"),
+            models.Index(
+                fields=["user", "purpose", "expires_at"],
+                name="staff_challenge_user_exp_idx",
+            ),
         ]
         constraints = [
-            models.CheckConstraint(condition=Q(attempts__lte=10), name="staff_challenge_attempts_lte_10"),
+            models.CheckConstraint(
+                condition=Q(attempts__lte=10), name="staff_challenge_attempts_lte_10"
+            ),
         ]
 
     def __str__(self):
@@ -172,7 +201,9 @@ class StaffPasswordResetToken(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["user", "expires_at"], name="staff_reset_user_exp_idx"),
+            models.Index(
+                fields=["user", "expires_at"], name="staff_reset_user_exp_idx"
+            ),
         ]
 
     def __str__(self):
@@ -181,32 +212,48 @@ class StaffPasswordResetToken(models.Model):
 
 class ArtisanProfile(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="artisan_profile")
+    user = models.OneToOneField(
+        CustomUser, on_delete=models.CASCADE, related_name="artisan_profile"
+    )
     business_name = models.CharField(max_length=150, blank=True)
     bio = models.TextField(blank=True)
     years_experience = models.PositiveIntegerField(default=0)
     country = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=100, blank=True)
     area = models.CharField(max_length=150, blank=True)
-    nearest_institution = models.ForeignKey(
-        'home.Institution', null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='artisan_profiles',
+    # Frontend-owned catalogue: persist display values, not catalogue relationships.
+    nearest_institution = models.CharField(max_length=180, blank=True, default="")
+    nearest_institution_abbreviation = models.CharField(
+        max_length=160, blank=True, default=""
     )
-    profile_photo = models.ImageField(upload_to="artisan_profiles/%Y/%m/", null=True, blank=True)
+    # Migration backup only; not a ForeignKey and never exposed as the selected value.
+    legacy_institution_id = models.UUIDField(null=True, blank=True, editable=False)
+    profile_photo = models.ImageField(
+        upload_to="artisan_profiles/%Y/%m/", null=True, blank=True
+    )
     social_media_1_platform = models.CharField(
         max_length=20, choices=SOCIAL_MEDIA_PLATFORM_CHOICES, blank=True, default=""
     )
     social_media_1_url = models.URLField(
-        max_length=2048, blank=True, default="", validators=[validate_external_profile_url]
+        max_length=2048,
+        blank=True,
+        default="",
+        validators=[validate_external_profile_url],
     )
     social_media_2_platform = models.CharField(
         max_length=20, choices=SOCIAL_MEDIA_PLATFORM_CHOICES, blank=True, default=""
     )
     social_media_2_url = models.URLField(
-        max_length=2048, blank=True, default="", validators=[validate_external_profile_url]
+        max_length=2048,
+        blank=True,
+        default="",
+        validators=[validate_external_profile_url],
     )
     portfolio_url = models.URLField(
-        max_length=2048, blank=True, default="", validators=[validate_external_profile_url]
+        max_length=2048,
+        blank=True,
+        default="",
+        validators=[validate_external_profile_url],
     )
     average_rating = models.DecimalField(max_digits=3, decimal_places=2, default=0.00)
     completion_rate = models.FloatField(default=0.0)
@@ -219,7 +266,9 @@ class ArtisanProfile(models.Model):
         ("SUSPENDED", "Suspended"),
     ]
 
-    profile_status = models.CharField(max_length=20, choices=PROFILE_STATUS, default="DRAFT")
+    profile_status = models.CharField(
+        max_length=20, choices=PROFILE_STATUS, default="DRAFT"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -232,7 +281,9 @@ class ArtisanProfile(models.Model):
             platform = getattr(self, platform_field, "")
             url = getattr(self, url_field, "")
             if bool(platform) != bool(url):
-                errors[url_field] = "Choose both a platform and its profile URL, or leave both blank."
+                errors[url_field] = (
+                    "Choose both a platform and its profile URL, or leave both blank."
+                )
             elif url:
                 try:
                     validate_social_media_url(url, platform)
@@ -243,11 +294,15 @@ class ArtisanProfile(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["profile_status", "-average_rating"], name="artisan_status_rating_idx"),
+            models.Index(
+                fields=["profile_status", "-average_rating"],
+                name="artisan_status_rating_idx",
+            ),
         ]
 
     def __str__(self):
         return f"{self.business_name or self.user.email} - {self.profile_status}"
+
 
 class Locations(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -281,7 +336,13 @@ class Institution(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["name", "campus", "location__country", "location__state", "location__area"]
+        ordering = [
+            "name",
+            "campus",
+            "location__country",
+            "location__state",
+            "location__area",
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["name", "campus", "location"],
@@ -289,8 +350,12 @@ class Institution(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=["is_active", "name"], name="institution_active_name_idx"),
-            models.Index(fields=["location", "is_active"], name="institution_loc_active_idx"),
+            models.Index(
+                fields=["is_active", "name"], name="institution_active_name_idx"
+            ),
+            models.Index(
+                fields=["location", "is_active"], name="institution_loc_active_idx"
+            ),
         ]
 
     def __str__(self):
@@ -304,8 +369,11 @@ class ServiceCategory(models.Model):
     def __str__(self):
         return self.name
 
+
 class Service(models.Model):
-    category = models.ForeignKey(ServiceCategory, on_delete=models.CASCADE, related_name="services")
+    category = models.ForeignKey(
+        ServiceCategory, on_delete=models.CASCADE, related_name="services"
+    )
     name = models.CharField(max_length=150, unique=True)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
@@ -321,11 +389,24 @@ class Service(models.Model):
     def __str__(self):
         return f"{self.category.name} - {self.name}"
 
+
 class ArtisanService(models.Model):
-    artisan = models.ForeignKey(ArtisanProfile, on_delete=models.CASCADE, related_name="artisan_services")
-    service = models.ForeignKey(Service, on_delete=models.CASCADE, related_name="artisan_services_category")
-    location = models.ForeignKey(Locations, on_delete=models.CASCADE, related_name="artisan_service_location", null=True, blank=True)
-    starting_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    artisan = models.ForeignKey(
+        ArtisanProfile, on_delete=models.CASCADE, related_name="artisan_services"
+    )
+    service = models.ForeignKey(
+        Service, on_delete=models.CASCADE, related_name="artisan_services_category"
+    )
+    location = models.ForeignKey(
+        Locations,
+        on_delete=models.CASCADE,
+        related_name="artisan_service_location",
+        null=True,
+        blank=True,
+    )
+    starting_price = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
 
     class Meta:
         indexes = [
@@ -350,19 +431,27 @@ class ArtisanService(models.Model):
     def __str__(self):
         return f"{self.artisan} - {self.service.name} - {self.location}"
 
+
 class CustomerProfile(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="customer_profile")
-    profile_photo = models.ImageField(upload_to="customer_profiles/%Y/%m/", null=True, blank=True)
+    user = models.OneToOneField(
+        CustomUser, on_delete=models.CASCADE, related_name="customer_profile"
+    )
+    profile_photo = models.ImageField(
+        upload_to="customer_profiles/%Y/%m/", null=True, blank=True
+    )
     date_of_birth = models.DateField(null=True, blank=True)
     country = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=100, blank=True)
     area = models.CharField(max_length=150, blank=True)
 
-    nearest_institution = models.ForeignKey(
-        'home.Institution', null=True, blank=True, on_delete=models.SET_NULL,
-        related_name='customer_profiles',
+    # Frontend-owned catalogue: persist display values, not catalogue relationships.
+    nearest_institution = models.CharField(max_length=180, blank=True, default="")
+    nearest_institution_abbreviation = models.CharField(
+        max_length=160, blank=True, default=""
     )
+    # Migration backup only; not a ForeignKey and never exposed as the selected value.
+    legacy_institution_id = models.UUIDField(null=True, blank=True, editable=False)
 
     GENDER_CHOICE = [
         ("M", "Male"),
@@ -387,8 +476,12 @@ class ManagerSnapshotSchedule(models.Model):
         WEEKLY = "WEEKLY", "Weekly"
         MONTHLY = "MONTHLY", "Monthly"
 
-    key = models.CharField(max_length=40, primary_key=True, default="manager-overview", editable=False)
-    frequency = models.CharField(max_length=20, choices=Frequency.choices, default=Frequency.DAILY)
+    key = models.CharField(
+        max_length=40, primary_key=True, default="manager-overview", editable=False
+    )
+    frequency = models.CharField(
+        max_length=20, choices=Frequency.choices, default=Frequency.DAILY
+    )
     timezone_name = models.CharField(max_length=64, default="UTC")
     next_run_at = models.DateTimeField()
     last_run_at = models.DateTimeField(null=True, blank=True)
@@ -412,7 +505,9 @@ class ManagerSnapshotSchedule(models.Model):
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(monthly_anchor_day__gte=1, monthly_anchor_day__lte=31),
+                condition=models.Q(
+                    monthly_anchor_day__gte=1, monthly_anchor_day__lte=31
+                ),
                 name="manager_snapshot_month_anchor_valid",
             ),
         ]
@@ -436,10 +531,14 @@ class ManagerAnalyticsSnapshot(models.Model):
     )
     period_key = models.CharField(max_length=180, unique=True)
     schedule_version = models.PositiveIntegerField()
-    frequency = models.CharField(max_length=20, choices=ManagerSnapshotSchedule.Frequency.choices)
+    frequency = models.CharField(
+        max_length=20, choices=ManagerSnapshotSchedule.Frequency.choices
+    )
     timezone_name = models.CharField(max_length=64)
     scheduled_for = models.DateTimeField()
-    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
     payload = models.JSONField(default=dict, blank=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     last_dispatched_at = models.DateTimeField(null=True, blank=True)
@@ -450,7 +549,12 @@ class ManagerAnalyticsSnapshot(models.Model):
 
     class Meta:
         ordering = ["-scheduled_for", "-created_at"]
-        indexes = [models.Index(fields=["status", "last_dispatched_at"], name="manager_snap_run_queue_idx")]
+        indexes = [
+            models.Index(
+                fields=["status", "last_dispatched_at"],
+                name="manager_snap_run_queue_idx",
+            )
+        ]
 
     def __str__(self):
         return f"{self.frequency} snapshot · {self.period_key} · {self.status}"

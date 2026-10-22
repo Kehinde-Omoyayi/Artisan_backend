@@ -120,35 +120,83 @@ class SupportCase(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["status", "priority"]), models.Index(fields=["opened_by", "status"]), models.Index(fields=["booking", "status"]), models.Index(fields=["assigned_to", "status"]) ]
+        indexes = [
+            models.Index(fields=["status", "priority"]),
+            models.Index(fields=["opened_by", "status"]),
+            models.Index(fields=["booking", "status"]),
+            models.Index(fields=["assigned_to", "status"]),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["booking", "case_type"],
-                condition=models.Q(case_type="DISPUTE", status__in=["OPEN", "UNDER_REVIEW"]),
+                condition=models.Q(
+                    case_type="DISPUTE", status__in=["OPEN", "UNDER_REVIEW"]
+                ),
                 name="support_one_active_dispute_per_booking",
             ),
             models.CheckConstraint(
-                condition=~(models.Q(booking__isnull=False) & models.Q(promotion_campaign__isnull=False)),
+                condition=~(
+                    models.Q(booking__isnull=False)
+                    & models.Q(promotion_campaign__isnull=False)
+                ),
                 name="support_case_one_business_resource",
             ),
             models.CheckConstraint(
-                condition=~(models.Q(conversation__isnull=False) & models.Q(promotion_campaign__isnull=False)),
+                condition=~(
+                    models.Q(conversation__isnull=False)
+                    & models.Q(promotion_campaign__isnull=False)
+                ),
                 name="support_case_conversation_not_promotion",
             ),
         ]
 
     def save(self, *args, **kwargs):
-        if self._state.adding and self.case_type == self.CaseType.DISPUTE and self.booking_id is None:
-            raise DjangoValidationError({"booking": "A dispute case must reference a booking."})
+        from django.db import transaction
+        from services.models import ServiceRequest
+
+        request_id = (
+            self.booking.request_id
+            if self.booking_id
+            else (
+                self.conversation.service_request_id if self.conversation_id else None
+            )
+        )
+        with transaction.atomic():
+            if request_id:
+                ServiceRequest.objects.select_for_update().get(pk=request_id)
+            return self._save_validated(*args, **kwargs)
+
+    def _save_validated(self, *args, **kwargs):
+        if (
+            self._state.adding
+            and self.case_type == self.CaseType.DISPUTE
+            and self.booking_id is None
+        ):
+            raise DjangoValidationError(
+                {"booking": "A dispute case must reference a booking."}
+            )
         if self.conversation_id:
             if self.promotion_campaign_id:
-                raise DjangoValidationError({"conversation": "A support case can reference a conversation or a promotion campaign, not both."})
+                raise DjangoValidationError(
+                    {
+                        "conversation": "A support case can reference a conversation or a promotion campaign, not both."
+                    }
+                )
             conversation = self.conversation
             is_customer = conversation.customer_id == self.opened_by_id
-            is_artisan = bool(conversation.artisan_id and conversation.artisan.user_id == self.opened_by_id)
-            is_generic_participant = conversation.participants.filter(pk=self.opened_by_id).exists()
+            is_artisan = bool(
+                conversation.artisan_id
+                and conversation.artisan.user_id == self.opened_by_id
+            )
+            is_generic_participant = conversation.participants.filter(
+                pk=self.opened_by_id
+            ).exists()
             if not (is_customer or is_artisan or is_generic_participant):
-                raise DjangoValidationError({"conversation": "The case opener must participate in the linked conversation."})
+                raise DjangoValidationError(
+                    {
+                        "conversation": "The case opener must participate in the linked conversation."
+                    }
+                )
             if self.booking_id:
                 booking = self.booking
                 matches_booking = (
@@ -159,7 +207,11 @@ class SupportCase(models.Model):
                     and booking.request.requester_id == booking.customer.user_id
                 )
                 if not matches_booking:
-                    raise DjangoValidationError({"conversation": "The conversation does not match the linked booking's customer, artisan, and service request."})
+                    raise DjangoValidationError(
+                        {
+                            "conversation": "The conversation does not match the linked booking's customer, artisan, and service request."
+                        }
+                    )
         if not self.reference:
             self.reference = f"CASE-{uuid.uuid4().hex[:12].upper()}"
         super().save(*args, **kwargs)
@@ -288,7 +340,10 @@ class SupportFinancialAction(models.Model):
                 name="support_financial_action_positive_amount",
             ),
             models.CheckConstraint(
-                condition=(models.Q(payment__isnull=False, promotion_payment__isnull=True) | models.Q(payment__isnull=True, promotion_payment__isnull=False)),
+                condition=(
+                    models.Q(payment__isnull=False, promotion_payment__isnull=True)
+                    | models.Q(payment__isnull=True, promotion_payment__isnull=False)
+                ),
                 name="support_financial_action_one_payment",
             ),
         ]
@@ -349,10 +404,16 @@ class SupportCaseEvent(models.Model):
 
     class Meta:
         ordering = ["created_at"]
-        indexes = [models.Index(fields=["case", "created_at"], name="support_event_case_created_idx")]
+        indexes = [
+            models.Index(
+                fields=["case", "created_at"], name="support_event_case_created_idx"
+            )
+        ]
 
     def __str__(self):
         return f"{self.case.reference} • {self.action}"
+
+
 # Stable module-level reference for deterministic OpenAPI enum naming.
 SUPPORT_FINANCIAL_ACTION_STATUS_CHOICES = SupportFinancialAction.Status.choices
 SUPPORT_CASE_STATUS_CHOICES = SupportCase.Status.choices

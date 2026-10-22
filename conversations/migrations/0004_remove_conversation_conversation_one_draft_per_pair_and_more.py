@@ -7,29 +7,33 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('conversations', '0003_conversationattachment_scan_status'),
-        ('home', '0007_service_browse_index'),
-        ('services', '0001_initial'),
+        ("conversations", "0003_conversationattachment_scan_status"),
+        ("home", "0007_service_browse_index"),
+        ("services", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.RemoveConstraint(
-            model_name='conversation',
-            name='conversation_one_draft_per_pair',
+            model_name="conversation",
+            name="conversation_one_draft_per_pair",
         ),
         migrations.RenameIndex(
-            model_name='conversation',
-            new_name='conv_customer_upd_idx',
-            old_name='conversation_customer_updated_idx',
+            model_name="conversation",
+            new_name="conv_customer_upd_idx",
+            old_name="conversation_customer_updated_idx",
         ),
         migrations.RenameIndex(
-            model_name='conversation',
-            new_name='conv_artisan_upd_idx',
-            old_name='conversation_artisan_updated_idx',
+            model_name="conversation",
+            new_name="conv_artisan_upd_idx",
+            old_name="conversation_artisan_updated_idx",
         ),
         migrations.AddConstraint(
-            model_name='conversation',
-            constraint=models.UniqueConstraint(condition=models.Q(('service_request__isnull', True)), fields=('customer', 'artisan'), name='conv_one_draft_per_pair'),
+            model_name="conversation",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(("service_request__isnull", True)),
+                fields=("customer", "artisan"),
+                name="conv_one_draft_per_pair",
+            ),
         ),
     ]

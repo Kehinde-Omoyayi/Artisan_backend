@@ -47,33 +47,62 @@ _EVENT_TEXT = {
 }
 
 
-def record_conversation_event(*, conversation, event_code, event_key, metadata=None, body=None):
+def record_conversation_event(
+    *, conversation, event_code, event_key, metadata=None, body=None
+):
     metadata = metadata or {}
+    from .guidance import transition_instructions
+    instructions = transition_instructions(event_code) if conversation.conversation_type == "SERVICE" else None
+    event_body = body or _EVENT_TEXT.get(event_code, "Marketplace event recorded.")
+    if instructions:
+        event_body += "\n\nNext steps: " + instructions
     try:
         with transaction.atomic():
-            message, _ = Message.objects.get_or_create(
+            message, created = Message.objects.get_or_create(
                 event_key=event_key,
                 defaults={
                     "conversation": conversation,
                     "sender": None,
                     "message_type": Message.MessageType.SYSTEM,
                     "event_code": event_code,
-                    "body": body or _EVENT_TEXT.get(event_code, "Marketplace event recorded."),
+                    "body": event_body,
                     "metadata": metadata,
                 },
             )
     except IntegrityError:
-        return Message.objects.filter(event_key=event_key, conversation=conversation).first()
+        return Message.objects.filter(
+            event_key=event_key, conversation=conversation
+        ).first()
     if message.conversation_id != conversation.id:
-        logger.error("Conversation event collision: event_key=%s", event_key); return None
+        logger.error("Conversation event collision: event_key=%s", event_key)
+        return None
+    if created:
+        from .notifications import notify_room_event
+
+        notify_room_event(message)
     try:
-        transaction.on_commit(lambda message=message: __import__("conversations.realtime", fromlist=["publish_event"]).publish_event(conversation_id=conversation.id, payload={"event":"conversation.updated","message_id":str(message.id),"event_code":message.event_code}))
+        transaction.on_commit(
+            lambda message=message: __import__(
+                "conversations.realtime", fromlist=["publish_event"]
+            ).publish_event(
+                conversation_id=conversation.id,
+                payload={
+                    "event": "conversation.updated",
+                    "message_id": str(message.id),
+                    "event_code": message.event_code,
+                },
+            )
+        )
     except Exception:
-        logger.exception("conversation_realtime_schedule_failed conversation=%s", conversation.id)
+        logger.exception(
+            "conversation_realtime_schedule_failed conversation=%s", conversation.id
+        )
     return message
 
 
-def record_booking_event(*, booking, event_code, event_key=None, metadata=None, body=None):
+def record_booking_event(
+    *, booking, event_code, event_key=None, metadata=None, body=None
+):
     conversation = Conversation.objects.filter(
         service_request_id=booking.request_id,
         conversation_type=Conversation.ConversationType.SERVICE,

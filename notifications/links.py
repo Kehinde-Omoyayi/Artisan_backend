@@ -3,6 +3,7 @@
 Every link is derived from a named frontend route, never from user input, so an in-app notification or an
 email can only point at pages that exist. ``SITE_URL`` (public https origin) makes links absolute for email.
 """
+
 import logging
 
 from django.conf import settings
@@ -15,8 +16,26 @@ def _path(name, *args):
     try:
         return reverse(name, args=args)
     except NoReverseMatch:
-        logger.warning("notification_link_unresolvable route=%s", name)
-        return None
+        # API and browser UI are separate projects; these are the frontend's
+        # existing route contracts, not invented backend views.
+        routes = {
+            "booking-detail": "/bookings/{}/",
+            "payment-detail": "/payments/{}/",
+            "conversation-detail": "/discover/conversations/{}/",
+            "support-case-detail": "/support/cases/{}/",
+            "service-request-detail": "/requests/{}/",
+            "verification": "/account/artisan/verification/",
+            "cancellation-risk": "/account/risk/cancellation/",
+            "promotion-applications": "/account/artisan/promotions/",
+            "my-promotions": "/account/artisan/promotions/me/",
+            "home": "/",
+        }
+        route = routes.get(name)
+        if route is None:
+            return None
+        from urllib.parse import quote
+
+        return route.format(*(quote(str(x), safe="") for x in args))
 
 
 def absolute_url(path):

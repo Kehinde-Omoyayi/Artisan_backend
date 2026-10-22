@@ -5,7 +5,14 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from conversations.models import Conversation
-from home.models import ArtisanProfile, CustomUser, Locations, Service, ServiceCategory, CustomerProfile
+from home.models import (
+    ArtisanProfile,
+    CustomUser,
+    Locations,
+    Service,
+    ServiceCategory,
+    CustomerProfile,
+)
 from payments.models import EscrowPayment
 from services.models import ServiceRequest
 from .models import Booking
@@ -29,10 +36,14 @@ class BookingPaymentGuardTests(TestCase):
             is_active=True,
         )
         self.customer = CustomerProfile.objects.create(user=self.customer_user)
-        self.artisan = ArtisanProfile.objects.create(user=artisan_user, profile_status="ACTIVE")
+        self.artisan = ArtisanProfile.objects.create(
+            user=artisan_user, profile_status="ACTIVE"
+        )
         category = ServiceCategory.objects.create(name="Painting")
         Service.objects.create(category=category, name="Wall Painting")
-        location = Locations.objects.create(country="Nigeria", state="Ogun", area="Alabata")
+        location = Locations.objects.create(
+            country="Nigeria", state="Ogun", area="Alabata"
+        )
         request = ServiceRequest.objects.create(
             requester=self.customer_user,
             category=category,
@@ -60,8 +71,9 @@ class BookingPaymentGuardTests(TestCase):
             artisan_payout_kobo=1800000,
         )
 
-
-    def test_legacy_customer_booking_link_only_exposes_its_exact_service_conversation(self):
+    def test_legacy_customer_booking_link_only_exposes_its_exact_service_conversation(
+        self,
+    ):
         unrelated_user = CustomUser.objects.create_user(
             email="unrelated-conversation-customer@example.com",
             first_name="Other",
@@ -69,12 +81,14 @@ class BookingPaymentGuardTests(TestCase):
             password="StrongPassword123!",
             is_active=True,
         )
-        unrelated = Conversation.objects.create(
+        unrelated = Conversation(
             conversation_type=Conversation.ConversationType.SERVICE,
             customer=unrelated_user,
             artisan=self.artisan,
             service_request=self.booking.request,
         )
+        # Deliberately inject a corrupt legacy row without invoking the new owner guard.
+        Conversation.objects.bulk_create([unrelated])
         self.client.force_authenticate(self.customer_user)
 
         response = self.client.get(f"/api/v1/booking/{self.booking.id}/")
@@ -143,7 +157,11 @@ class BookingPaymentGuardTests(TestCase):
         self.client.force_authenticate(self.customer_user)
         response = self.client.post(
             "/api/v1/booking/",
-            {"request": self.booking.request_id, "artisan": self.artisan.id, "price_agreed": "20000.00"},
+            {
+                "request": self.booking.request_id,
+                "artisan": self.artisan.id,
+                "price_agreed": "20000.00",
+            },
             format="json",
         )
         self.assertEqual(response.status_code, 410)
@@ -157,9 +175,23 @@ class BookingPaymentGuardTests(TestCase):
         payment.status = EscrowPayment.Status.FAILED
         payment.save(update_fields=["status", "updated_at"])
         self.client.force_authenticate(self.customer_user)
-        response = self.client.post(f"/api/v1/booking/{self.booking.id}/cancel/", {"reason": "Plans changed and the work is no longer needed."}, format="json", HTTP_IDEMPOTENCY_KEY="cancel-notify-1")
+        response = self.client.post(
+            f"/api/v1/booking/{self.booking.id}/cancel/",
+            {"reason": "Plans changed and the work is no longer needed."},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="cancel-notify-1",
+        )
         self.assertEqual(response.status_code, 200, response.data)
-        notification = InAppNotification.objects.get(recipient=self.artisan.user, event_key__startswith="booking_cancelled")
-        self.assertEqual(notification.data["action_url"], reverse("booking-detail", args=[self.booking.pk]))
+        notification = InAppNotification.objects.get(
+            recipient=self.artisan.user, event_key__startswith="booking_cancelled"
+        )
+        self.assertEqual(
+            notification.data["action_url"],
+            reverse("booking-detail", args=[self.booking.pk]),
+        )
         # The customer who cancelled is not notified about their own action.
-        self.assertFalse(InAppNotification.objects.filter(recipient=self.customer_user, event_key__startswith="booking_cancelled").exists())
+        self.assertFalse(
+            InAppNotification.objects.filter(
+                recipient=self.customer_user, event_key__startswith="booking_cancelled"
+            ).exists()
+        )

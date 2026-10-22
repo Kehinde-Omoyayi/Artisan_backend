@@ -3,6 +3,7 @@ import uuid
 from django.db import models
 from django.conf import settings
 
+
 class ArtisanVerification(models.Model):
     VERIFICATION_STATUS = [
         ("UNVERIFIED", "Unverified"),
@@ -18,9 +19,15 @@ class ArtisanVerification(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    artisan = models.OneToOneField("home.ArtisanProfile", on_delete=models.CASCADE, related_name="verification")
-    verification_status = models.CharField(max_length=20, choices=VERIFICATION_STATUS, default="UNVERIFIED")
-    verification_method = models.CharField(max_length=10, choices=VERIFICATION_METHOD, blank=True)
+    artisan = models.OneToOneField(
+        "home.ArtisanProfile", on_delete=models.CASCADE, related_name="verification"
+    )
+    verification_status = models.CharField(
+        max_length=20, choices=VERIFICATION_STATUS, default="UNVERIFIED"
+    )
+    verification_method = models.CharField(
+        max_length=10, choices=VERIFICATION_METHOD, blank=True
+    )
     verification_tier = models.PositiveSmallIntegerField(default=1)
     # Provider-confirmed legal name encrypted with the existing KYC Fernet key.
     # The plaintext identity is never returned by the API or written to logs.
@@ -34,7 +41,9 @@ class ArtisanVerification(models.Model):
     def __str__(self):
         return f"{self.artisan.user.email} - {self.verification_status} - Tier {self.verification_tier}"
 
+
 class ServiceRequest(models.Model):
+    media_policy_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     URGENCY_CHOICES = [
         ("LOW", "Low"),
         ("NORMAL", "Normal"),
@@ -51,24 +60,59 @@ class ServiceRequest(models.Model):
         analysis, but it leaves every customer-facing list.
         """
 
+        DRAFT = "DRAFT", "Draft"
+        CLOSED = "CLOSED", "Closed without booking"
+        COMPLETED = "COMPLETED", "Completed"
         OPEN = "OPEN", "Open"
         ATTENDED = "ATTENDED", "Attended"
         ARCHIVED = "ARCHIVED", "Archived"
 
     # Statuses that are kept in the database but never shown in the frontend.
-    HIDDEN_STATUSES = (Status.ATTENDED, Status.ARCHIVED)
+    HIDDEN_STATUSES = (
+        Status.ATTENDED,
+        Status.ARCHIVED,
+        Status.COMPLETED,
+        Status.DRAFT,
+        Status.CLOSED,
+    )
 
     id = models.BigAutoField(primary_key=True)
-    requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="service_requests")
-    service = models.ForeignKey("home.Service", on_delete=models.PROTECT,related_name="service_requests",null=True, blank=True)
-    category = models.ForeignKey("home.ServiceCategory", on_delete=models.PROTECT, related_name="service_requests")
-    location = models.ForeignKey("home.Locations", on_delete=models.PROTECT, related_name="service_requests")
-    preferred_date = models.DateField()
+    requester = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="service_requests",
+    )
+    service = models.ForeignKey(
+        "home.Service",
+        on_delete=models.PROTECT,
+        related_name="service_requests",
+        null=True,
+        blank=True,
+    )
+    category = models.ForeignKey(
+        "home.ServiceCategory",
+        on_delete=models.PROTECT,
+        related_name="service_requests",
+        null=True,
+        blank=True,
+    )
+    location = models.ForeignKey(
+        "home.Locations",
+        on_delete=models.PROTECT,
+        related_name="service_requests",
+        null=True,
+        blank=True,
+    )
+    preferred_date = models.DateField(null=True, blank=True)
     preferred_time_start = models.TimeField(null=True, blank=True)
     preferred_time_end = models.TimeField(null=True, blank=True)
     preferred_time_note = models.CharField(max_length=100, blank=True, default="")
-    urgency = models.CharField(max_length=20, choices=URGENCY_CHOICES, default="NORMAL",)
-    budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True )
+    urgency = models.CharField(
+        max_length=20,
+        choices=URGENCY_CHOICES,
+        default="NORMAL",
+    )
+    budget = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     description = models.TextField()
     additional_details = models.TextField(blank=True, default="")
     status = models.CharField(
@@ -76,6 +120,7 @@ class ServiceRequest(models.Model):
         choices=Status.choices,
         default=Status.OPEN,
     )
+    closed_at = models.DateTimeField(null=True, blank=True, editable=False)
     attended_at = models.DateTimeField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -83,10 +128,19 @@ class ServiceRequest(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["requester", "-updated_at"], name="svc_req_requester_updated_idx"),
-            models.Index(fields=["category", "location"], name="svc_req_category_location_idx"),
-            models.Index(fields=["preferred_date", "urgency"], name="svc_req_date_urgency_idx"),
-            models.Index(fields=["requester", "status"], name="svc_req_requester_status_idx"),
+            models.Index(
+                fields=["requester", "-updated_at"],
+                name="svc_req_requester_updated_idx",
+            ),
+            models.Index(
+                fields=["category", "location"], name="svc_req_category_location_idx"
+            ),
+            models.Index(
+                fields=["preferred_date", "urgency"], name="svc_req_date_urgency_idx"
+            ),
+            models.Index(
+                fields=["requester", "status"], name="svc_req_requester_status_idx"
+            ),
         ]
 
     def __str__(self):
@@ -111,6 +165,7 @@ class ServiceRequest(models.Model):
         self.attended_at = when or timezone.now()
         self.save(update_fields=["status", "attended_at", "updated_at"])
         from notifications.events import notify_service_request_attended
+
         notify_service_request_attended(self)
         return True
 
@@ -125,19 +180,31 @@ class ServiceRequest(models.Model):
         self.save(update_fields=["status", "archived_at", "updated_at"])
         return True
 
+
 # Stable module-level reference for deterministic OpenAPI enum naming.
 SERVICE_REQUEST_URGENCY_CHOICES = ServiceRequest.URGENCY_CHOICES
 
 
 class ArtisanRequestDismissal(models.Model):
     """A personal 'not interested' choice. Never closes the customer's request."""
-    request = models.ForeignKey(ServiceRequest, on_delete=models.PROTECT, related_name='artisan_dismissals')
-    artisan = models.ForeignKey('home.ArtisanProfile', on_delete=models.CASCADE, related_name='request_dismissals')
+
+    request = models.ForeignKey(
+        ServiceRequest, on_delete=models.PROTECT, related_name="artisan_dismissals"
+    )
+    artisan = models.ForeignKey(
+        "home.ArtisanProfile",
+        on_delete=models.CASCADE,
+        related_name="request_dismissals",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=['request', 'artisan'], name='unique_artisan_request_dismissal')]
-        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=["request", "artisan"], name="unique_artisan_request_dismissal"
+            )
+        ]
+        ordering = ["-created_at"]
 
     def __str__(self):
-        return f'Request #{self.request_id} hidden by artisan {self.artisan_id}'
+        return f"Request #{self.request_id} hidden by artisan {self.artisan_id}"

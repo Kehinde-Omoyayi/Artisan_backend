@@ -8,7 +8,13 @@ MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 MAX_ATTACHMENTS_PER_MESSAGE = 5
 MAX_IMAGE_PIXELS = 20_000_000
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"}
-IMAGE_MIME_BY_EXT = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif"}
+IMAGE_MIME_BY_EXT = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+    ".gif": "image/gif",
+}
 
 
 def validate_attachment(upload):
@@ -21,6 +27,10 @@ def validate_attachment(upload):
     if base != name or "\x00" in name or base in {".", ".."} or "/" in name:
         raise ValidationError("Invalid attachment filename.")
     suffix = Path(base).suffix.lower()
+    from .recording_validation import EXTENSIONS, validate_recording
+
+    if suffix in EXTENSIONS:
+        return validate_recording(upload, suffix)
     if suffix not in ALLOWED_EXTENSIONS or base.count(".") != 1:
         raise ValidationError("Unsupported attachment filename or extension.")
 
@@ -43,7 +53,12 @@ def validate_attachment(upload):
         upload.seek(0)
         raise ValidationError("The uploaded image is invalid.") from exc
 
-    mime = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp", "GIF": "image/gif"}.get(detected)
+    mime = {
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "WEBP": "image/webp",
+        "GIF": "image/gif",
+    }.get(detected)
     if mime is None or mime != IMAGE_MIME_BY_EXT[suffix]:
         raise ValidationError("The attachment content does not match its extension.")
     return mime

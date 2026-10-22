@@ -14,7 +14,9 @@ from .models import Conversation, ConversationAttachment, Message, Offer
 
 
 class ConversationStartSerializer(serializers.Serializer):
-    artisan_id = serializers.UUIDField()
+    artisan_id = serializers.UUIDField(required=False)
+    category_id = serializers.CharField(required=False)
+    request_id = serializers.IntegerField(required=False, min_value=1)
     service_id = serializers.IntegerField(required=False, allow_null=True)
 
 
@@ -27,7 +29,9 @@ class ConversationCreateSerializer(serializers.Serializer):
         max_length=2,
         help_text="One target user ID, or both participant user IDs. The authenticated user is always a participant.",
     )
-    initial_message = serializers.CharField(required=False, allow_blank=True, max_length=5000)
+    initial_message = serializers.CharField(
+        required=False, allow_blank=True, max_length=5000
+    )
     conversation_type = serializers.ChoiceField(
         choices=Conversation.ConversationType.choices,
         required=False,
@@ -40,19 +44,35 @@ class ConversationCreateSerializer(serializers.Serializer):
         kind = attrs.get("conversation_type", Conversation.ConversationType.DIRECT)
         participants = attrs.get("participants") or []
         artisan_id = attrs.get("artisan_id")
-        if kind == Conversation.ConversationType.DIRECT and not participants and not artisan_id:
-            raise serializers.ValidationError({"participants": "Provide the target participant(s)."})
+        if (
+            kind == Conversation.ConversationType.DIRECT
+            and not participants
+            and not artisan_id
+        ):
+            raise serializers.ValidationError(
+                {"participants": "Provide the target participant(s)."}
+            )
         if kind == Conversation.ConversationType.SERVICE and not artisan_id:
-            raise serializers.ValidationError({"artisan_id": "artisan_id is required for a service conversation."})
+            raise serializers.ValidationError(
+                {"artisan_id": "artisan_id is required for a service conversation."}
+            )
         if kind == Conversation.ConversationType.SERVICE and participants:
-            raise serializers.ValidationError({"participants": "Do not provide participants for a service conversation."})
+            raise serializers.ValidationError(
+                {
+                    "participants": "Do not provide participants for a service conversation."
+                }
+            )
         return attrs
 
 
 class ConversationRequestPatchSerializer(serializers.Serializer):
     service_id = serializers.IntegerField(required=False, allow_null=True)
-    category_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-    description = serializers.CharField(required=False, allow_blank=True, max_length=10000)
+    category_id = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True
+    )
+    description = serializers.CharField(
+        required=False, allow_blank=True, max_length=10000
+    )
     location_id = serializers.UUIDField(required=False, allow_null=True)
     country = serializers.CharField(required=False, allow_blank=True, max_length=100)
     state = serializers.CharField(required=False, allow_blank=True, max_length=100)
@@ -60,17 +80,32 @@ class ConversationRequestPatchSerializer(serializers.Serializer):
     preferred_date = serializers.DateField(required=False, allow_null=True)
     preferred_time_start = serializers.TimeField(required=False, allow_null=True)
     preferred_time_end = serializers.TimeField(required=False, allow_null=True)
-    preferred_time_note = serializers.CharField(required=False, allow_blank=True, max_length=100)
-    urgency = serializers.ChoiceField(choices=["LOW", "NORMAL", "HIGH", "EMERGENCY"], required=False)
-    budget = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True, min_value=Decimal("0"))
+    preferred_time_note = serializers.CharField(
+        required=False, allow_blank=True, max_length=100
+    )
+    urgency = serializers.ChoiceField(
+        choices=["LOW", "NORMAL", "HIGH", "EMERGENCY"], required=False
+    )
+    budget = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=Decimal("0"),
+    )
     budget_unknown = serializers.BooleanField(required=False)
-    additional_details = serializers.CharField(required=False, allow_blank=True, max_length=5000)
-    submit_request = serializers.BooleanField(required=False)
+    additional_details = serializers.CharField(
+        required=False, allow_blank=True, max_length=5000
+    )
+    submit_request = serializers.BooleanField(required=False, default=False)
+    close_request = serializers.BooleanField(required=False, default=False)
 
 
 class MessageCreateSerializer(serializers.Serializer):
     body = serializers.CharField(required=False, allow_blank=True, max_length=5000)
-    attachments = serializers.ListField(child=serializers.FileField(), required=False, write_only=True)
+    attachments = serializers.ListField(
+        child=serializers.FileField(), required=False, write_only=True
+    )
 
 
 class ConversationDisputeSerializer(serializers.Serializer):
@@ -183,20 +218,79 @@ class ConversationPaymentSummarySerializer(serializers.Serializer):
 
 
 class OfferSerializer(serializers.ModelSerializer):
+    duration_minutes = serializers.SerializerMethodField()
+
+    def get_duration_minutes(self, obj):
+        return round((obj.scheduled_end - obj.scheduled_start).total_seconds() / 60, 2)
+
     creator_id = serializers.IntegerField(source="created_by_id", read_only=True)
     parent_offer_id = serializers.UUIDField(read_only=True, allow_null=True)
     currency = serializers.CharField(default="NGN", read_only=True)
 
     class Meta:
         model = Offer
-        fields = ["id", "conversation", "creator_id", "parent_offer_id", "labour_amount", "materials_amount", "total_amount", "materials_included", "scope", "notes", "scheduled_start", "scheduled_end", "expires_at", "status", "currency", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "conversation",
+            "creator_id",
+            "parent_offer_id",
+            "version",
+            "materials_details",
+            "duration_minutes",
+            "labour_amount",
+            "materials_amount",
+            "transport_amount",
+            "additional_amount",
+            "additional_charge_details",
+            "payment_terms",
+            "exclusions",
+            "workmanship_terms",
+            "total_amount",
+            "materials_included",
+            "scope",
+            "notes",
+            "scheduled_start",
+            "scheduled_end",
+            "expires_at",
+            "status",
+            "currency",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = ["id", "conversation", "status", "created_at", "updated_at"]
 
 
 class OfferCreateSerializer(serializers.Serializer):
-    labour_amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0"))
-    materials_amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0"))
-    total_amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+    materials_details = serializers.CharField(
+        max_length=1500, allow_blank=True, default=""
+    )
+    transport_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0"), default=Decimal("0")
+    )
+    additional_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0"), default=Decimal("0")
+    )
+    additional_charge_details = serializers.CharField(
+        max_length=1500, required=False, allow_blank=True, default=""
+    )
+    payment_terms = serializers.CharField(
+        max_length=1500, required=False, allow_blank=True, default=""
+    )
+    exclusions = serializers.CharField(
+        max_length=1500, required=False, allow_blank=True, default=""
+    )
+    workmanship_terms = serializers.CharField(
+        max_length=1500, required=False, allow_blank=True, default=""
+    )
+    labour_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0")
+    )
+    materials_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0")
+    )
+    total_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0.01")
+    )
     materials_included = serializers.BooleanField(required=False, default=False)
     scope = serializers.CharField(max_length=5000)
     notes = serializers.CharField(max_length=3000, required=False, allow_blank=True)
@@ -214,15 +308,32 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ConversationAttachment
-        fields = ["id", "content_type", "size", "scan_status", "scan_reason", "url", "uploaded_at"]
+        fields = [
+            "id",
+            "content_type",
+            "size",
+            "scan_status",
+            "scan_reason",
+            "url",
+            "uploaded_at",
+        ]
         read_only_fields = fields
 
     def get_url(self, obj) -> str | None:
-        if getattr(obj, "scan_status", "PENDING") != "CLEAN":
+        from django.urls import reverse
+        from .retention import access_blocked
+
+        if obj.scan_status != "CLEAN" or access_blocked(obj):
             return None
+        path = reverse(
+            "conversation-media",
+            kwargs={
+                "conversation_id": obj.message.conversation_id,
+                "attachment_id": obj.pk,
+            },
+        )
         request = self.context.get("request")
-        url = obj.file.url
-        return request.build_absolute_uri(url) if request else url
+        return request.build_absolute_uri(path) if request else path
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -233,7 +344,19 @@ class MessageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Message
-        fields = ["id", "conversation", "sender_id", "sender_name", "sender_role", "message_type", "body", "event_code", "metadata", "attachments", "created_at"]
+        fields = [
+            "id",
+            "conversation",
+            "sender_id",
+            "sender_name",
+            "sender_role",
+            "message_type",
+            "body",
+            "event_code",
+            "metadata",
+            "attachments",
+            "created_at",
+        ]
         read_only_fields = fields
 
     def get_sender_name(self, obj) -> str | None:
@@ -248,16 +371,20 @@ class MessageSerializer(serializers.ModelSerializer):
         if conversation.conversation_type == Conversation.ConversationType.SERVICE:
             if conversation.customer_id == obj.sender_id:
                 return "customer"
-            if conversation.artisan_id and conversation.artisan.user_id == obj.sender_id:
+            if (
+                conversation.artisan_id
+                and conversation.artisan.user_id == obj.sender_id
+            ):
                 return "artisan"
         return "artisan" if hasattr(obj.sender, "artisan_profile") else "customer"
 
 
 class ConversationMessageCreateResponseSerializer(MessageSerializer):
     assistant = serializers.JSONField(read_only=True)
+    guidance = serializers.JSONField(read_only=True)
 
     class Meta(MessageSerializer.Meta):
-        fields = MessageSerializer.Meta.fields + ["assistant"]
+        fields = MessageSerializer.Meta.fields + ["assistant", "guidance"]
         read_only_fields = fields
 
 
@@ -278,7 +405,24 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Conversation
-        fields = ["id", "conversation_type", "viewer_role", "title", "counterparty", "participants", "artisan_name", "artisan_business_name", "state", "unread", "unread_count", "last_message_at", "last_message_preview", "last_message_text", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "conversation_type",
+            "viewer_role",
+            "title",
+            "counterparty",
+            "participants",
+            "artisan_name",
+            "artisan_business_name",
+            "state",
+            "unread",
+            "unread_count",
+            "last_message_at",
+            "last_message_preview",
+            "last_message_text",
+            "created_at",
+            "updated_at",
+        ]
         read_only_fields = fields
 
     def _viewer(self):
@@ -321,9 +465,15 @@ class ConversationListSerializer(serializers.ModelSerializer):
     def _person_payload(self, user, obj=None):
         if user is None:
             return None
-        role = self._role_for_user(obj, user) if obj is not None else ("artisan" if hasattr(user, "artisan_profile") else "customer")
+        role = (
+            self._role_for_user(obj, user)
+            if obj is not None
+            else ("artisan" if hasattr(user, "artisan_profile") else "customer")
+        )
         artisan = getattr(user, "artisan_profile", None) if role == "artisan" else None
-        customer = getattr(user, "customer_profile", None) if role == "customer" else None
+        customer = (
+            getattr(user, "customer_profile", None) if role == "customer" else None
+        )
         profile = artisan or customer
         profile_photo = None
         if profile and profile.profile_photo:
@@ -339,7 +489,9 @@ class ConversationListSerializer(serializers.ModelSerializer):
             "first_name": user.first_name,
             "last_name": user.last_name,
             "business_name": getattr(artisan, "business_name", "") if artisan else "",
-            "service_label": self._service_label(user, obj) if role == "artisan" else "",
+            "service_label": (
+                self._service_label(user, obj) if role == "artisan" else ""
+            ),
             "profile_photo": profile_photo,
             "role": role,
         }
@@ -361,13 +513,27 @@ class ConversationListSerializer(serializers.ModelSerializer):
         if not request:
             return None
         if obj.conversation_type == Conversation.ConversationType.DIRECT:
-            return "direct" if any(person.id == request.user.id for person in self._participant_objects(obj)) else None
+            return (
+                "direct"
+                if any(
+                    person.id == request.user.id
+                    for person in self._participant_objects(obj)
+                )
+                else None
+            )
         return self._role_for_user(obj, request.user)
 
-    def get_state(self, obj) -> str: return getattr(obj, "_conversation_state", "OPEN")
-    def get_unread(self, obj) -> bool: return bool(getattr(obj, "_unread", False))
-    def get_unread_count(self, obj) -> int: return int(getattr(obj, "_unread_count", 0))
-    def get_last_message_at(self, obj) -> datetime | None: return getattr(obj, "_last_message_at", None)
+    def get_state(self, obj) -> str:
+        return getattr(obj, "_conversation_state", "OPEN")
+
+    def get_unread(self, obj) -> bool:
+        return bool(getattr(obj, "_unread", False))
+
+    def get_unread_count(self, obj) -> int:
+        return int(getattr(obj, "_unread_count", 0))
+
+    def get_last_message_at(self, obj) -> datetime | None:
+        return getattr(obj, "_last_message_at", None)
 
     def get_last_message_text(self, obj) -> str:
         """Raw latest message body, without the sender prefix used by last_message_preview."""
@@ -376,7 +542,11 @@ class ConversationListSerializer(serializers.ModelSerializer):
     def get_last_message_preview(self, obj) -> str:
         body = " ".join(str(getattr(obj, "last_message_body", "") or "").split())
         if not body:
-            return "Start the service request" if obj.conversation_type == Conversation.ConversationType.SERVICE else "Start a private conversation"
+            return (
+                "Start the service request"
+                if obj.conversation_type == Conversation.ConversationType.SERVICE
+                else "Start a private conversation"
+            )
         if len(body) > 100:
             body = f"{body[:97].rstrip()}…"
         message_type = getattr(obj, "last_message_type", None)
@@ -388,8 +558,16 @@ class ConversationListSerializer(serializers.ModelSerializer):
         else:
             counterparty = self._counterparty(obj)
             role = self._role_for_user(obj, counterparty) if counterparty else None
-            artisan = getattr(counterparty, "artisan_profile", None) if counterparty and role == "artisan" else None
-            sender = getattr(artisan, "business_name", "") or (f"{counterparty.first_name} {counterparty.last_name}".strip() if counterparty else "Participant")
+            artisan = (
+                getattr(counterparty, "artisan_profile", None)
+                if counterparty and role == "artisan"
+                else None
+            )
+            sender = getattr(artisan, "business_name", "") or (
+                f"{counterparty.first_name} {counterparty.last_name}".strip()
+                if counterparty
+                else "Participant"
+            )
         return f"{sender}: {body}"
 
     def get_title(self, obj) -> str:
@@ -397,8 +575,16 @@ class ConversationListSerializer(serializers.ModelSerializer):
         if counterparty is None:
             return "Conversation"
         role = self._role_for_user(obj, counterparty)
-        artisan = getattr(counterparty, "artisan_profile", None) if role == "artisan" else None
-        return getattr(artisan, "business_name", "") or f"{counterparty.first_name} {counterparty.last_name}".strip() or "Conversation"
+        artisan = (
+            getattr(counterparty, "artisan_profile", None)
+            if role == "artisan"
+            else None
+        )
+        return (
+            getattr(artisan, "business_name", "")
+            or f"{counterparty.first_name} {counterparty.last_name}".strip()
+            or "Conversation"
+        )
 
     @extend_schema_field(ConversationParticipantSerializer(allow_null=True))
     def get_counterparty(self, obj):
@@ -406,7 +592,10 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(ConversationParticipantSerializer(many=True))
     def get_participants(self, obj):
-        return [self._person_payload(person, obj=obj) for person in self._participant_objects(obj)]
+        return [
+            self._person_payload(person, obj=obj)
+            for person in self._participant_objects(obj)
+        ]
 
     def get_artisan_name(self, obj) -> str:
         if obj.artisan_id and obj.artisan and obj.artisan.user:
@@ -418,12 +607,61 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
 
 class ConversationDetailSerializer(ConversationListSerializer):
+    recording_enabled = serializers.SerializerMethodField()
+    media_purge_status = serializers.SerializerMethodField()
+
+    def get_recording_enabled(self, obj) -> bool:
+        from django.conf import settings
+        from .retention import eligible
+        from .models import MediaPurge
+
+        return bool(
+            getattr(settings, "CONVERSATION_RECORDINGS_ENABLED", False)
+            and obj.service_request_id
+            and obj.service_request.status != "CLOSED"
+            and not eligible(obj.service_request)
+            and not MediaPurge.objects.filter(
+                service_request_id=obj.service_request_id, blocked_at__isnull=False
+            ).exists()
+        )
+
+    def get_media_purge_status(self, obj) -> str:
+        from .models import MediaPurge
+
+        return (
+            MediaPurge.objects.filter(service_request_id=obj.service_request_id)
+            .values_list("status", flat=True)
+            .first()
+            or "NOT_ELIGIBLE"
+        )
+
     viewer_role = serializers.SerializerMethodField()
     viewer_id = serializers.SerializerMethodField()
     assistant = serializers.SerializerMethodField()
+    guidance = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
     artisan = serializers.SerializerMethodField()
-    service_request = ConversationRequestSummarySerializer(read_only=True, allow_null=True)
+    service_request = serializers.SerializerMethodField()
+    request_reference = serializers.SerializerMethodField()
+
+    def get_service_request(self, obj):
+        return (
+            ConversationRequestSummarySerializer(obj.service_request).data
+            if obj.request_submitted
+            else None
+        )
+
+    def get_request_reference(self, obj):
+        return (
+            {
+                "id": obj.service_request_id,
+                "status": obj.service_request.status,
+                "closed_at": obj.service_request.closed_at,
+            }
+            if obj.service_request_id
+            else None
+        )
+
     request_draft = serializers.SerializerMethodField()
     booking = serializers.SerializerMethodField()
     payment = serializers.SerializerMethodField()
@@ -439,7 +677,11 @@ class ConversationDetailSerializer(ConversationListSerializer):
         if not request:
             return None
         if obj.conversation_type == Conversation.ConversationType.DIRECT:
-            return "direct" if obj.participants.filter(pk=request.user.id).exists() else None
+            return (
+                "direct"
+                if obj.participants.filter(pk=request.user.id).exists()
+                else None
+            )
         return self._role_for_user(obj, request.user)
 
     def get_viewer_id(self, obj) -> int | None:
@@ -447,18 +689,40 @@ class ConversationDetailSerializer(ConversationListSerializer):
         return request.user.id if request else None
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
-    def get_assistant(self, obj):
-        from .automation import assistant_context
+    def get_guidance(self, obj):
+        from .guidance import booking_guidance
         request = self.context.get("request")
         if not request:
             return None
-        return assistant_context(conversation=obj, user=request.user, booking=getattr(obj, "_booking", None), offer=getattr(obj, "_active_offer", None), payment=getattr(getattr(obj, "_booking", None), "escrow_payment", None))
+        booking = getattr(obj, "_booking", None)
+        return booking_guidance(conversation=obj, user=request.user, booking=booking,
+                                offer=getattr(obj, "_active_offer", None),
+                                payment=getattr(booking, "escrow_payment", None))
+
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_assistant(self, obj):
+        from .automation import assistant_context
+
+        request = self.context.get("request")
+        if not request:
+            return None
+        return assistant_context(
+            conversation=obj,
+            user=request.user,
+            booking=getattr(obj, "_booking", None),
+            offer=getattr(obj, "_active_offer", None),
+            payment=getattr(getattr(obj, "_booking", None), "escrow_payment", None),
+        )
 
     @extend_schema_field(ConversationCustomerSummarySerializer(allow_null=True))
     def get_customer(self, obj):
         if not obj.customer_id or not obj.customer:
             return None
-        return {"id": obj.customer_id, "first_name": obj.customer.first_name, "last_name": obj.customer.last_name}
+        return {
+            "id": obj.customer_id,
+            "first_name": obj.customer.first_name,
+            "last_name": obj.customer.last_name,
+        }
 
     @extend_schema_field(ConversationArtisanSummarySerializer(allow_null=True))
     def get_artisan(self, obj):
@@ -473,7 +737,13 @@ class ConversationDetailSerializer(ConversationListSerializer):
                     profile_photo = request.build_absolute_uri(profile_photo)
             except (ValueError, OSError, NotImplementedError):
                 profile_photo = None
-        return {"id": obj.artisan.user_id, "first_name": obj.artisan.user.first_name, "last_name": obj.artisan.user.last_name, "business_name": obj.artisan.business_name, "profile_photo": profile_photo}
+        return {
+            "id": obj.artisan.user_id,
+            "first_name": obj.artisan.user.first_name,
+            "last_name": obj.artisan.user.last_name,
+            "business_name": obj.artisan.business_name,
+            "profile_photo": profile_photo,
+        }
 
     @extend_schema_field(serializers.JSONField(allow_null=True))
     def get_request_draft(self, obj):
@@ -483,21 +753,39 @@ class ConversationDetailSerializer(ConversationListSerializer):
         summary = dict(draft)
         service_id = summary.get("service_id")
         if service_id and str(service_id).isdigit():
-            service = Service.objects.filter(pk=int(service_id)).select_related("category").first()
+            service = (
+                Service.objects.filter(pk=int(service_id))
+                .select_related("category")
+                .first()
+            )
             if service:
                 summary["service_name"] = service.name
                 summary["category_id"] = str(service.category_id)
                 summary["category_name"] = service.category.name
         category_id = summary.get("category_id")
         if category_id:
-            category_name = ServiceCategory.objects.filter(pk=category_id).values_list("name", flat=True).first()
+            category_name = (
+                ServiceCategory.objects.filter(pk=category_id)
+                .values_list("name", flat=True)
+                .first()
+            )
             if category_name:
                 summary["category_name"] = category_name
         location_id = summary.get("location_id")
         if location_id:
-            location = Locations.objects.filter(pk=location_id).values("country", "state", "area").first()
+            location = (
+                Locations.objects.filter(pk=location_id)
+                .values("country", "state", "area")
+                .first()
+            )
             if location:
-                summary.update({"country": location["country"], "state": location["state"], "area": location["area"]})
+                summary.update(
+                    {
+                        "country": location["country"],
+                        "state": location["state"],
+                        "area": location["area"],
+                    }
+                )
                 summary["location_label"] = f"{location['area']}, {location['state']}"
         return summary
 
@@ -510,14 +798,22 @@ class ConversationDetailSerializer(ConversationListSerializer):
     def get_payment(self, obj):
         booking = getattr(obj, "_booking", None)
         payment = getattr(booking, "escrow_payment", None) if booking else None
-        return ConversationPaymentSummarySerializer(payment, context=self.context).data if payment else None
+        return (
+            ConversationPaymentSummarySerializer(payment, context=self.context).data
+            if payment
+            else None
+        )
 
     @extend_schema_field(AdditionalOrderSerializer(many=True))
     def get_additional_orders(self, obj):
         booking = getattr(obj, "_booking", None)
         if not booking:
             return []
-        orders = booking.additional_orders.select_related("booking__customer__user").prefetch_related("offers", "payment").all()
+        orders = (
+            booking.additional_orders.select_related("booking__customer__user")
+            .prefetch_related("offers", "payment")
+            .all()
+        )
         return AdditionalOrderSerializer(orders, many=True, context=self.context).data
 
     @extend_schema_field(ConversationDisputeCaseSummarySerializer(allow_null=True))
@@ -525,10 +821,15 @@ class ConversationDetailSerializer(ConversationListSerializer):
         booking = getattr(obj, "_booking", None)
         if not booking:
             return None
-        case = SupportCase.objects.filter(
-            booking_id=booking.id,
-            case_type=SupportCase.CaseType.DISPUTE,
-        ).only("id", "reference", "status", "subject", "created_at").order_by("-created_at").first()
+        case = (
+            SupportCase.objects.filter(
+                booking_id=booking.id,
+                case_type=SupportCase.CaseType.DISPUTE,
+            )
+            .only("id", "reference", "status", "subject", "created_at")
+            .order_by("-created_at")
+            .first()
+        )
         return ConversationDisputeCaseSummarySerializer(case).data if case else None
 
     @extend_schema_field(OfferSerializer(allow_null=True))
@@ -536,14 +837,14 @@ class ConversationDetailSerializer(ConversationListSerializer):
         offer = getattr(obj, "_active_offer", None)
         return OfferSerializer(offer, context=self.context).data if offer else None
 
-    def get_available_actions(self, obj) -> list[str]: return getattr(obj, "_available_actions", [])
+    def get_available_actions(self, obj) -> list[str]:
+        return getattr(obj, "_available_actions", [])
 
     def get_next_question(self, obj) -> str | None:
         request = self.context.get("request")
         if request and obj.customer_id != request.user.id:
             return None
         return getattr(obj, "_next_question", None)
-
 
     @extend_schema_field(ConversationJourneyStepSerializer(many=True))
     def get_journey(self, obj):
@@ -555,10 +856,21 @@ class ConversationDetailSerializer(ConversationListSerializer):
         has_booking = booking is not None
         request_complete = bool(has_booking or offer)
         offer_complete = has_booking
-        payment_held = bool(payment and payment.status in {"HELD", "RELEASE_PENDING", "RELEASED", "DISPUTED"})
-        progress_complete = booking_status in {"COMPLETION_REQUESTED", "COMPLETED", "DISPUTED"}
+        payment_held = bool(
+            payment
+            and payment.status in {"HELD", "RELEASE_PENDING", "RELEASED", "DISPUTED"}
+        )
+        progress_complete = booking_status in {
+            "COMPLETION_REQUESTED",
+            "COMPLETED",
+            "DISPUTED",
+        }
 
-        addon_orders = list(booking.additional_orders.select_related("payment").all()) if booking else []
+        addon_orders = (
+            list(booking.additional_orders.select_related("payment").all())
+            if booking
+            else []
+        )
         open_addon_count = 0
         unpaid_approved_count = 0
         for order in addon_orders:
@@ -592,21 +904,94 @@ class ConversationDetailSerializer(ConversationListSerializer):
         else:
             request_current = False
             offer_current = False
-            payment_current = booking_status in {"REQUESTED", "ACCEPTED"} and not payment_held
+            payment_current = (
+                booking_status in {"REQUESTED", "ACCEPTED"} and not payment_held
+            )
             progress_current = booking_status == "IN_PROGRESS" and not addon_pending
             addon_current = booking_status == "IN_PROGRESS" and addon_pending
             completion_current = booking_status == "COMPLETION_REQUESTED"
             dispute_current = booking_status == "DISPUTED"
 
         return [
-            {"step": 1, "key": "REQUEST", "title": "Request & Chat", "description": "Describe the work and agree the request details.", "complete": request_complete, "current": request_current},
-            {"step": 2, "key": "OFFER", "title": "Offer & Negotiation", "description": "Review scope, price, and the agreed schedule.", "complete": offer_complete, "current": offer_current},
-            {"step": 3, "key": "PAY", "title": "Booking & Escrow", "description": "The original booking payment is provider-verified and held in escrow.", "complete": payment_held, "current": payment_current},
-            {"step": 4, "key": "PROGRESS", "title": "Service in Progress", "description": "Share updates and photos in this conversation.", "complete": progress_complete, "current": progress_current},
-            {"step": 5, "key": "ADD_ONS", "title": "Separate add-on orders", "description": addon_description, "complete": addon_complete, "current": addon_current, "optional": True},
-            {"step": 6, "key": "COMPLETE", "title": "Completion & Review", "description": "The customer confirms completion after approved add-ons are funded.", "complete": booking_status == "COMPLETED", "current": completion_current},
-            {"step": 7, "key": "DISPUTE", "title": "Support (if needed)", "description": "Dispute handling keeps relevant escrow funds frozen.", "complete": state == "DISPUTED", "current": dispute_current, "optional": True},
+            {
+                "step": 1,
+                "key": "REQUEST",
+                "title": "Request & Chat",
+                "description": "Describe the work and agree the request details.",
+                "complete": request_complete,
+                "current": request_current,
+            },
+            {
+                "step": 2,
+                "key": "OFFER",
+                "title": "Offer & Negotiation",
+                "description": "Review scope, price, and the agreed schedule.",
+                "complete": offer_complete,
+                "current": offer_current,
+            },
+            {
+                "step": 3,
+                "key": "PAY",
+                "title": "Booking & Escrow",
+                "description": "The original booking payment is provider-verified and held in escrow.",
+                "complete": payment_held,
+                "current": payment_current,
+            },
+            {
+                "step": 4,
+                "key": "PROGRESS",
+                "title": "Service in Progress",
+                "description": "Share updates and photos in this conversation.",
+                "complete": progress_complete,
+                "current": progress_current,
+            },
+            {
+                "step": 5,
+                "key": "ADD_ONS",
+                "title": "Separate add-on orders",
+                "description": addon_description,
+                "complete": addon_complete,
+                "current": addon_current,
+                "optional": True,
+            },
+            {
+                "step": 6,
+                "key": "COMPLETE",
+                "title": "Completion & Review",
+                "description": "The customer confirms completion after approved add-ons are funded.",
+                "complete": booking_status == "COMPLETED",
+                "current": completion_current,
+            },
+            {
+                "step": 7,
+                "key": "DISPUTE",
+                "title": "Support (if needed)",
+                "description": "Dispute handling keeps relevant escrow funds frozen.",
+                "complete": state == "DISPUTED",
+                "current": dispute_current,
+                "optional": True,
+            },
         ]
 
     class Meta(ConversationListSerializer.Meta):
-        fields = ConversationListSerializer.Meta.fields + ["viewer_role", "viewer_id", "assistant", "customer", "artisan", "service_request", "request_draft", "booking", "payment", "additional_orders", "active_offer", "available_actions", "next_question", "journey", "dispute_case"]
+        fields = ConversationListSerializer.Meta.fields + [
+            "recording_enabled",
+            "media_purge_status",
+            "request_reference",
+            "viewer_role",
+            "viewer_id",
+            "assistant",
+            "guidance",
+            "customer",
+            "artisan",
+            "service_request",
+            "request_draft",
+            "booking",
+            "payment",
+            "additional_orders",
+            "active_offer",
+            "available_actions",
+            "next_question",
+            "journey",
+            "dispute_case",
+        ]

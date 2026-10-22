@@ -1,0 +1,29 @@
+# OPTIONAL runtime blueprint only: no deployment is performed by this delivery.
+# Operator must provision the existing DB/Redis/SMTP/provider settings in this group.
+# Recordings stay OFF; do not enable without the shared durable external ledger,
+# private bucket/replica, chargeback and restore acceptance gates in the runbook.
+services:
+  - type: web
+    name: artisan-marketplace-api
+    runtime: docker
+    dockerCommand: sh -c 'gunicorn Artisan_platform.wsgi:application --bind 0.0.0.0:${PORT:-8001}'
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q celery,verification,maintenance,notifications,media,payments
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-beat
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform beat -l info
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'

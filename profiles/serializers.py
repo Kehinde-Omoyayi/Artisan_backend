@@ -49,23 +49,69 @@ def _schedule_unshared_profile_photo_cleanup(storage, name, using=None):
             _delete_unshared_profile_photo(storage, name, using=using)
         except Exception:
             # A failed best-effort cleanup must not turn a committed profile update into a 500.
-            logger.warning("Could not remove an obsolete profile photo after commit.", exc_info=True)
+            logger.warning(
+                "Could not remove an obsolete profile photo after commit.",
+                exc_info=True,
+            )
 
     transaction.on_commit(cleanup, using=using)
 
 
 def _validate_profile_institution(attrs, instance):
-    from home.models import Institution
-    selected = attrs.get('nearest_institution', getattr(instance, 'nearest_institution', None))
-    if selected:
-        if not Institution.objects.filter(pk=selected.pk, is_active=True).exists():
-            raise serializers.ValidationError({'nearest_institution': 'Choose an active institution from the catalogue.'})
-        location = selected.location
-        mismatch = any(str(attrs.get(key, getattr(instance, key, '')) or '').strip().casefold() != str(getattr(location, key) or '').strip().casefold() for key in ('country', 'state', 'area'))
-        if mismatch:
-            if 'nearest_institution' in attrs:
-                raise serializers.ValidationError({'nearest_institution': 'Choose an institution matching your country, state and area.'})
-            attrs['nearest_institution'] = None
+    """Validate text snapshots; no institution-table lookup or catalogue FK."""
+    import re
+
+    location_changed = instance is not None and any(
+        key in attrs
+        and str(attrs[key] or "").strip().casefold()
+        != str(getattr(instance, key, "") or "").strip().casefold()
+        for key in ("country", "state", "area")
+    )
+    if location_changed and "nearest_institution" not in attrs:
+        attrs["nearest_institution"] = ""
+        attrs["nearest_institution_abbreviation"] = ""
+    if "nearest_institution" in attrs:
+        value = str(attrs["nearest_institution"] or "").strip()
+        if re.fullmatch(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", value):
+            raise serializers.ValidationError(
+                {
+                    "nearest_institution": "Submit the institution name, not its old database UUID."
+                }
+            )
+        if any(ord(char) < 32 for char in value):
+            raise serializers.ValidationError(
+                {"nearest_institution": "Use a plain institution name."}
+            )
+        if (
+            instance is not None
+            and value != getattr(instance, "nearest_institution", "")
+            and "nearest_institution_abbreviation" not in attrs
+        ):
+            attrs["nearest_institution_abbreviation"] = ""
+        attrs["nearest_institution"] = value
+        if not value:
+            attrs["nearest_institution_abbreviation"] = ""
+    selected = attrs.get(
+        "nearest_institution", getattr(instance, "nearest_institution", "")
+    )
+    if selected and not all(
+        str(attrs.get(key, getattr(instance, key, "")) or "").strip()
+        for key in ("country", "state", "area")
+    ):
+        raise serializers.ValidationError(
+            {
+                "nearest_institution": "Select country, state/region and area before an institution."
+            }
+        )
+    if not selected:
+        attrs["nearest_institution_abbreviation"] = ""
+    abbreviation = str(attrs.get("nearest_institution_abbreviation", "") or "").strip()
+    if any(ord(char) < 32 for char in abbreviation):
+        raise serializers.ValidationError(
+            {"nearest_institution_abbreviation": "Use plain abbreviation text."}
+        )
+    if "nearest_institution_abbreviation" in attrs:
+        attrs["nearest_institution_abbreviation"] = abbreviation
     return attrs
 
 
@@ -73,7 +119,9 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
     first_name = serializers.CharField(source="user.first_name")
     last_name = serializers.CharField(source="user.last_name")
-    phone_number = serializers.CharField(source="user.phone_number", allow_blank=True, allow_null=True, required=False)
+    phone_number = serializers.CharField(
+        source="user.phone_number", allow_blank=True, allow_null=True, required=False
+    )
     profile_photo = serializers.ImageField(required=False, allow_null=True)
     social_media_1_platform = serializers.ChoiceField(
         choices=SOCIAL_MEDIA_PLATFORM_CHOICES, required=False, allow_blank=True
@@ -96,26 +144,62 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     portfolio_url = serializers.URLField(
         required=False, allow_blank=True, max_length=2048
     )
-    average_rating = serializers.DecimalField(max_digits=3, decimal_places=2, read_only=True)
+    average_rating = serializers.DecimalField(
+        max_digits=3, decimal_places=2, read_only=True
+    )
     completion_rate = serializers.FloatField(read_only=True)
     cancellation_rate = serializers.FloatField(read_only=True)
     profile_status = serializers.CharField(read_only=True)
 
-    nearest_institution_name = serializers.CharField(source='nearest_institution.name', read_only=True, default='')
+    nearest_institution = serializers.CharField(
+        max_length=180, required=False, allow_blank=True, allow_null=True
+    )
+    nearest_institution_name = serializers.CharField(
+        source="nearest_institution", read_only=True, default=""
+    )
 
     class Meta:
         model = ArtisanProfile
         fields = [
-            "id","first_name", "last_name", "phone_number", "email", "profile_photo",
-            "business_name", "bio", "years_experience", "country", "state", "area", "nearest_institution", "nearest_institution_name",
-            "social_media_1_platform", "social_media_1_platform_label", "social_media_1_url",
-            "social_media_2_platform", "social_media_2_platform_label", "social_media_2_url", "portfolio_url",
-            "average_rating", "completion_rate", "cancellation_rate", "profile_status",
+            "id",
+            "first_name",
+            "last_name",
+            "phone_number",
+            "email",
+            "profile_photo",
+            "business_name",
+            "bio",
+            "years_experience",
+            "country",
+            "state",
+            "area",
+            "nearest_institution",
+            "nearest_institution_name",
+            "nearest_institution_abbreviation",
+            "social_media_1_platform",
+            "social_media_1_platform_label",
+            "social_media_1_url",
+            "social_media_2_platform",
+            "social_media_2_platform_label",
+            "social_media_2_url",
+            "portfolio_url",
+            "average_rating",
+            "completion_rate",
+            "cancellation_rate",
+            "profile_status",
         ]
-        read_only_fields = ["id","email", "average_rating", "completion_rate", "cancellation_rate", "profile_status"]
+        read_only_fields = [
+            "id",
+            "email",
+            "average_rating",
+            "completion_rate",
+            "cancellation_rate",
+            "profile_status",
+        ]
 
     def validate_phone_number(self, value):
         from home.serializers import normalize_phone
+
         return normalize_phone(value)
 
     def validate(self, attrs):
@@ -124,10 +208,18 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
         for index in (1, 2):
             platform_field = f"social_media_{index}_platform"
             url_field = f"social_media_{index}_url"
-            platform = attrs.get(platform_field, getattr(self.instance, platform_field, "") if self.instance else "")
-            url = attrs.get(url_field, getattr(self.instance, url_field, "") if self.instance else "")
+            platform = attrs.get(
+                platform_field,
+                getattr(self.instance, platform_field, "") if self.instance else "",
+            )
+            url = attrs.get(
+                url_field,
+                getattr(self.instance, url_field, "") if self.instance else "",
+            )
             if bool(platform) != bool(url):
-                errors[url_field] = "Choose both a platform and its profile URL, or leave both blank."
+                errors[url_field] = (
+                    "Choose both a platform and its profile URL, or leave both blank."
+                )
             elif url:
                 try:
                     validate_social_media_url(url, platform)
@@ -164,13 +256,19 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
                     verification.verified_identity_name_encrypted
                 )
             except ValueError:
-                raise serializers.ValidationError({
-                    "first_name": "Complete identity verification again before changing the name on a verified profile."
-                }) from None
-            if not profile_name_matches_identity(identity_name, proposed_first, proposed_last):
-                raise serializers.ValidationError({
-                    "first_name": "Your profile first and last name must match your verified identity. Correct the profile name or complete identity verification again."
-                })
+                raise serializers.ValidationError(
+                    {
+                        "first_name": "Complete identity verification again before changing the name on a verified profile."
+                    }
+                ) from None
+            if not profile_name_matches_identity(
+                identity_name, proposed_first, proposed_last
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "first_name": "Your profile first and last name must match your verified identity. Correct the profile name or complete identity verification again."
+                    }
+                )
         return attrs
 
     def update(self, instance, validated_data):
@@ -179,7 +277,9 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
         profile_photo = validated_data.pop("profile_photo", None)
         old_photo = instance.profile_photo
         old_photo_name = old_photo.name if old_photo else ""
-        photo_storage = old_photo.storage if old_photo else instance.profile_photo.storage
+        photo_storage = (
+            old_photo.storage if old_photo else instance.profile_photo.storage
+        )
         using = instance._state.db
 
         try:
@@ -188,7 +288,14 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
                 for field in ["first_name", "last_name", "phone_number"]:
                     if field in user_data:
                         setattr(user, field, user_data[field])
-                user.save(update_fields=["first_name", "last_name", "phone_number", "updated_at"])
+                user.save(
+                    update_fields=[
+                        "first_name",
+                        "last_name",
+                        "phone_number",
+                        "updated_at",
+                    ]
+                )
 
                 for field, value in validated_data.items():
                     setattr(instance, field, value)
@@ -202,11 +309,19 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
                         # A fresh server-generated name prevents overwrite-on-upload storage
                         # backends from replacing the old file before the DB reference commits.
                         optimized.name = f"{uuid4().hex}.webp"
-                        instance.profile_photo.save(optimized.name, optimized, save=False)
+                        instance.profile_photo.save(
+                            optimized.name, optimized, save=False
+                        )
 
                 instance.save()
-                new_photo_name = instance.profile_photo.name if instance.profile_photo else ""
-                if profile_photo_supplied and old_photo_name and old_photo_name != new_photo_name:
+                new_photo_name = (
+                    instance.profile_photo.name if instance.profile_photo else ""
+                )
+                if (
+                    profile_photo_supplied
+                    and old_photo_name
+                    and old_photo_name != new_photo_name
+                ):
                     _schedule_unshared_profile_photo_cleanup(
                         old_photo.storage,
                         old_photo_name,
@@ -216,16 +331,28 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
             # File storage is not transactional. If the new upload was staged but the
             # database update failed, remove only that unreferenced new file and restore
             # the in-memory FieldFile to the old database reference.
-            staged_photo_name = instance.profile_photo.name if instance.profile_photo else ""
-            if profile_photo_supplied and profile_photo is not None and staged_photo_name != old_photo_name:
+            staged_photo_name = (
+                instance.profile_photo.name if instance.profile_photo else ""
+            )
+            if (
+                profile_photo_supplied
+                and profile_photo is not None
+                and staged_photo_name != old_photo_name
+            ):
                 try:
-                    _delete_unshared_profile_photo(photo_storage, staged_photo_name, using=using)
+                    _delete_unshared_profile_photo(
+                        photo_storage, staged_photo_name, using=using
+                    )
                 except Exception:
-                    logger.warning("Could not remove a staged profile photo after rollback.", exc_info=True)
+                    logger.warning(
+                        "Could not remove a staged profile photo after rollback.",
+                        exc_info=True,
+                    )
             instance.profile_photo = old_photo_name or None
             raise
 
         return instance
+
 
 class ArtisanProfileTextUpdateSerializer(ArtisanProfileSerializer):
     """OpenAPI request shape for updates sent without a multipart file upload."""
@@ -233,7 +360,11 @@ class ArtisanProfileTextUpdateSerializer(ArtisanProfileSerializer):
     profile_photo = None
 
     class Meta(ArtisanProfileSerializer.Meta):
-        fields = [field for field in ArtisanProfileSerializer.Meta.fields if field != "profile_photo"]
+        fields = [
+            field
+            for field in ArtisanProfileSerializer.Meta.fields
+            if field != "profile_photo"
+        ]
 
 
 class CustomerProfileSerializer(serializers.ModelSerializer):
@@ -244,15 +375,23 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source="user.first_name")
     last_name = serializers.CharField(source="user.last_name")
     email = serializers.EmailField(source="user.email", read_only=True)
-    phone_number = serializers.CharField(source="user.phone_number", allow_blank=True, allow_null=True, required=False)
+    phone_number = serializers.CharField(
+        source="user.phone_number", allow_blank=True, allow_null=True, required=False
+    )
     profile_photo = serializers.ImageField(required=False, allow_null=True)
 
-    nearest_institution_name = serializers.CharField(source='nearest_institution.name', read_only=True, default='')
+    nearest_institution = serializers.CharField(
+        max_length=180, required=False, allow_blank=True, allow_null=True
+    )
+    nearest_institution_name = serializers.CharField(
+        source="nearest_institution", read_only=True, default=""
+    )
 
     def validate_date_of_birth(self, value):
         from django.utils import timezone
+
         if value and value > timezone.localdate():
-            raise serializers.ValidationError('Date of birth cannot be in the future.')
+            raise serializers.ValidationError("Date of birth cannot be in the future.")
         return value
 
     def validate(self, attrs):
@@ -261,14 +400,32 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerProfile
         fields = [
-            "id", "first_name", "last_name", "email", "phone_number", "profile_photo",
-            "date_of_birth", "country", "state", "area", "nearest_institution", "nearest_institution_name", "gender",
-            "cancellation_rate", "cancellation_risk_score",
-            "cancellation_risk_max", "cancellation_risk_level",
+            "id",
+            "first_name",
+            "last_name",
+            "email",
+            "phone_number",
+            "profile_photo",
+            "date_of_birth",
+            "country",
+            "state",
+            "area",
+            "nearest_institution",
+            "nearest_institution_name",
+            "nearest_institution_abbreviation",
+            "gender",
+            "cancellation_rate",
+            "cancellation_risk_score",
+            "cancellation_risk_max",
+            "cancellation_risk_level",
         ]
         read_only_fields = [
-            "id","email", "cancellation_rate", "cancellation_risk_score",
-            "cancellation_risk_max", "cancellation_risk_level",
+            "id",
+            "email",
+            "cancellation_rate",
+            "cancellation_risk_score",
+            "cancellation_risk_max",
+            "cancellation_risk_level",
         ]
 
     def _risk_profile(self, obj):
@@ -277,6 +434,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
         # be recomputed once per read-only field.
         if not hasattr(self, "_risk_profile_cache"):
             from risk.services import get_customer_risk_profile
+
             self._risk_profile_cache = get_customer_risk_profile(obj)
         return self._risk_profile_cache
 
@@ -288,6 +446,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
 
     def get_cancellation_risk_max(self, obj) -> int:
         from django.conf import settings
+
         return getattr(settings, "CANCELLATION_SUSPENSION_SCORE", 5)
 
     def get_cancellation_risk_level(self, obj) -> str:
@@ -295,6 +454,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
 
     def validate_phone_number(self, value):
         from home.serializers import normalize_phone
+
         return normalize_phone(value)
 
     def update(self, instance, validated_data):
@@ -312,7 +472,14 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
                 for field in ["first_name", "last_name", "phone_number"]:
                     if field in user_data:
                         setattr(user, field, user_data[field])
-                user.save(update_fields=["first_name", "last_name", "phone_number", "updated_at"])
+                user.save(
+                    update_fields=[
+                        "first_name",
+                        "last_name",
+                        "phone_number",
+                        "updated_at",
+                    ]
+                )
                 for field, value in validated_data.items():
                     setattr(instance, field, value)
 
@@ -322,19 +489,40 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
                     else:
                         optimized = optimize_profile_photo(photo_upload)
                         optimized.name = f"{uuid4().hex}.webp"
-                        instance.profile_photo.save(optimized.name, optimized, save=False)
+                        instance.profile_photo.save(
+                            optimized.name, optimized, save=False
+                        )
 
                 instance.save()
-                new_photo_name = instance.profile_photo.name if instance.profile_photo else ""
-                if photo_supplied and old_photo_name and old_photo_name != new_photo_name:
-                    _schedule_unshared_profile_photo_cleanup(storage, old_photo_name, using=using)
+                new_photo_name = (
+                    instance.profile_photo.name if instance.profile_photo else ""
+                )
+                if (
+                    photo_supplied
+                    and old_photo_name
+                    and old_photo_name != new_photo_name
+                ):
+                    _schedule_unshared_profile_photo_cleanup(
+                        storage, old_photo_name, using=using
+                    )
         except Exception:
-            staged_photo_name = instance.profile_photo.name if instance.profile_photo else ""
-            if photo_supplied and photo_upload is not None and staged_photo_name != old_photo_name:
+            staged_photo_name = (
+                instance.profile_photo.name if instance.profile_photo else ""
+            )
+            if (
+                photo_supplied
+                and photo_upload is not None
+                and staged_photo_name != old_photo_name
+            ):
                 try:
-                    _delete_unshared_profile_photo(storage, staged_photo_name, using=using)
+                    _delete_unshared_profile_photo(
+                        storage, staged_photo_name, using=using
+                    )
                 except Exception:
-                    logger.warning("Could not remove a staged profile photo after rollback.", exc_info=True)
+                    logger.warning(
+                        "Could not remove a staged profile photo after rollback.",
+                        exc_info=True,
+                    )
             instance.profile_photo = old_photo_name or None
             raise
         return instance
@@ -346,21 +534,41 @@ class ArtisanDiscoverySerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
     name = serializers.SerializerMethodField()
     profile_photo = serializers.ImageField(read_only=True)
-    verification_status = serializers.CharField(source="verification.verification_status", read_only=True)
+    verification_status = serializers.CharField(
+        source="verification.verification_status", read_only=True
+    )
     services = serializers.SerializerMethodField()
     available_anywhere = serializers.BooleanField(read_only=True)
     has_rating = serializers.SerializerMethodField()
     review_count = serializers.IntegerField(read_only=True, default=0)
     is_promoted = serializers.BooleanField(read_only=True, default=False)
-    promotion_campaign_id = serializers.UUIDField(source="_matched_promotion_campaign_id", read_only=True, allow_null=True, default=None)
+    promotion_campaign_id = serializers.UUIDField(
+        source="_matched_promotion_campaign_id",
+        read_only=True,
+        allow_null=True,
+        default=None,
+    )
 
     class Meta:
         model = ArtisanProfile
         fields = [
-            "id", "user_id", "name", "business_name", "years_experience",
-            "country", "state", "area", "profile_photo", "average_rating",
-            "has_rating", "review_count", "available_anywhere",
-            "verification_status", "services", "is_promoted", "promotion_campaign_id",
+            "id",
+            "user_id",
+            "name",
+            "business_name",
+            "years_experience",
+            "country",
+            "state",
+            "area",
+            "profile_photo",
+            "average_rating",
+            "has_rating",
+            "review_count",
+            "available_anywhere",
+            "verification_status",
+            "services",
+            "is_promoted",
+            "promotion_campaign_id",
         ]
 
     def get_name(self, obj) -> str:
@@ -373,7 +581,9 @@ class ArtisanDiscoverySerializer(serializers.ModelSerializer):
     def get_services(self, obj):
         services = getattr(obj, "prefetched_artisan_services", None)
         if services is None:
-            services = obj.artisan_services.select_related("service__category", "location").all()
+            services = obj.artisan_services.select_related(
+                "service__category", "location"
+            ).all()
         view = self.context.get("view")
         if getattr(view, "is_discovery_list", False):
             services = list(services)[:3]
@@ -388,18 +598,30 @@ class ArtisanDiscoveryDetailSerializer(ArtisanDiscoverySerializer):
     cancellation_rate = serializers.FloatField(read_only=True)
     profile_status = serializers.CharField(read_only=True)
     social_media_1_platform = serializers.CharField(read_only=True)
-    social_media_1_platform_label = serializers.CharField(source="get_social_media_1_platform_display", read_only=True)
+    social_media_1_platform_label = serializers.CharField(
+        source="get_social_media_1_platform_display", read_only=True
+    )
     social_media_1_url = serializers.URLField(read_only=True, allow_blank=True)
     social_media_2_platform = serializers.CharField(read_only=True)
-    social_media_2_platform_label = serializers.CharField(source="get_social_media_2_platform_display", read_only=True)
+    social_media_2_platform_label = serializers.CharField(
+        source="get_social_media_2_platform_display", read_only=True
+    )
     social_media_2_url = serializers.URLField(read_only=True, allow_blank=True)
     portfolio_url = serializers.URLField(read_only=True, allow_blank=True)
 
     class Meta(ArtisanDiscoverySerializer.Meta):
         fields = ArtisanDiscoverySerializer.Meta.fields + [
-            "bio", "completion_rate", "cancellation_rate", "profile_status",
-            "social_media_1_platform", "social_media_1_platform_label", "social_media_1_url",
-            "social_media_2_platform", "social_media_2_platform_label", "social_media_2_url", "portfolio_url",
+            "bio",
+            "completion_rate",
+            "cancellation_rate",
+            "profile_status",
+            "social_media_1_platform",
+            "social_media_1_platform_label",
+            "social_media_1_url",
+            "social_media_2_platform",
+            "social_media_2_platform_label",
+            "social_media_2_url",
+            "portfolio_url",
         ]
 
 
@@ -407,15 +629,27 @@ class ArtisanProfessionalLinksReviewSerializer(serializers.ModelSerializer):
     """Restricted review payload. Deliberately excludes private account/contact fields."""
 
     name = serializers.SerializerMethodField()
-    social_media_1_platform_label = serializers.CharField(source="get_social_media_1_platform_display", read_only=True)
-    social_media_2_platform_label = serializers.CharField(source="get_social_media_2_platform_display", read_only=True)
+    social_media_1_platform_label = serializers.CharField(
+        source="get_social_media_1_platform_display", read_only=True
+    )
+    social_media_2_platform_label = serializers.CharField(
+        source="get_social_media_2_platform_display", read_only=True
+    )
 
     class Meta:
         model = ArtisanProfile
         fields = [
-            "id", "name", "business_name", "profile_status",
-            "social_media_1_platform", "social_media_1_platform_label", "social_media_1_url",
-            "social_media_2_platform", "social_media_2_platform_label", "social_media_2_url", "portfolio_url",
+            "id",
+            "name",
+            "business_name",
+            "profile_status",
+            "social_media_1_platform",
+            "social_media_1_platform_label",
+            "social_media_1_url",
+            "social_media_2_platform",
+            "social_media_2_platform_label",
+            "social_media_2_url",
+            "portfolio_url",
         ]
         read_only_fields = fields
 

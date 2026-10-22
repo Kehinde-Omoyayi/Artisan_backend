@@ -1,4 +1,6 @@
 import json
+from unittest import skipUnless
+from django.apps import apps
 import time
 from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
@@ -9,14 +11,23 @@ from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from rest_framework.test import APIClient
 
-from home.models import ArtisanProfile, CustomUser, CustomerProfile, StaffSecurityChallenge
+from home.models import (
+    ArtisanProfile,
+    CustomUser,
+    CustomerProfile,
+    StaffSecurityChallenge,
+)
 from home.otp_security import hash_otp_code, otp_cache_key
 from home.security_mail import decrypt_email_code
 
 from .exceptions import SocialAuthError
 from .models import SocialIdentity
-from .oauth import consume_transaction, create_transaction, exchange_authorization_code, verify_identity_token
-
+from .oauth import (
+    consume_transaction,
+    create_transaction,
+    exchange_authorization_code,
+    verify_identity_token,
+)
 
 TEST_SETTINGS = {
     "ROOT_URLCONF": "social_auth.test_urls",
@@ -52,16 +63,38 @@ class SocialAuthApiTests(TestCase):
         data = {"intent": intent}
         if role:
             data["role"] = role
-        return self.client.post(f"/api/v1/social-auth/{provider}/native/start/", data, format="json")
+        return self.client.post(
+            f"/api/v1/social-auth/{provider}/native/start/", data, format="json"
+        )
 
-    def start_web(self, *, provider="google", intent="register", role="customer", browser_binding="b" * 43):
+    def start_web(
+        self,
+        *,
+        provider="google",
+        intent="register",
+        role="customer",
+        browser_binding="b" * 43,
+    ):
         data = {"intent": intent, "browser_binding": browser_binding}
         if role:
             data["role"] = role
-        return self.client.post(f"/api/v1/social-auth/{provider}/web/start/", data, format="json")
+        return self.client.post(
+            f"/api/v1/social-auth/{provider}/web/start/", data, format="json"
+        )
 
-    def complete_native(self, *, provider="google", state, identity, intent="register", first_name="", last_name=""):
-        with patch("social_auth.api_views.exchange_authorization_code", return_value=identity):
+    def complete_native(
+        self,
+        *,
+        provider="google",
+        state,
+        identity,
+        intent="register",
+        first_name="",
+        last_name="",
+    ):
+        with patch(
+            "social_auth.api_views.exchange_authorization_code", return_value=identity
+        ):
             return self.client.post(
                 f"/api/v1/social-auth/{provider}/native/complete/",
                 {
@@ -74,7 +107,14 @@ class SocialAuthApiTests(TestCase):
             )
 
     @staticmethod
-    def identity(*, provider="google", email="nia@example.com", subject="provider-subject", first_name="Nia", last_name="Okafor"):
+    def identity(
+        *,
+        provider="google",
+        email="nia@example.com",
+        subject="provider-subject",
+        first_name="Nia",
+        last_name="Okafor",
+    ):
         return {
             "provider": provider,
             "subject": subject,
@@ -97,17 +137,23 @@ class SocialAuthApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertTrue(response.data)
 
-    def test_native_start_returns_provider_state_nonce_and_google_pkce_without_a_secret(self):
+    def test_native_start_returns_provider_state_nonce_and_google_pkce_without_a_secret(
+        self,
+    ):
         response = self.start_native()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["state"])
         self.assertTrue(response.data["nonce"])
         self.assertTrue(response.data["code_challenge"])
         self.assertEqual(response.data["code_challenge_method"], "S256")
-        self.assertIn("accounts.google.com/o/oauth2/v2/auth", response.data["authorization_url"])
+        self.assertIn(
+            "accounts.google.com/o/oauth2/v2/auth", response.data["authorization_url"]
+        )
         self.assertNotIn("client_secret", response.data)
 
-    def test_web_start_returns_provider_redirect_and_keeps_browser_binding_server_side(self):
+    def test_web_start_returns_provider_redirect_and_keeps_browser_binding_server_side(
+        self,
+    ):
         browser_binding = "front-session-binding-0123456789abcdef"
         response = self.start_web(browser_binding=browser_binding)
         self.assertEqual(response.status_code, 200)
@@ -117,14 +163,22 @@ class SocialAuthApiTests(TestCase):
         self.assertIn("authorization_url", response.data)
         self.assertNotIn("browser_binding", response.data)
         self.assertNotIn("client_secret", response.data)
-        transaction = cache.get("social_auth:state:" + __import__("hashlib").sha256(response.data["state"].encode()).hexdigest())
+        transaction = cache.get(
+            "social_auth:state:"
+            + __import__("hashlib").sha256(response.data["state"].encode()).hexdigest()
+        )
         self.assertEqual(transaction["browser_binding"], browser_binding)
         query = parse_qs(urlparse(response.data["authorization_url"]).query)
-        self.assertEqual(query["redirect_uri"], [TEST_SETTINGS["SOCIAL_AUTH_GOOGLE_WEB_REDIRECT_URI"]])
+        self.assertEqual(
+            query["redirect_uri"],
+            [TEST_SETTINGS["SOCIAL_AUTH_GOOGLE_WEB_REDIRECT_URI"]],
+        )
         self.assertEqual(query["code_challenge_method"], ["S256"])
         self.assertTrue(query["nonce"][0])
 
-    def test_web_completion_checks_frontend_binding_and_creates_registration_via_api(self):
+    def test_web_completion_checks_frontend_binding_and_creates_registration_via_api(
+        self,
+    ):
         binding = "front-session-binding-0123456789abcdef"
         start = self.start_web(browser_binding=binding)
         identity = self.identity()
@@ -133,9 +187,9 @@ class SocialAuthApiTests(TestCase):
             "authorization_code": "one-time-authorization-code",
             "browser_binding": binding,
         }
-        with patch("social_auth.api_views.exchange_authorization_code", return_value=identity), patch(
-            "social_auth.services.send_verification_email.delay"
-        ) as send_email:
+        with patch(
+            "social_auth.api_views.exchange_authorization_code", return_value=identity
+        ), patch("social_auth.services.send_verification_email.delay") as send_email:
             response = self.client.post(
                 "/api/v1/social-auth/google/web/complete/",
                 {**payload, "browser_binding": "wrong-browser-binding-value-123456"},
@@ -143,16 +197,25 @@ class SocialAuthApiTests(TestCase):
             )
             self.assertEqual(response.status_code, 400)
             self.assertFalse(CustomUser.objects.exists())
-            accepted = self.client.post("/api/v1/social-auth/google/web/complete/", payload, format="json")
+            accepted = self.client.post(
+                "/api/v1/social-auth/google/web/complete/", payload, format="json"
+            )
         self.assertEqual(accepted.status_code, 201)
         self.assertEqual(accepted.data["action"], "redirect_to_otp_verification")
-        self.assertTrue(CustomUser.objects.filter(email="nia@example.com", is_active=False).exists())
+        self.assertTrue(
+            CustomUser.objects.filter(email="nia@example.com", is_active=False).exists()
+        )
         send_email.assert_called_once()
 
-    def test_web_start_requires_registration_role_and_builds_apple_form_post_redirect(self):
+    def test_web_start_requires_registration_role_and_builds_apple_form_post_redirect(
+        self,
+    ):
         missing_role = self.client.post(
             "/api/v1/social-auth/apple/web/start/",
-            {"intent": "register", "browser_binding": "front-session-binding-0123456789abcdef"},
+            {
+                "intent": "register",
+                "browser_binding": "front-session-binding-0123456789abcdef",
+            },
             format="json",
         )
         self.assertEqual(missing_role.status_code, 400)
@@ -168,16 +231,29 @@ class SocialAuthApiTests(TestCase):
             format="json",
         )
         self.assertEqual(web_start.status_code, 200)
-        self.assertEqual(parse_qs(urlparse(web_start.data["authorization_url"]).query)["response_mode"], ["form_post"])
+        self.assertEqual(
+            parse_qs(urlparse(web_start.data["authorization_url"]).query)[
+                "response_mode"
+            ],
+            ["form_post"],
+        )
 
     def test_apple_web_api_uses_first_authorization_names_then_existing_otp(self):
         binding = "front-session-binding-0123456789abcdef"
-        start = self.start_web(provider="apple", role="artisan", browser_binding=binding)
-        identity = self.identity(provider="apple", email="apple-web@example.com", subject="apple-web-sub", first_name="", last_name="")
+        start = self.start_web(
+            provider="apple", role="artisan", browser_binding=binding
+        )
+        identity = self.identity(
+            provider="apple",
+            email="apple-web@example.com",
+            subject="apple-web-sub",
+            first_name="",
+            last_name="",
+        )
         user_data = json.dumps({"name": {"firstName": "Ari", "lastName": "James"}})
-        with patch("social_auth.api_views.exchange_authorization_code", return_value=identity), patch(
-            "social_auth.services.send_verification_email.delay"
-        ) as send_email:
+        with patch(
+            "social_auth.api_views.exchange_authorization_code", return_value=identity
+        ), patch("social_auth.services.send_verification_email.delay") as send_email:
             response = self.client.post(
                 "/api/v1/social-auth/apple/web/complete/",
                 {
@@ -203,11 +279,15 @@ class SocialAuthApiTests(TestCase):
             is_active=True,
         )
         CustomerProfile.objects.create(user=user)
-        SocialIdentity.objects.create(user=user, provider="google", subject="provider-subject", email=user.email)
+        SocialIdentity.objects.create(
+            user=user, provider="google", subject="provider-subject", email=user.email
+        )
         binding = "front-session-binding-0123456789abcdef"
         start = self.start_web(intent="login", role=None, browser_binding=binding)
         identity = self.identity(email=user.email, subject="provider-subject")
-        with patch("social_auth.api_views.exchange_authorization_code", return_value=identity):
+        with patch(
+            "social_auth.api_views.exchange_authorization_code", return_value=identity
+        ):
             response = self.client.post(
                 "/api/v1/social-auth/google/web/complete/",
                 {
@@ -231,7 +311,9 @@ class SocialAuthApiTests(TestCase):
             is_active=True,
             is_staff=True,
         )
-        SocialIdentity.objects.create(user=user, provider="google", subject=subject, email=email)
+        SocialIdentity.objects.create(
+            user=user, provider="google", subject=subject, email=email
+        )
         return user
 
     def test_web_staff_social_login_returns_only_a_pending_mfa_challenge(self):
@@ -243,9 +325,9 @@ class SocialAuthApiTests(TestCase):
         start = self.start_web(intent="login", role=None, browser_binding=binding)
         identity = self.identity(email=user.email, subject="web-staff-provider-subject")
 
-        with patch("social_auth.api_views.exchange_authorization_code", return_value=identity), patch(
-            "home.staff_mfa.send_staff_security_code.delay"
-        ) as deliver:
+        with patch(
+            "social_auth.api_views.exchange_authorization_code", return_value=identity
+        ), patch("home.staff_mfa.send_staff_security_code.delay") as deliver:
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client.post(
                     "/api/v1/social-auth/google/web/complete/",
@@ -261,7 +343,9 @@ class SocialAuthApiTests(TestCase):
         self.assertTrue(response.data["mfa_required"])
         self.assertNotIn("access", response.data)
         self.assertNotIn("refresh", response.data)
-        challenge = StaffSecurityChallenge.objects.get(pk=response.data["mfa_challenge_id"])
+        challenge = StaffSecurityChallenge.objects.get(
+            pk=response.data["mfa_challenge_id"]
+        )
         self.assertEqual(challenge.user, user)
         self.assertEqual(challenge.purpose, StaffSecurityChallenge.Purpose.LOGIN_MFA)
         self.assertEqual(deliver.call_count, 1)
@@ -272,11 +356,13 @@ class SocialAuthApiTests(TestCase):
             subject="native-staff-provider-subject",
         )
         start = self.start_native(intent="login", role=None)
-        identity = self.identity(email=user.email, subject="native-staff-provider-subject")
+        identity = self.identity(
+            email=user.email, subject="native-staff-provider-subject"
+        )
 
-        with patch("social_auth.api_views.exchange_authorization_code", return_value=identity), patch(
-            "home.staff_mfa.send_staff_security_code.delay"
-        ) as deliver:
+        with patch(
+            "social_auth.api_views.exchange_authorization_code", return_value=identity
+        ), patch("home.staff_mfa.send_staff_security_code.delay") as deliver:
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client.post(
                     "/api/v1/social-auth/google/native/complete/",
@@ -291,13 +377,17 @@ class SocialAuthApiTests(TestCase):
         self.assertTrue(response.data["mfa_required"])
         self.assertNotIn("access", response.data)
         self.assertNotIn("refresh", response.data)
-        challenge = StaffSecurityChallenge.objects.get(pk=response.data["mfa_challenge_id"])
+        challenge = StaffSecurityChallenge.objects.get(
+            pk=response.data["mfa_challenge_id"]
+        )
         self.assertEqual(challenge.user, user)
         self.assertEqual(challenge.purpose, StaffSecurityChallenge.Purpose.LOGIN_MFA)
         self.assertEqual(deliver.call_count, 1)
 
     def test_google_native_code_exchange_uses_pkce_without_a_native_client_secret(self):
-        transaction = create_transaction(provider="google", platform="native", intent="login")
+        transaction = create_transaction(
+            provider="google", platform="native", intent="login"
+        )
 
         class TokenResponse:
             status_code = 200
@@ -306,7 +396,9 @@ class SocialAuthApiTests(TestCase):
             def json():
                 return {"id_token": "signed-provider-token"}
 
-        with patch("social_auth.oauth.requests.post", return_value=TokenResponse()) as post, patch(
+        with patch(
+            "social_auth.oauth.requests.post", return_value=TokenResponse()
+        ) as post, patch(
             "social_auth.oauth.verify_identity_token", return_value=self.identity()
         ):
             identity = exchange_authorization_code(
@@ -319,7 +411,10 @@ class SocialAuthApiTests(TestCase):
         data = post.call_args.kwargs["data"]
         self.assertNotIn("client_secret", data)
         self.assertTrue(data["code_verifier"])
-        self.assertEqual(data["redirect_uri"], TEST_SETTINGS["SOCIAL_AUTH_GOOGLE_NATIVE_REDIRECT_URI"])
+        self.assertEqual(
+            data["redirect_uri"],
+            TEST_SETTINGS["SOCIAL_AUTH_GOOGLE_NATIVE_REDIRECT_URI"],
+        )
 
     def test_native_start_requires_role_before_registration(self):
         response = self.client.post(
@@ -330,10 +425,14 @@ class SocialAuthApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("role", response.data["fields"])
 
-    def test_google_registration_creates_inactive_user_with_hashed_cache_otp_and_encrypted_delivery(self):
+    def test_google_registration_creates_inactive_user_with_hashed_cache_otp_and_encrypted_delivery(
+        self,
+    ):
         start = self.start_native()
         self.assertEqual(start.status_code, 200)
-        with patch("social_auth.services.send_verification_email.delay") as send_email, patch(
+        with patch(
+            "social_auth.services.send_verification_email.delay"
+        ) as send_email, patch(
             "social_auth.services.secrets.randbelow", return_value=234567
         ):
             response = self.complete_native(
@@ -347,7 +446,11 @@ class SocialAuthApiTests(TestCase):
         self.assertFalse(user.is_active)
         self.assertTrue(CustomerProfile.objects.filter(user=user).exists())
         self.assertFalse(ArtisanProfile.objects.filter(user=user).exists())
-        self.assertTrue(SocialIdentity.objects.filter(user=user, provider="google", subject="provider-subject").exists())
+        self.assertTrue(
+            SocialIdentity.objects.filter(
+                user=user, provider="google", subject="provider-subject"
+            ).exists()
+        )
         otp = "334567"
         stored = cache.get(otp_cache_key("verification", user.email))
         self.assertEqual(stored, hash_otp_code("verification", user.email, otp))
@@ -366,10 +469,20 @@ class SocialAuthApiTests(TestCase):
         user.refresh_from_db()
         self.assertTrue(user.is_active)
 
-    def test_missing_provider_names_return_one_time_profile_step_then_create_account(self):
+    def test_missing_provider_names_return_one_time_profile_step_then_create_account(
+        self,
+    ):
         start = self.start_native(provider="apple", role="artisan")
-        identity = self.identity(provider="apple", email="tailor@example.com", subject="apple-sub", first_name="", last_name="")
-        response = self.complete_native(provider="apple", state=start.data["state"], identity=identity)
+        identity = self.identity(
+            provider="apple",
+            email="tailor@example.com",
+            subject="apple-sub",
+            first_name="",
+            last_name="",
+        )
+        response = self.complete_native(
+            provider="apple", state=start.data["state"], identity=identity
+        )
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.data["action"], "collect_profile_details")
         token = response.data["registration_token"]
@@ -377,7 +490,11 @@ class SocialAuthApiTests(TestCase):
         with patch("social_auth.services.send_verification_email.delay"):
             completed = self.client.post(
                 "/api/v1/social-auth/native/complete-profile/",
-                {"registration_token": token, "first_name": "Tola", "last_name": "Adebayo"},
+                {
+                    "registration_token": token,
+                    "first_name": "Tola",
+                    "last_name": "Adebayo",
+                },
                 format="json",
             )
         self.assertEqual(completed.status_code, 201)
@@ -386,7 +503,12 @@ class SocialAuthApiTests(TestCase):
         self.assertEqual((user.first_name, user.last_name), ("Tola", "Adebayo"))
         self.assertTrue(ArtisanProfile.objects.filter(user=user).exists())
         self.assertTrue(CustomerProfile.objects.filter(user=user).exists())
-        self.assertIsNone(cache.get("social_auth:pending_profile:" + __import__("hashlib").sha256(token.encode()).hexdigest()))
+        self.assertIsNone(
+            cache.get(
+                "social_auth:pending_profile:"
+                + __import__("hashlib").sha256(token.encode()).hexdigest()
+            )
+        )
 
     def test_existing_email_is_not_automatically_linked_to_a_new_provider(self):
         CustomUser.objects.create_user(
@@ -397,19 +519,29 @@ class SocialAuthApiTests(TestCase):
             is_active=True,
         )
         start = self.start_native()
-        response = self.complete_native(state=start.data["state"], identity=self.identity())
+        response = self.complete_native(
+            state=start.data["state"], identity=self.identity()
+        )
         self.assertEqual(response.status_code, 409)
         self.assertEqual(CustomUser.objects.filter(email="nia@example.com").count(), 1)
         self.assertFalse(SocialIdentity.objects.exists())
 
     def test_native_state_is_single_use_and_provider_bound(self):
-        transaction = create_transaction(provider="google", platform="native", intent="register", role="customer")
+        transaction = create_transaction(
+            provider="google", platform="native", intent="register", role="customer"
+        )
         with self.assertRaises(SocialAuthError):
-            consume_transaction(state=transaction["state"], provider="apple", platform="native")
-        consumed = consume_transaction(state=transaction["state"], provider="google", platform="native")
+            consume_transaction(
+                state=transaction["state"], provider="apple", platform="native"
+            )
+        consumed = consume_transaction(
+            state=transaction["state"], provider="google", platform="native"
+        )
         self.assertEqual(consumed["role"], "customer")
         with self.assertRaises(SocialAuthError):
-            consume_transaction(state=transaction["state"], provider="google", platform="native")
+            consume_transaction(
+                state=transaction["state"], provider="google", platform="native"
+            )
 
     def test_inactive_social_login_stays_on_the_existing_otp_verification_step(self):
         user = CustomUser.objects.create_user(
@@ -420,11 +552,15 @@ class SocialAuthApiTests(TestCase):
             is_active=False,
         )
         CustomerProfile.objects.create(user=user)
-        SocialIdentity.objects.create(user=user, provider="google", subject="pending-subject", email=user.email)
+        SocialIdentity.objects.create(
+            user=user, provider="google", subject="pending-subject", email=user.email
+        )
         start = self.start_native(intent="login", role=None)
         response = self.complete_native(
             state=start.data["state"],
-            identity=self.identity(email="pending@example.com", subject="pending-subject"),
+            identity=self.identity(
+                email="pending@example.com", subject="pending-subject"
+            ),
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.data["action"], "redirect_to_otp_verification")
@@ -441,17 +577,23 @@ class SocialAuthApiTests(TestCase):
             security_status="LOCKED",
         )
         CustomerProfile.objects.create(user=user)
-        SocialIdentity.objects.create(user=user, provider="google", subject="locked-subject", email=user.email)
+        SocialIdentity.objects.create(
+            user=user, provider="google", subject="locked-subject", email=user.email
+        )
         start = self.start_native(intent="login", role=None)
         response = self.complete_native(
             state=start.data["state"],
-            identity=self.identity(email="locked@example.com", subject="locked-subject"),
+            identity=self.identity(
+                email="locked@example.com", subject="locked-subject"
+            ),
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.data["action"], "contact_support")
         self.assertNotIn("access", response.data)
 
-    def test_provider_login_returns_token_version_claim_for_linked_active_identity(self):
+    def test_provider_login_returns_token_version_claim_for_linked_active_identity(
+        self,
+    ):
         user = CustomUser.objects.create_user(
             email="nia@example.com",
             first_name="Nia",
@@ -460,20 +602,28 @@ class SocialAuthApiTests(TestCase):
             is_active=True,
         )
         CustomerProfile.objects.create(user=user)
-        SocialIdentity.objects.create(user=user, provider="google", subject="provider-subject", email=user.email)
+        SocialIdentity.objects.create(
+            user=user, provider="google", subject="provider-subject", email=user.email
+        )
         start = self.start_native(intent="login", role=None)
-        response = self.complete_native(state=start.data["state"], identity=self.identity())
+        response = self.complete_native(
+            state=start.data["state"], identity=self.identity()
+        )
         self.assertEqual(response.status_code, 200)
         self.assertIn("access", response.data)
         self.assertIn("refresh", response.data)
-        claims = jwt.decode(response.data["access"], options={"verify_signature": False})
+        claims = jwt.decode(
+            response.data["access"], options={"verify_signature": False}
+        )
         self.assertEqual(claims["token_version"], user.token_version)
 
 
 class SocialAuthTokenValidationTests(TestCase):
     def test_provider_jwt_signature_audience_issuer_nonce_and_email_are_checked(self):
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        public_jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+        public_jwk = json.loads(
+            jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key())
+        )
         public_jwk.update({"kid": "test-key", "alg": "RS256", "use": "sig"})
         now = int(time.time())
         claims = {
@@ -488,7 +638,9 @@ class SocialAuthTokenValidationTests(TestCase):
             "given_name": "Nia",
             "family_name": "Okafor",
         }
-        token = jwt.encode(claims, private_key, algorithm="RS256", headers={"kid": "test-key"})
+        token = jwt.encode(
+            claims, private_key, algorithm="RS256", headers={"kid": "test-key"}
+        )
         with patch("social_auth.oauth._fetch_jwks", return_value=[public_jwk]):
             identity = verify_identity_token(
                 provider="google",
@@ -533,7 +685,9 @@ class SocialAuthTokenValidationTests(TestCase):
             "aud": "com.example.market",
             "email": "member@example.com",
         }
-        apple_token = jwt.encode(apple_claims, private_key, algorithm="RS256", headers={"kid": "test-key"})
+        apple_token = jwt.encode(
+            apple_claims, private_key, algorithm="RS256", headers={"kid": "test-key"}
+        )
         with patch("social_auth.oauth._fetch_jwks", return_value=[public_jwk]):
             apple_identity = verify_identity_token(
                 provider="apple",
@@ -546,30 +700,47 @@ class SocialAuthTokenValidationTests(TestCase):
 
 
 @override_settings(**TEST_SETTINGS)
+@skipUnless(
+    apps.is_installed("frontend"),
+    "Legacy in-process browser integration: run against the integrated project, not the separate API service.",
+)
 class SocialAuthWebFlowTests(TestCase):
     def setUp(self):
         cache.clear()
 
-    def test_browser_callback_requires_the_binding_cookie_from_the_starting_browser(self):
+    def test_browser_callback_requires_the_binding_cookie_from_the_starting_browser(
+        self,
+    ):
         start = self.client.post(
             "/auth/social/google/start/",
-            {"intent": "register", "role": "customer", "first_name": "Nia", "last_name": "Okafor"},
+            {
+                "intent": "register",
+                "role": "customer",
+                "first_name": "Nia",
+                "last_name": "Okafor",
+            },
         )
         state = parse_qs(urlparse(start["Location"]).query)["state"][0]
         other_browser = Client()
-        rejected = other_browser.get("/auth/social/google/callback/", {"state": state, "code": "code"})
+        rejected = other_browser.get(
+            "/auth/social/google/callback/", {"state": state, "code": "code"}
+        )
         self.assertEqual(rejected.status_code, 302)
         self.assertFalse(CustomUser.objects.exists())
 
         identity = SocialAuthApiTests.identity()
-        with patch("social_auth.web_views.exchange_authorization_code", return_value=identity), patch(
-            "social_auth.services.send_verification_email.delay"
-        ):
-            accepted = self.client.get("/auth/social/google/callback/", {"state": state, "code": "code"})
+        with patch(
+            "social_auth.web_views.exchange_authorization_code", return_value=identity
+        ), patch("social_auth.services.send_verification_email.delay"):
+            accepted = self.client.get(
+                "/auth/social/google/callback/", {"state": state, "code": "code"}
+            )
         self.assertEqual(accepted.status_code, 302)
         self.assertTrue(CustomUser.objects.filter(email="nia@example.com").exists())
 
-    def test_apple_binding_cookie_is_secure_and_cross_site_compatible_in_production(self):
+    def test_apple_binding_cookie_is_secure_and_cross_site_compatible_in_production(
+        self,
+    ):
         with override_settings(ENVIRONMENT="production"):
             response = self.client.post(
                 "/auth/social/apple/start/",
@@ -592,22 +763,32 @@ class SocialAuthWebFlowTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         query = parse_qs(urlparse(response["Location"]).query)
-        self.assertEqual(query["redirect_uri"], [TEST_SETTINGS["SOCIAL_AUTH_GOOGLE_WEB_REDIRECT_URI"]])
+        self.assertEqual(
+            query["redirect_uri"],
+            [TEST_SETTINGS["SOCIAL_AUTH_GOOGLE_WEB_REDIRECT_URI"]],
+        )
         self.assertEqual(query["response_type"], ["code"])
         self.assertEqual(query["code_challenge_method"], ["S256"])
         self.assertTrue(query["state"][0])
         self.assertTrue(query["nonce"][0])
 
-    def test_google_callback_creates_account_shows_backend_message_and_redirects_to_otp(self):
+    def test_google_callback_creates_account_shows_backend_message_and_redirects_to_otp(
+        self,
+    ):
         start = self.client.post(
             "/auth/social/google/start/",
-            {"intent": "register", "role": "customer", "first_name": "Nia", "last_name": "Okafor"},
+            {
+                "intent": "register",
+                "role": "customer",
+                "first_name": "Nia",
+                "last_name": "Okafor",
+            },
         )
         state = parse_qs(urlparse(start["Location"]).query)["state"][0]
         identity = SocialAuthApiTests.identity()
-        with patch("social_auth.web_views.exchange_authorization_code", return_value=identity), patch(
-            "social_auth.services.send_verification_email.delay"
-        ):
+        with patch(
+            "social_auth.web_views.exchange_authorization_code", return_value=identity
+        ), patch("social_auth.services.send_verification_email.delay"):
             response = self.client.get(
                 "/auth/social/google/callback/",
                 {"state": state, "code": "one-time-authorization-code"},
@@ -616,7 +797,9 @@ class SocialAuthWebFlowTests(TestCase):
         verify_url = urlparse(response.redirect_chain[0][0])
         self.assertEqual(verify_url.path, "/auth/verify-otp/")
         self.assertEqual(parse_qs(verify_url.query), {"email": ["nia@example.com"]})
-        self.assertContains(response, "Dear esteem Nia! Your account has been successfully registered.")
+        self.assertContains(
+            response, "Dear esteem Nia! Your account has been successfully registered."
+        )
         self.assertFalse(CustomUser.objects.get(email="nia@example.com").is_active)
 
     def test_apple_form_post_uses_state_and_one_time_name_data(self):
@@ -628,25 +811,52 @@ class SocialAuthWebFlowTests(TestCase):
         query = parse_qs(urlparse(start["Location"]).query)
         self.assertEqual(query["response_mode"], ["form_post"])
         state = query["state"][0]
-        identity = SocialAuthApiTests.identity(provider="apple", email="apple@example.com", subject="apple-sub", first_name="", last_name="")
-        apple_user = json.dumps({"name": {"firstName": "Ari", "lastName": "James"}, "email": "apple@example.com"})
-        with patch("social_auth.web_views.exchange_authorization_code", return_value=identity), patch(
-            "social_auth.services.send_verification_email.delay"
-        ):
+        identity = SocialAuthApiTests.identity(
+            provider="apple",
+            email="apple@example.com",
+            subject="apple-sub",
+            first_name="",
+            last_name="",
+        )
+        apple_user = json.dumps(
+            {
+                "name": {"firstName": "Ari", "lastName": "James"},
+                "email": "apple@example.com",
+            }
+        )
+        with patch(
+            "social_auth.web_views.exchange_authorization_code", return_value=identity
+        ), patch("social_auth.services.send_verification_email.delay"):
             response = self.client.post(
                 "/auth/social/apple/callback/",
-                {"state": state, "code": "one-time-authorization-code", "user": apple_user},
+                {
+                    "state": state,
+                    "code": "one-time-authorization-code",
+                    "user": apple_user,
+                },
                 follow=True,
             )
         verify_url = urlparse(response.redirect_chain[0][0])
         self.assertEqual(verify_url.path, "/auth/verify-otp/")
         self.assertEqual(parse_qs(verify_url.query), {"email": ["apple@example.com"]})
-        self.assertTrue(ArtisanProfile.objects.filter(user__email="apple@example.com").exists())
+        self.assertTrue(
+            ArtisanProfile.objects.filter(user__email="apple@example.com").exists()
+        )
         user = CustomUser.objects.get(email="apple@example.com")
         self.assertEqual((user.first_name, user.last_name), ("Ari", "James"))
 
 
-@override_settings(**{**TEST_SETTINGS, "ROOT_URLCONF": "Artisan_platform.urls", "ARTISAN_API_TRANSPORT": "inprocess"})
+@override_settings(
+    **{
+        **TEST_SETTINGS,
+        "ROOT_URLCONF": "Artisan_platform.urls",
+        "ARTISAN_API_TRANSPORT": "inprocess",
+    }
+)
+@skipUnless(
+    apps.is_installed("frontend"),
+    "Legacy in-process frontend is intentionally absent from the separate API project.",
+)
 class SocialAuthFrontendApiBridgeTests(TestCase):
     def setUp(self):
         cache.clear()
@@ -654,16 +864,25 @@ class SocialAuthFrontendApiBridgeTests(TestCase):
     def test_integrated_registration_page_bridge_uses_api_start_and_complete(self):
         start = self.client.post(
             "/auth/social/google/start/",
-            {"intent": "register", "role": "customer", "first_name": "Nia", "last_name": "Okafor"},
+            {
+                "intent": "register",
+                "role": "customer",
+                "first_name": "Nia",
+                "last_name": "Okafor",
+            },
         )
         self.assertEqual(start.status_code, 302)
         state = parse_qs(urlparse(start["Location"]).query)["state"][0]
         self.assertEqual(self.client.session["social_auth_state"], state)
 
         identity = SocialAuthApiTests.identity()
-        with patch("social_auth.api_views.exchange_authorization_code", return_value=identity), patch(
+        with patch(
+            "social_auth.api_views.exchange_authorization_code", return_value=identity
+        ), patch(
             "social_auth.services.send_verification_email.delay"
-        ) as send_email, patch("social_auth.services.secrets.randbelow", return_value=234567):
+        ) as send_email, patch(
+            "social_auth.services.secrets.randbelow", return_value=234567
+        ):
             response = self.client.get(
                 "/auth/social/google/callback/",
                 {"state": state, "code": "one-time-authorization-code"},
