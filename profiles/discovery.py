@@ -122,7 +122,12 @@ def _service_filter_queryset(params, institution, *, available_anywhere):
         if has_location_filter:
             rows = rows.filter(local_match)
     elif has_location_filter:
-        rows = rows.filter(Q(location__isnull=True) | local_match)
+        # A location filter must actually restrict: only services whose coverage
+        # is *in* the requested geography qualify. Null-location ("available
+        # anywhere") offers never bypass a country/state/area/institution filter;
+        # the available_anywhere=true parameter exists for visitors who want
+        # remote-only offers instead.
+        rows = rows.filter(local_match)
 
     return rows
 
@@ -218,7 +223,7 @@ def _service_search_q(search):
             OpenApiParameter("q", str, OpenApiParameter.QUERY, description="Search artisan names, business names, services and service locations."),
             OpenApiParameter("category_name", str, OpenApiParameter.QUERY),
             OpenApiParameter("service_name", str, OpenApiParameter.QUERY),
-            OpenApiParameter("country", str, OpenApiParameter.QUERY, description="Filter by service availability; anywhere offers remain eligible."),
+            OpenApiParameter("country", str, OpenApiParameter.QUERY, description="Restrict to artisans registered in or explicitly serving this country/place."),
             OpenApiParameter("state", str, OpenApiParameter.QUERY),
             OpenApiParameter("area", str, OpenApiParameter.QUERY),
             OpenApiParameter("institution_id", str, OpenApiParameter.QUERY, description="UUID from the active institution catalogue."),

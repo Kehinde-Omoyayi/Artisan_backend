@@ -35,14 +35,18 @@ from home.otp_security import (
     verify_otp_code,
 )
 from home.security_mail import encrypt_email_code
-from notifications.events import notify_payment_initialized
+from notifications.events import (
+    notify_payment_initialized,
+    notify_payout_account_verification_failed,
+    notify_payout_account_verified,
+)
 from services.identity_names import (
     ACCOUNT_NAME_MISMATCH_MESSAGE,
     PROFILE_NAME_CORRECTION_MESSAGE,
     account_name_matches_identity,
     profile_name_matches_identity,
 )
-from services.kyc_crypto import decrypt_identity_name, decrypt_value, encrypt_value
+from services.kyc_crypto import decrypt_identity_name, decrypt_value
 from services.models import ArtisanVerification
 from support.permissions import SupportFinancePermission
 from core.audit import audit_request_action
@@ -466,6 +470,29 @@ def _payout_change_locked_until(account):
     return None
 
 
+def _validated_beneficiary_id(beneficiary_result, *, account_number, bank_code, identity_name, first_name, last_name):
+    """Confirm the provider beneficiary mirrors the resolved account; return its id or None."""
+    beneficiary_data = beneficiary_result.get("data") if isinstance(beneficiary_result, dict) else None
+    if not isinstance(beneficiary_data, dict):
+        return None
+    beneficiary_id_text = str(beneficiary_data.get("id") or "").strip()
+    beneficiary_number = str(beneficiary_data.get("account_number") or "").strip()
+    beneficiary_bank_code = str(
+        beneficiary_data.get("bank_code") or beneficiary_data.get("account_bank") or ""
+    ).strip()
+    beneficiary_name = beneficiary_data.get("full_name") or beneficiary_data.get("beneficiary_name")
+    if (
+        not beneficiary_id_text.isascii()
+        or not beneficiary_id_text.isdigit()
+        or beneficiary_number != account_number
+        or beneficiary_bank_code != bank_code
+        or not isinstance(beneficiary_name, str)
+        or not account_name_matches_identity(beneficiary_name, identity_name, first_name, last_name)
+    ):
+        return None
+    return int(beneficiary_id_text)
+
+
 def _record_failed_payout_otp_attempt(email):
     key = otp_attempts_cache_key(PAYOUT_CHANGE_OTP_PURPOSE, email)
     try:
@@ -658,8 +685,9 @@ class ArtisanPayoutAccountView(APIView):
         if bank is None:
             raise ValidationError({"bank_code": "Select a bank supported by Flutterwave."})
 
+        provider = FlutterwaveClient()
         try:
-            provider_result = FlutterwaveClient().resolve_account(
+            provider_result = provider.resolve_account(
                 account_number=account_number,
                 bank_code=bank_code,
             )
@@ -670,14 +698,46 @@ class ArtisanPayoutAccountView(APIView):
 
         resolved = resolved_account_details(provider_result, account_number)
         if not resolved:
-            return _provider_error_response(unknown=False)
+            notify_payout_account_verification_failed(artisan.user, account_number[-4:])
+            return _provider_error_response(verification_step=True, unknown=False)
         if not account_name_matches_identity(
             resolved["account_name"],
             identity_name,
             artisan.user.first_name,
             artisan.user.last_name,
         ):
+            notify_payout_account_verification_failed(artisan.user, account_number[-4:])
             raise ValidationError({"account_name": ACCOUNT_NAME_MISMATCH_MESSAGE})
+
+        # Finance verification happens at once, not in a second manual step: the
+        # provider transfer beneficiary is created before anything is saved, so
+        # the account is either fully verified and active, or rejected outright
+        # with a notification to the artisan.
+        try:
+            beneficiary_result = provider.create_beneficiary(
+                account_number=account_number,
+                bank_code=bank_code,
+                beneficiary_name=resolved["account_name"],
+                bank_name=bank["name"],
+            )
+        except FlutterwaveUnknownError:
+            notify_payout_account_verification_failed(artisan.user, account_number[-4:])
+            return _provider_error_response(verification_step=True, unknown=True)
+        except FlutterwaveError:
+            notify_payout_account_verification_failed(artisan.user, account_number[-4:])
+            return _provider_error_response(verification_step=True, unknown=False)
+
+        beneficiary_id = _validated_beneficiary_id(
+            beneficiary_result,
+            account_number=account_number,
+            bank_code=bank_code,
+            identity_name=identity_name,
+            first_name=artisan.user.first_name,
+            last_name=artisan.user.last_name,
+        )
+        if beneficiary_id is None:
+            notify_payout_account_verification_failed(artisan.user, account_number[-4:])
+            return _provider_error_response(verification_step=True, unknown=False)
 
         response_status = status.HTTP_201_CREATED if existing is None else status.HTTP_200_OK
         with transaction.atomic():
@@ -749,19 +809,25 @@ class ArtisanPayoutAccountView(APIView):
             account.bank_name = bank["name"]
             account.account_name = resolved["account_name"]
             account.account_number_last4 = account_number[-4:]
-            account.account_number_encrypted = encrypt_value(account_number)
-            account.status = ArtisanPayoutAccount.Status.PENDING
-            account.is_active = False
-            account.is_verified = False
-            account.provider_beneficiary_id = None
+            # The full number is never retained: provider verification already
+            # completed above, so there is no pending state that would need it.
+            account.account_number_encrypted = ""
+            account.status = ArtisanPayoutAccount.Status.VERIFIED
+            account.is_active = True
+            account.is_verified = True
+            account.provider_beneficiary_id = beneficiary_id
             account.provider_subaccount_id = ""
             account.payout_change_locked_until = timezone.now() + PAYOUT_CHANGE_LOCK_DURATION
             account.save()
             response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
 
+            # Notification rows commit atomically with the account save.
+            notify_payout_account_verified(locked_user, account.account_number_last4)
+
         response_data = ArtisanPayoutAccountSerializer(account).data
         response_data["message"] = (
-            "Flutterwave confirmed the bank account name. The account is pending protected finance verification; payouts are not enabled yet."
+            "Flutterwave verified the payout account and activated it. "
+            "The details are locked from changes for 3 days."
         )
         return Response(response_data, status=response_status)
 

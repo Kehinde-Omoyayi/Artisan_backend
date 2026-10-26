@@ -71,7 +71,7 @@ def notify_service_request_created(service_request):
     schedule_email(
         event_key=f"{NotificationEvent.SERVICE_REQUEST_CREATED}:{service_request.id}:customer",
         recipient=customer,
-        subject="Your service request has been received",
+        subject="Distinguished. Your service request has been received",
         message=f"Your {category_name} service request has been received successfully. We are now looking for suitable artisans.",
         action_url=service_request_link(service_request),
     )
@@ -87,7 +87,7 @@ def notify_service_request_updated(service_request):
     schedule_email(
         event_key=f"{NotificationEvent.SERVICE_REQUEST_UPDATED}:{service_request.id}:{uuid4().hex}:customer",
         recipient=customer,
-        subject="Your service request has been updated",
+        subject="Distinguished. Your service request has been updated",
         message=(
             f"Your {category_name} request has been updated. Artisans serving this "
             "category and area have been notified of the change."
@@ -106,7 +106,7 @@ def notify_service_request_withdrawn(service_request):
     schedule_email(
         event_key=f"{NotificationEvent.SERVICE_REQUEST_WITHDRAWN}:{service_request.id}:customer",
         recipient=customer,
-        subject="Your service request has been withdrawn",
+        subject="Distinguished. Your service request has been withdrawn",
         message=(
             f"Your {category_name} request has been withdrawn and no longer appears in "
             "your workspace. It is kept on record for your history and reporting."
@@ -122,7 +122,7 @@ def notify_artisan_service_demand(service_request, artisan_user, revision="creat
     schedule_email(
         event_key=f"service-demand:{service_request.id}:artisan:{artisan_user.id}",
         recipient=artisan_user,
-        subject=f"New {category_name} request in your service area",
+        subject=f"Distinguished. There's a New {category_name} request in your service area",
         message=f"A customer has posted a {category_name} request in an area you serve. Keep your profile active and check your conversations: the customer may contact you directly.",
         action_url=dashboard_link(),
         action_label="Open dashboard",
@@ -171,7 +171,7 @@ def notify_service_request_no_match(service_request):
     schedule_email(
         event_key=f"{NotificationEvent.SERVICE_REQUEST_NO_MATCH}:{service_request.id}:customer",
         recipient=customer,
-        subject="No artisan matched your request yet",
+        subject="Distinguished. No artisan matched your request yet",
         message=f"We could not currently find an available artisan matching your {category_name} request in the selected service area. You can browse artisans and start a conversation directly.",
         action_url=service_request_link(service_request),
     )
@@ -186,7 +186,7 @@ def notify_booking_created(booking):
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_CREATED}:{booking.id}:customer",
         recipient=booking.customer.user,
-        subject="Your booking request has been submitted",
+        subject="Distinguished. Your booking request has been submitted",
         message=f"Your booking request for {booking.request.category.name} has been submitted successfully.",
         action_url=booking_link(booking),
     )
@@ -203,7 +203,7 @@ def notify_booking_accepted(booking):
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_ACCEPTED}:{booking.id}:customer",
         recipient=booking.customer.user,
-        subject="Your booking was accepted",
+        subject="Distinguished. Your booking was accepted",
         message=f"The artisan has accepted your {booking.request.category.name} booking. You can now proceed with payment.",
         action_url=booking_link(booking),
     )
@@ -212,7 +212,7 @@ def notify_booking_rejected(booking):
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_REJECTED}:{booking.id}:customer",
         recipient=booking.customer.user,
-        subject="Your booking was declined",
+        subject="Distinguished. Your booking was declined",
         message="The artisan has declined your booking request. You can select another artisan.",
         action_url=booking_link(booking),
     )
@@ -230,7 +230,7 @@ def notify_booking_started(booking):
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_STARTED}:{booking.id}:customer",
         recipient=booking.customer.user,
-        subject="Your service has started",
+        subject="Distinguished. Your service has started",
         message="The artisan has marked your booking as started.",
         action_url=booking_link(booking),
     )
@@ -239,7 +239,7 @@ def notify_artisan_completed(booking):
     schedule_email(
         event_key=f"{NotificationEvent.ARTISAN_COMPLETED}:{booking.id}:customer",
         recipient=booking.customer.user,
-        subject="The artisan marked your service complete",
+        subject="Distinguished. The artisan marked your service complete",
         message="The artisan has marked the service as completed. Please review the work and confirm completion.",
         action_url=booking_link(booking),
     )
@@ -248,7 +248,7 @@ def notify_customer_completed(booking):
     schedule_email(
         event_key=f"{NotificationEvent.CUSTOMER_COMPLETED}:{booking.id}:artisan",
         recipient=booking.artisan.user,
-        subject="Customer confirmed completion",
+        subject="Distinguished. Customer confirmed completion",
         message="The customer has confirmed completion of the booking. Your payout has entered the release process.",
         action_url=booking_link(booking),
     )
@@ -257,7 +257,7 @@ def notify_booking_disputed(booking):
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_DISPUTED}:{booking.id}:customer",
         recipient=booking.customer.user,
-        subject="Your booking dispute has been recorded",
+        subject="Distinguished. Your booking dispute has been recorded",
         message="Your dispute has been recorded. Payout processing is currently frozen while the matter is reviewed.",
         action_url=booking_link(booking),
     )
@@ -265,7 +265,7 @@ def notify_booking_disputed(booking):
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_DISPUTED}:{booking.id}:artisan",
         recipient=booking.artisan.user,
-        subject="A booking has been disputed",
+        subject="Distinguished. A booking has been disputed",
         message="This booking has been disputed by the customer. Payout processing is currently frozen while the matter is reviewed.",
         action_url=booking_link(booking),
     )
@@ -361,6 +361,39 @@ def notify_payout_failed(payment):
         subject=f"Payout failure: {payment.id}",
         message=f"Payout for payment {payment.id} failed and requires review.",
     )
+
+def notify_payout_account_verified(artisan_user, account_last4):
+    schedule_email(
+        event_key=f"payout-account-verified:{artisan_user.pk}:{uuid4().hex[:12]}",
+        recipient=artisan_user,
+        subject="Your payout account is verified",
+        message=(
+            f"Your payout account ending in {account_last4} was verified with Flutterwave and activated. "
+            "Payouts can now be sent to this account."
+        ),
+    )
+
+
+def notify_payout_account_verification_failed(artisan_user, account_last4):
+    schedule_email(
+        event_key=f"payout-account-verification-failed:{artisan_user.pk}:{uuid4().hex[:12]}",
+        recipient=artisan_user,
+        subject="Payout account verification failed",
+        message=(
+            f"We could not verify your payout account ending in {account_last4} with the payout provider, "
+            "so no changes were saved. Confirm the bank and account number match your verified identity, "
+            "then submit again or contact support."
+        ),
+    )
+    notify_support(
+        event_key=f"payout-account-verification-failed:support:{artisan_user.pk}:{uuid4().hex[:12]}",
+        subject=f"Payout account verification failed for {artisan_user.pk}",
+        message=(
+            f"Payout account ending in {account_last4} for artisan {artisan_user.pk} failed automatic "
+            "provider verification at save time."
+        ),
+    )
+
 
 def notify_verification_submitted(artisan):
     schedule_email(
@@ -656,16 +689,6 @@ def notify_support_case_resolved(case):
     )
 
 
-
-
-
-
-
-
-
-
-
-
 def notify_support_refund_requested(action):
     notify_support(
         event_key=(
@@ -786,10 +809,4 @@ def notify_request_not_interested(service_request, artisan):
         subject=f'Request #{service_request.pk} hidden from your matches',
         message='You marked this request as not interested. It is hidden only from your matched-request board and remains open to other eligible artisans.',
         action_url='/account/artisan/requests/', action_label='Open matching requests',
-    )
-    schedule_email(
-        event_key=key + ':customer', recipient=service_request.requester,
-        subject=f'An artisan passed on request #{service_request.pk}',
-        message='One eligible artisan marked your request as not interested. Your request has not been rejected or closed for everyone; other eligible artisans can still respond.',
-        action_url=f'/requests/{service_request.pk}/', action_label='View your request',
     )

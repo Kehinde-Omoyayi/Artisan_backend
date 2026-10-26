@@ -263,7 +263,12 @@ class LocationField(serializers.Field):
             str(data.get(field) or "").strip() for field in ("country", "state", "area")
         ):
             self.fail("incomplete")
-        if getattr(getattr(self.parent, "Meta", None), "model", None) is ServiceRequest:
+        parent_model = getattr(getattr(self.parent, "Meta", None), "model", None)
+        if parent_model in (ServiceRequest, ArtisanService):
+            # Service requests and artisan service offerings accept any place in
+            # the worldwide geographic catalogue: first reuse an existing
+            # Locations row, otherwise resolve the canonical spelling and let the
+            # owning serializer create the row on save.
             try:
                 return resolve_existing_location(data)
             except serializers.ValidationError:
@@ -276,7 +281,7 @@ class LocationField(serializers.Field):
                     raise serializers.ValidationError(
                         "Choose a location from the geographic catalogue."
                     )
-                # Resolve to the same canonical Locations model when the request is saved.
+                # Resolve to the same canonical Locations model when saved.
                 return location
         return resolve_existing_location(data)
 
@@ -624,6 +629,49 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+
+        # An artisan may offer the same service as Anywhere (no location) *and*
+        # at specific locations — those coexist — but an exact duplicate of the
+        # same service at the same location is rejected here with a readable
+        # message instead of a database integrity error.
+        if artisan is not None and service is not None:
+            location = attrs.get(
+                "location", getattr(self.instance, "location", None)
+            )
+            if location is None:
+                duplicates = ArtisanService.objects.filter(
+                    artisan=artisan, service=service, location__isnull=True
+                )
+            else:
+                if isinstance(location, Locations):
+                    names = (
+                        location.country, location.state, location.area
+                    )
+                else:  # canonical dict from the geographic catalogue
+                    names = (
+                        str(location.get("country") or "").strip(),
+                        str(location.get("state") or "").strip(),
+                        str(location.get("area") or "").strip(),
+                    )
+                duplicates = ArtisanService.objects.filter(
+                    artisan=artisan,
+                    service=service,
+                    location__country__iexact=names[0],
+                    location__state__iexact=names[1],
+                    location__area__iexact=names[2],
+                )
+            if self.instance is not None:
+                duplicates = duplicates.exclude(pk=self.instance.pk)
+            if duplicates.exists():
+                raise serializers.ValidationError(
+                    {
+                        "location": (
+                            "You already offer this service at this location. "
+                            "Choose a different location or Anywhere, or edit "
+                            "the existing offering instead."
+                        )
+                    }
+                )
 
         return attrs
 
