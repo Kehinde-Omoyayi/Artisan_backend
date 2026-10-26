@@ -21,46 +21,30 @@ class ConversationStartSerializer(serializers.Serializer):
 
 
 class ConversationCreateSerializer(serializers.Serializer):
-    participants = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
-        required=False,
-        allow_empty=False,
-        min_length=1,
-        max_length=2,
-        help_text="One target user ID, or both participant user IDs. The authenticated user is always a participant.",
-    )
     initial_message = serializers.CharField(
         required=False, allow_blank=True, max_length=5000
     )
     conversation_type = serializers.ChoiceField(
         choices=Conversation.ConversationType.choices,
         required=False,
-        default=Conversation.ConversationType.DIRECT,
+        default=Conversation.ConversationType.SERVICE,
     )
     artisan_id = serializers.UUIDField(required=False, allow_null=True)
     service_id = serializers.IntegerField(required=False, allow_null=True)
 
     def validate(self, attrs):
-        kind = attrs.get("conversation_type", Conversation.ConversationType.DIRECT)
-        participants = attrs.get("participants") or []
+        kind = attrs.get("conversation_type", Conversation.ConversationType.SERVICE)
         artisan_id = attrs.get("artisan_id")
-        if (
-            kind == Conversation.ConversationType.DIRECT
-            and not participants
-            and not artisan_id
-        ):
-            raise serializers.ValidationError(
-                {"participants": "Provide the target participant(s)."}
-            )
-        if kind == Conversation.ConversationType.SERVICE and not artisan_id:
-            raise serializers.ValidationError(
-                {"artisan_id": "artisan_id is required for a service conversation."}
-            )
-        if kind == Conversation.ConversationType.SERVICE and participants:
+        if kind != Conversation.ConversationType.SERVICE:
             raise serializers.ValidationError(
                 {
-                    "participants": "Do not provide participants for a service conversation."
+                    "conversation_type": "New conversations must be service-request conversations. "
+                    "Use Request Artisan from the artisan profile (conversation_type SERVICE with artisan_id)."
                 }
+            )
+        if not artisan_id:
+            raise serializers.ValidationError(
+                {"artisan_id": "artisan_id is required for a service conversation."}
             )
         return attrs
 
@@ -182,6 +166,10 @@ class ConversationBookingSummarySerializer(serializers.Serializer):
     scheduled_start = serializers.DateTimeField(source="scheduled_time_start")
     scheduled_end = serializers.DateTimeField(source="scheduled_time_end")
     price_agreed = serializers.DecimalField(max_digits=12, decimal_places=2)
+    service_duration_value = serializers.IntegerField(allow_null=True)
+    service_duration_unit = serializers.CharField(allow_blank=True)
+    actual_started_at = serializers.DateTimeField(allow_null=True)
+    countdown_ends_at = serializers.DateTimeField(allow_null=True)
     artisan_completed_at = serializers.DateTimeField(allow_null=True)
     customer_completed_at = serializers.DateTimeField(allow_null=True)
     finalized_at = serializers.DateTimeField(allow_null=True)
@@ -217,6 +205,17 @@ class ConversationPaymentSummarySerializer(serializers.Serializer):
         return str(link) if link else None
 
 
+class OfferMaterialSerializer(serializers.ModelSerializer):
+    """Itemized material line. Totals are always computed on the server."""
+
+    class Meta:
+        from .models import OfferMaterial
+
+        model = OfferMaterial
+        fields = ["id", "name", "unit", "quantity", "unit_price", "line_total", "position"]
+        read_only_fields = ["id", "line_total", "position"]
+
+
 class OfferSerializer(serializers.ModelSerializer):
     duration_minutes = serializers.SerializerMethodField()
 
@@ -226,6 +225,13 @@ class OfferSerializer(serializers.ModelSerializer):
     creator_id = serializers.IntegerField(source="created_by_id", read_only=True)
     parent_offer_id = serializers.UUIDField(read_only=True, allow_null=True)
     currency = serializers.CharField(default="NGN", read_only=True)
+    materials = OfferMaterialSerializer(many=True, read_only=True)
+    duration_label = serializers.SerializerMethodField()
+
+    def get_duration_label(self, obj) -> str:
+        from .services import duration_label
+
+        return duration_label(obj.duration_value, obj.duration_unit)
 
     class Meta:
         model = Offer
@@ -236,7 +242,11 @@ class OfferSerializer(serializers.ModelSerializer):
             "parent_offer_id",
             "version",
             "materials_details",
+            "materials",
             "duration_minutes",
+            "duration_value",
+            "duration_unit",
+            "duration_label",
             "labour_amount",
             "materials_amount",
             "transport_amount",
@@ -260,7 +270,23 @@ class OfferSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "conversation", "status", "created_at", "updated_at"]
 
 
+class OfferMaterialInputSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=120, trim_whitespace=True)
+    quantity = serializers.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal("0.01")
+    )
+    unit_price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=Decimal("0")
+    )
+
+
 class OfferCreateSerializer(serializers.Serializer):
+    # Optional structured material rows. When supplied, the backend recomputes
+    # the materials subtotal from quantity × unit price and rejects payload
+    # totals that disagree.
+    materials = serializers.ListField(
+        child=OfferMaterialInputSerializer(), required=False, allow_empty=True
+    )
     materials_details = serializers.CharField(
         max_length=1500, allow_blank=True, default=""
     )
@@ -295,7 +321,17 @@ class OfferCreateSerializer(serializers.Serializer):
     scope = serializers.CharField(max_length=5000)
     notes = serializers.CharField(max_length=3000, required=False, allow_blank=True)
     scheduled_start = serializers.DateTimeField()
-    scheduled_end = serializers.DateTimeField()
+    # Legacy clients may send scheduled_end directly; the current UI sends a
+    # canonical duration instead, and the service layer derives scheduled_end
+    # from scheduled_start + duration.
+    scheduled_end = serializers.DateTimeField(required=False, allow_null=True)
+    duration_value = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=8760
+    )
+    duration_unit = serializers.ChoiceField(
+        choices=[("HOURS", "Hours"), ("DAYS", "Days"), ("WEEKS", "Weeks")],
+        required=False,
+    )
     expires_at = serializers.DateTimeField()
 
 
@@ -380,11 +416,10 @@ class MessageSerializer(serializers.ModelSerializer):
 
 
 class ConversationMessageCreateResponseSerializer(MessageSerializer):
-    assistant = serializers.JSONField(read_only=True)
     guidance = serializers.JSONField(read_only=True)
 
     class Meta(MessageSerializer.Meta):
-        fields = MessageSerializer.Meta.fields + ["assistant", "guidance"]
+        fields = MessageSerializer.Meta.fields + ["guidance"]
         read_only_fields = fields
 
 
@@ -637,7 +672,6 @@ class ConversationDetailSerializer(ConversationListSerializer):
 
     viewer_role = serializers.SerializerMethodField()
     viewer_id = serializers.SerializerMethodField()
-    assistant = serializers.SerializerMethodField()
     guidance = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
     artisan = serializers.SerializerMethodField()
@@ -668,7 +702,9 @@ class ConversationDetailSerializer(ConversationListSerializer):
     additional_orders = serializers.SerializerMethodField()
     active_offer = serializers.SerializerMethodField()
     available_actions = serializers.SerializerMethodField()
-    next_question = serializers.SerializerMethodField()
+    request_options = serializers.SerializerMethodField()
+    description_confirmed_at = serializers.SerializerMethodField()
+    description_confirmed = serializers.SerializerMethodField()
     journey = serializers.SerializerMethodField()
     dispute_case = serializers.SerializerMethodField()
 
@@ -698,21 +734,6 @@ class ConversationDetailSerializer(ConversationListSerializer):
         return booking_guidance(conversation=obj, user=request.user, booking=booking,
                                 offer=getattr(obj, "_active_offer", None),
                                 payment=getattr(booking, "escrow_payment", None))
-
-    @extend_schema_field(serializers.JSONField(allow_null=True))
-    def get_assistant(self, obj):
-        from .automation import assistant_context
-
-        request = self.context.get("request")
-        if not request:
-            return None
-        return assistant_context(
-            conversation=obj,
-            user=request.user,
-            booking=getattr(obj, "_booking", None),
-            offer=getattr(obj, "_active_offer", None),
-            payment=getattr(getattr(obj, "_booking", None), "escrow_payment", None),
-        )
 
     @extend_schema_field(ConversationCustomerSummarySerializer(allow_null=True))
     def get_customer(self, obj):
@@ -840,11 +861,28 @@ class ConversationDetailSerializer(ConversationListSerializer):
     def get_available_actions(self, obj) -> list[str]:
         return getattr(obj, "_available_actions", [])
 
-    def get_next_question(self, obj) -> str | None:
-        request = self.context.get("request")
-        if request and obj.customer_id != request.user.id:
-            return None
-        return getattr(obj, "_next_question", None)
+    @extend_schema_field(serializers.JSONField(allow_null=True))
+    def get_request_options(self, obj):
+        """Explicit request form catalogue: artisan services and real locations.
+
+        Supplied for the structured request form only; there is no conversational
+        assistant interpreting chat messages.
+        """
+        from .request_options import request_options_for
+
+        if obj.conversation_type != Conversation.ConversationType.SERVICE:
+            return {"categories": [], "services": [], "locations": []}
+        if obj.request_submitted or getattr(obj.service_request, "status", None) == "CLOSED":
+            return {"categories": [], "services": [], "locations": []}
+        return request_options_for(obj)
+
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_description_confirmed_at(self, obj):
+        return getattr(obj, "_description_confirmed_at", getattr(obj, "description_confirmed_at", None))
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_description_confirmed(self, obj) -> bool:
+        return bool(getattr(obj, "_description_confirmed", False))
 
     @extend_schema_field(ConversationJourneyStepSerializer(many=True))
     def get_journey(self, obj):
@@ -980,18 +1018,19 @@ class ConversationDetailSerializer(ConversationListSerializer):
             "request_reference",
             "viewer_role",
             "viewer_id",
-            "assistant",
             "guidance",
             "customer",
             "artisan",
             "service_request",
             "request_draft",
+            "request_options",
+            "description_confirmed_at",
+            "description_confirmed",
             "booking",
             "payment",
             "additional_orders",
             "active_offer",
             "available_actions",
-            "next_question",
             "journey",
             "dispute_case",
         ]

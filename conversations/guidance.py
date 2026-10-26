@@ -6,6 +6,14 @@ it cannot accept an offer, collect money, start work or confirm completion.
 from django.utils import timezone
 
 
+def _description_confirmed(conversation):
+    hydrated = getattr(conversation, '_description_confirmed', None)
+    if hydrated is not None:
+        return bool(hydrated)
+    from .services import description_currently_confirmed
+    return description_currently_confirmed(conversation)
+
+
 def booking_guidance(*, conversation, user, booking=None, offer=None, payment=None, actions=None):
     if conversation.conversation_type != 'SERVICE':
         return None
@@ -95,6 +103,13 @@ def booking_guidance(*, conversation, user, booking=None, offer=None, payment=No
                     'Check scope, labour, materials, transport, extra charges, total, schedule, exclusions, payment and workmanship terms. Ask questions or request a revision before accepting.',
                     ['Use the formal Accept/Decline/Revision controls, not a message saying “agreed”.', 'Accepting a quote creates the next booking/payment step; it is not payment confirmation.'],
                     'REVIEW_OFFER','Find quote controls')
+    if conversation.request_submitted and not _description_confirmed(conversation):
+        return show('CLARIFY_DESCRIPTION',
+                    'Confirm the clarified work description' if artisan else 'Wait for the artisan to confirm the description',
+                    'Before a formal quote, the artisan must confirm that the chat clarification and request details describe the work well enough to price it. Quote controls stay locked until that explicit confirmation.' if artisan else 'Clarify the job with the artisan here. The artisan must mark the description as done before any formal quote can be sent.',
+                    ['Read the request summary and chat history, then use Description done when the work is clear.' if artisan else 'Answer the artisan’s questions so the description can be confirmed.', 'Description confirmation is recorded and versioned; no quote or payment happens before it.'],
+                    'CONFIRM_DESCRIPTION' if artisan and 'CONFIRM_DESCRIPTION' in available else None,
+                    'Confirm the description' if artisan and 'CONFIRM_DESCRIPTION' in available else None)
     return show('PREPARE_QUOTE' if artisan else 'WAITING_FOR_QUOTE',
                 'Prepare a clear formal quote' if artisan else 'Clarify the job while waiting for a quote',
                 'Review the submitted request, confirm coverage/availability and prepare the complete formal quote. A chat estimate is not an accepted booking.' if artisan else 'The request is submitted. Answer questions here and wait for the artisan’s formal quote; do not pay an informal chat estimate.',
@@ -110,7 +125,9 @@ EVENT_GUIDANCE = {
     'REFUNDED': 'Review the transaction record for the refund outcome. Start a new request if new work is needed.',
 
     'CONVERSATION_STARTED': 'Customer: describe the job, review the draft and choose Send Request. Artisan: clarify the job; wait for submission before quoting. Chat alone does not book or pay.',
-    'REQUEST_SUBMITTED': 'Artisan: review the job and send a full formal quote. Customer: answer questions and review the quote before accepting. Do not pay a chat estimate.',
+    'REQUEST_SUBMITTED': 'Artisan: review the job, clarify it in chat, then confirm the description before sending a full formal quote. Customer: answer questions and review the quote before accepting. Do not pay a chat estimate.',
+    'REQUEST_GREETING': 'Welcome the customer and clarify the job. Artisan: confirm the description once it is clear; quotes unlock only after that confirmation.',
+    'DESCRIPTION_CONFIRMED': 'The artisan confirmed the clarified description. Artisan: prepare the itemized formal quote with start date and duration. Customer: review scope and ask questions while waiting.',
     'ARTISAN_RESPONDED': 'Customer and artisan: clarify scope, access and availability here. Artisan: prepare a formal quote; the room assignment is not a confirmed booking.',
     'OFFER_CREATED': 'Customer: review all terms, then explicitly accept, decline or request revision. Artisan: answer questions. Quote acceptance is not payment confirmation.',
     'OFFER_COUNTERED': 'Review the new quote version. Use the formal controls to respond; a chat agreement does not change accepted terms.',

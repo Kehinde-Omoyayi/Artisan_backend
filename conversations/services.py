@@ -29,6 +29,7 @@ from .models import (
     ConversationReadState,
     Message,
     Offer,
+    OfferMaterial,
 )
 from .security import MAX_ATTACHMENTS_PER_MESSAGE, validate_attachment
 from .state import derive_conversation_state
@@ -651,6 +652,44 @@ def apply_request_patch(*, conversation, user, payload):
     return service_request, conversation
 
 
+def _greeting_text(customer):
+    name = str(getattr(customer, "first_name", "") or "").strip() or "there"
+    return f"Good day {name}, can you describe what you need."
+
+
+def insert_request_greeting(*, conversation):
+    """Insert the single server-generated opening greeting once per room.
+
+    This is a system message authored by the marketplace, not by the artisan,
+    and it is deliberately excluded from workflow notifications (the customer
+    already has the room open).
+    """
+    if conversation.conversation_type != Conversation.ConversationType.SERVICE:
+        return None
+    customer = conversation.customer
+    try:
+        with transaction.atomic():
+            message, created = Message.objects.get_or_create(
+                event_key=f"conversation:{conversation.pk}:greeting",
+                defaults={
+                    "conversation": conversation,
+                    "sender": None,
+                    "message_type": Message.MessageType.SYSTEM,
+                    "event_code": "REQUEST_GREETING",
+                    "body": _greeting_text(customer) if customer else "Good day there, can you describe what you need.",
+                    "metadata": {"greeting": True},
+                },
+            )
+    except IntegrityError:
+        return Message.objects.filter(
+            event_key=f"conversation:{conversation.pk}:greeting",
+            conversation=conversation,
+        ).first()
+    if message.conversation_id != conversation.id:
+        return None
+    return message
+
+
 def start_conversation(*, user, artisan_id, service_id=None):
     if not hasattr(user, "customer_profile"):
         raise PermissionDenied("Only a customer can start a service conversation.")
@@ -734,6 +773,7 @@ def start_conversation(*, user, artisan_id, service_id=None):
                 event_code="CONVERSATION_STARTED",
                 event_key=f"conversation:{conversation.id}:started",
             )
+            insert_request_greeting(conversation=conversation)
     return conversation, created
 
 
@@ -743,94 +783,16 @@ def _direct_key(user_id, target_user_id):
 
 
 def start_direct_conversation(*, user, target_user=None, artisan_id=None):
-    """Create or resume a generic two-user direct conversation.
+    """Direct customer↔artisan chats are retired.
 
-    This deliberately does not populate customer/artisan/service_request because a direct
-    chat is not a marketplace service workflow. Marketplace service conversations continue
-    to use start_conversation().
+    Existing DIRECT rooms remain readable history; new conversations must be
+    service-request conversations created through start_conversation / the
+    `Request Artisan` action. This service function therefore always rejects.
     """
-    if not user.is_authenticated:
-        raise PermissionDenied("Authentication is required.")
-
-    if artisan_id is not None:
-        try:
-            artisan = ArtisanProfile.objects.select_related("user", "verification").get(
-                pk=artisan_id
-            )
-        except ArtisanProfile.DoesNotExist as exc:
-            raise NotFound("Artisan not found.") from exc
-        if artisan.user_id == user.id:
-            raise PermissionDenied(
-                "You cannot start a direct conversation with yourself."
-            )
-        if (
-            not artisan.user.is_active
-            or artisan.profile_status != "ACTIVE"
-            or getattr(artisan, "verification", None) is None
-            or artisan.verification.verification_status != "VERIFIED"
-        ):
-            raise PermissionDenied(
-                "The artisan is not currently available for direct messaging."
-            )
-        target_user = artisan.user
-
-    if target_user is None:
-        raise ValidationError({"participant": "A target participant is required."})
-    if target_user.id == user.id:
-        raise ValidationError(
-            {"participants": "You cannot start a conversation with yourself."}
-        )
-    if not target_user.is_active:
-        raise PermissionDenied("The selected user is not active.")
-    if getattr(target_user, "is_staff", False):
-        raise PermissionDenied(
-            "Staff conversations must be opened through support workflows."
-        )
-
-    target_artisan = getattr(target_user, "artisan_profile", None)
-    sender_artisan = getattr(user, "artisan_profile", None)
-    if target_artisan and hasattr(user, "customer_profile"):
-        return start_conversation(user=user, artisan_id=target_artisan.pk)
-    if (
-        sender_artisan
-        and hasattr(target_user, "customer_profile")
-        and not target_artisan
-    ):
-        return start_conversation(user=target_user, artisan_id=sender_artisan.pk)
-    key = _direct_key(user.id, target_user.id)
-    with transaction.atomic():
-        conversation = (
-            Conversation.objects.select_for_update(of=("self",))
-            .filter(
-                conversation_type=Conversation.ConversationType.DIRECT,
-                direct_key=key,
-            )
-            .first()
-        )
-        created = False
-        if conversation is None:
-            try:
-                conversation = Conversation.objects.create(
-                    conversation_type=Conversation.ConversationType.DIRECT,
-                    direct_key=key,
-                )
-                conversation.participants.set([user, target_user])
-                created = True
-            except IntegrityError:
-                conversation = Conversation.objects.select_for_update(of=("self",)).get(
-                    conversation_type=Conversation.ConversationType.DIRECT,
-                    direct_key=key,
-                )
-        else:
-            conversation.participants.set([user, target_user])
-        if created:
-            record_conversation_event(
-                conversation=conversation,
-                event_code="CONVERSATION_STARTED",
-                event_key=f"conversation:{conversation.id}:started",
-                metadata={"conversation_type": Conversation.ConversationType.DIRECT},
-            )
-    return conversation, created
+    raise PermissionDenied(
+        "Unrestricted direct artisan messaging is no longer available. "
+        "Use Request Artisan to open a service-request conversation."
+    )
 
 
 def ensure_participants(conversation):
@@ -972,15 +934,9 @@ def send_message(*, conversation, user, body, attachments=None, idempotency_key=
             ).dispatch_outbox_events.delay(),
             robust=True,
         )
-    try:
-        from .automation import apply_message_automation
-
-        updated_conversation, _service_request = apply_message_automation(
-            conversation=conversation, user=user, body=body
-        )
-        conversation = updated_conversation
-    except Exception:
-        logger.exception("message_automation_failed conversation=%s", conversation.id)
+    # The retired rule-based assistant used to parse chat text into the request
+    # draft here. Structured request data now only changes through the explicit,
+    # validated request form (apply_request_patch); chat is plain messaging.
     if (
         conversation.service_request_id
         and conversation.artisan_id
@@ -997,6 +953,128 @@ def send_message(*, conversation, user, body, attachments=None, idempotency_key=
     return message
 
 
+def _description_signature(conversation):
+    """Digest of the effective request description and additional details.
+
+    While the request is still a draft these values live in conversation.draft;
+    after submission they live on the ServiceRequest. Either way the artisan can
+    only confirm the scope the customer currently has on record — a later
+    material edit changes the digest and invalidates the confirmation.
+    """
+    import hashlib
+
+    if conversation.conversation_type != Conversation.ConversationType.SERVICE:
+        return ""
+    if conversation.request_submitted and conversation.service_request_id:
+        description = getattr(conversation.service_request, "description", "") or ""
+        details = getattr(conversation.service_request, "additional_details", "") or ""
+    else:
+        draft = conversation.draft if isinstance(conversation.draft, dict) else {}
+        description = str(draft.get("description") or "")
+        details = str(draft.get("additional_details") or "")
+    normalized = "|".join(
+        " ".join(str(part).split()) for part in (description, details)
+    )
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def description_currently_confirmed(conversation):
+    if not getattr(conversation, "description_confirmed_at", None):
+        return False
+    if not getattr(conversation, "description_confirmed_hash", ""):
+        return False
+    return conversation.description_confirmed_hash == _description_signature(
+        conversation
+    )
+
+
+def _effective_description(conversation):
+    if conversation.request_submitted and conversation.service_request_id:
+        return str(conversation.service_request.description or "").strip()
+    draft = conversation.draft if isinstance(conversation.draft, dict) else {}
+    return str(draft.get("description") or "").strip()
+
+
+def confirm_description(*, conversation, user):
+    """Artisan's explicit 'Description Done' action.
+
+    Confirms the artisan agrees the scope described so far is understood. This is
+    persisted on the conversation; offer creation requires this confirmation to
+    match the current description (materially revised descriptions must be
+    re-confirmed before a new offer may be sent).
+    """
+    if conversation.conversation_type != Conversation.ConversationType.SERVICE:
+        raise ValidationError(
+            {"conversation": "Only service-request conversations have a scope confirmation."}
+        )
+    with transaction.atomic():
+        if conversation.service_request_id:
+            ServiceRequest.objects.select_for_update().get(
+                pk=conversation.service_request_id
+            )
+        conversation = (
+            Conversation.objects.select_for_update(of=("self",))
+            .select_related("artisan__user", "customer", "service_request")
+            .get(pk=conversation.pk)
+        )
+        if (
+            not conversation.artisan_id
+            or conversation.artisan.user_id != user.id
+        ):
+            raise PermissionDenied(
+                "Only the assigned artisan can confirm the description."
+            )
+        service_request = conversation.service_request
+        if service_request is None:
+            raise ValidationError(
+                {"request": "This conversation has no service request to confirm."}
+            )
+        if service_request.status == "CLOSED":
+            raise ValidationError(
+                {"request": "This request is closed; start a new service request."}
+            )
+        if Booking.objects.filter(request_id=service_request.pk).exists():
+            raise ValidationError(
+                {"request": "A booking already exists for this request; scope should be handled through add-on orders."}
+            )
+        description = _effective_description(conversation)
+        if len(description) < 10 or len(description.split()) < 3:
+            raise ValidationError(
+                {
+                    "description": "The request needs a meaningful description before it can be confirmed."
+                }
+            )
+        signature = _description_signature(conversation)
+        already_current = (
+            conversation.description_confirmed_at is not None
+            and conversation.description_confirmed_hash == signature
+        )
+        if not already_current:
+            conversation.description_confirmed_at = timezone.now()
+            conversation.description_confirmed_hash = signature
+            conversation.save(
+                update_fields=[
+                    "description_confirmed_at",
+                    "description_confirmed_hash",
+                    "updated_at",
+                ]
+            )
+            record_conversation_event(
+                conversation=conversation,
+                event_code="DESCRIPTION_CONFIRMED",
+                event_key=(
+                    f"conversation:{conversation.pk}:description-confirmed:"
+                    f"{signature[:16]}"
+                ),
+                metadata={"confirmed_by": user.id},
+                body=(
+                    "The artisan confirmed the described scope of work. "
+                    "A formal quote can now be prepared from the described scope."
+                ),
+            )
+    return conversation
+
+
 def get_current_offer(conversation, *, lock=False):
     queryset = conversation.offers.filter(
         status__in=[Offer.Status.PROPOSED, Offer.Status.REVISION_REQUESTED]
@@ -1009,25 +1087,163 @@ def get_current_offer(conversation, *, lock=False):
     return offer
 
 
+def _quantize_money(value, field):
+    try:
+        parsed = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (TypeError, InvalidOperation, ValueError) as exc:
+        raise ValidationError({field: "Enter a valid monetary amount."}) from exc
+    if not parsed.is_finite():
+        raise ValidationError({field: "Enter a finite monetary amount."})
+    return parsed
+
+
+def _validate_material_items(items):
+    """Validate the itemized material rows and compute the subtotal.
+
+    The backend never trusts client-computed totals: quantity × unit price is
+    recomputed per row and summed here.
+    """
+    if not isinstance(items, list):
+        raise ValidationError({"materials": "Materials must be a list of rows."})
+    if len(items) > 100:
+        raise ValidationError({"materials": "At most 100 material rows are allowed."})
+    normalized = []
+    subtotal = Decimal("0.00")
+    for index, row in enumerate(items):
+        if not isinstance(row, dict):
+            raise ValidationError({"materials": "Each material row must be an object."})
+        name = str(row.get("name", "")).strip()
+        unit = str(row.get("unit", "")).strip()[:40]
+        if not (1 <= len(name) <= 120):
+            raise ValidationError(
+                {"materials": f"Material row {index + 1} needs a non-empty name (max 120 characters)."}
+            )
+        quantity = _quantize_money(row.get("quantity"), "materials")
+        if quantity <= 0 or quantity > Decimal("99999999.99"):
+            raise ValidationError(
+                {"materials": f"Material row {index + 1}: quantity must be greater than zero."}
+            )
+        unit_price = _quantize_money(row.get("unit_price"), "materials")
+        if unit_price < 0:
+            raise ValidationError(
+                {"materials": f"Material row {index + 1}: unit price cannot be negative."}
+            )
+        line_total = (quantity * unit_price).quantize(Decimal("0.01"))
+        subtotal += line_total
+        normalized.append(
+            {
+                "position": index,
+                "name": name,
+                "unit": unit,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "line_total": line_total,
+            }
+        )
+    return normalized, subtotal
+
+
+DURATION_UNITS = ("HOURS", "DAYS", "WEEKS")
+_MAX_DURATION = {"HOURS": 8760, "DAYS": 730, "WEEKS": 104}
+
+
+def _duration_delta(duration_value, duration_unit):
+    from datetime import timedelta
+
+    if duration_unit == "HOURS":
+        return timedelta(hours=duration_value)
+    if duration_unit == "WEEKS":
+        return timedelta(weeks=duration_value)
+    return timedelta(days=duration_value)
+
+
+def duration_label(value, unit):
+    unit_label = {"HOURS": "hour", "DAYS": "day", "WEEKS": "week"}[unit]
+    return f"{value} {unit_label}{'' if value == 1 else 's'}"
+
+
+def _resolve_offer_duration(payload, scheduled_start):
+    """Resolve duration fields and the scheduled end.
+
+    When the artisan supplies a canonical duration (numeric value plus unit) the
+    scheduled end is computed from the proposed start server-side. A client may
+    still supply scheduled_end, but it must agree with the computed end exactly.
+    """
+    raw_value = payload.get("duration_value")
+    raw_unit = payload.get("duration_unit")
+    scheduled_end = payload.get("scheduled_end")
+    now = timezone.now()
+    if raw_value not in (None, ""):
+        try:
+            duration_value = int(str(raw_value))
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(
+                {"duration_value": "Duration must be a whole number."}
+            ) from exc
+        duration_unit = str(raw_unit or "").strip().upper()
+        if duration_unit not in DURATION_UNITS:
+            raise ValidationError(
+                {"duration_unit": "Duration unit must be hours, days or weeks."}
+            )
+        if duration_value < 1 or duration_value > _MAX_DURATION[duration_unit]:
+            raise ValidationError(
+                {"duration_value": "This duration is outside the allowed range."}
+            )
+        computed_end = scheduled_start + _duration_delta(duration_value, duration_unit)
+        if scheduled_end not in (None, "") and scheduled_end != computed_end:
+            raise ValidationError(
+                {"scheduled_end": "Scheduled end does not match the stated start and duration."}
+            )
+        return duration_value, duration_unit, computed_end, now
+    if scheduled_end in (None, ""):
+        raise ValidationError(
+            {"duration_value": "State a duration (for example 3 days) or a scheduled end."}
+        )
+    delta = scheduled_end - scheduled_start
+    if delta.total_seconds() <= 0:
+        # The shared schedule sanity check below reports the precise error.
+        return 1, "DAYS", scheduled_end, now
+    import math
+
+    derived_days = max(1, math.ceil(delta.total_seconds() / 86400))
+    return derived_days, "DAYS", scheduled_end, now
+
+
 def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
     if not conversation.request_submitted or not conversation.artisan_id:
         raise ValidationError("Complete the service request before creating an offer.")
     if conversation.customer_id != user.id and conversation.artisan.user_id != user.id:
         raise PermissionDenied("You are not a participant in this conversation.")
-    try:
-        labour = Decimal(str(payload.get("labour_amount"))).quantize(Decimal("0.01"))
-        materials = Decimal(str(payload.get("materials_amount"))).quantize(
-            Decimal("0.01")
-        )
-        total = Decimal(str(payload.get("total_amount"))).quantize(Decimal("0.01"))
-    except (TypeError, InvalidOperation, ValueError) as exc:
+    offer_by_artisan = conversation.artisan.user_id == user.id
+    if offer_by_artisan and not description_currently_confirmed(conversation):
         raise ValidationError(
-            {"amount": "Offer amounts must be valid decimal amounts."}
-        ) from exc
-    if not all(amount.is_finite() for amount in (labour, materials, total)):
-        raise ValidationError(
-            {"amount": "Offer amounts must be finite decimal values."}
+            {
+                "request": "Confirm the clarified scope with Description Done before sending an offer."
+                + (
+                    " The description changed, so confirm the revised scope again."
+                    if conversation.description_confirmed_at
+                    else ""
+                )
+            }
         )
+    material_rows = payload.get("materials")
+    normalized_items = None
+    labour = _quantize_money(payload.get("labour_amount"), "labour_amount")
+    if material_rows is not None:
+        normalized_items, materials = _validate_material_items(material_rows)
+        if (
+            payload.get("materials_amount") not in (None, "")
+            and _quantize_money(payload.get("materials_amount"), "materials_amount")
+            != materials
+        ):
+            raise ValidationError(
+                {
+                    "materials_amount": "Materials subtotal does not match the itemized material rows."
+                }
+            )
+    else:
+        materials = _quantize_money(payload.get("materials_amount"), "materials_amount")
+    total = _quantize_money(payload.get("total_amount"), "total_amount")
     if labour < 0 or materials < 0:
         raise ValidationError("Labour and materials amounts cannot be negative.")
     if total <= 0:
@@ -1074,19 +1290,19 @@ def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
         raise ValidationError(
             {"total_amount": "Offer exceeds the platform transaction limit."}
         )
-    try:
-        scheduled_start = payload["scheduled_start"]
-        scheduled_end = payload["scheduled_end"]
-        expires_at = payload["expires_at"]
-    except KeyError as exc:
-        raise ValidationError({str(exc): "This field is required."}) from exc
-    if (
-        scheduled_start.tzinfo is None
-        or scheduled_end.tzinfo is None
-        or expires_at.tzinfo is None
-    ):
+    if payload.get("scheduled_start") in (None, ""):
+        raise ValidationError({"scheduled_start": "This field is required."})
+    if payload.get("expires_at") in (None, ""):
+        raise ValidationError({"expires_at": "This field is required."})
+    scheduled_start = payload["scheduled_start"]
+    expires_at = payload["expires_at"]
+    if scheduled_start.tzinfo is None or expires_at.tzinfo is None:
         raise ValidationError("Offer datetimes must be timezone-aware.")
-    now = timezone.now()
+    duration_value, duration_unit, scheduled_end, now = _resolve_offer_duration(
+        payload, scheduled_start
+    )
+    if scheduled_end.tzinfo is None:
+        raise ValidationError("Offer datetimes must be timezone-aware.")
     if scheduled_start < now or scheduled_end <= scheduled_start:
         raise ValidationError(
             {"scheduled_start": "Schedule must be in the future and end after start."}
@@ -1138,6 +1354,9 @@ def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
         expires_at,
         scope,
         notes,
+        normalized_items,
+        duration_value,
+        duration_unit,
     )
 
 
@@ -1208,6 +1427,9 @@ def create_offer(
             expires_at,
             scope,
             notes,
+            normalized_items,
+            duration_value,
+            duration_unit,
         ) = values
         if parent:
             parent.status = Offer.Status.COUNTERED
@@ -1245,9 +1467,18 @@ def create_offer(
                     workmanship_terms=payload.get("workmanship_terms", ""),
                     scheduled_start=scheduled_start,
                     scheduled_end=scheduled_end,
+                    duration_value=duration_value,
+                    duration_unit=duration_unit,
                     expires_at=expires_at,
                     idempotency_key=key,
                 )
+                if normalized_items:
+                    OfferMaterial.objects.bulk_create(
+                        [
+                            OfferMaterial(offer=offer, **item)
+                            for item in normalized_items
+                        ]
+                    )
         except IntegrityError as exc:
             if idempotency_key:
                 existing = Offer.objects.filter(
@@ -1439,6 +1670,10 @@ def accept_offer(*, conversation, user, offer_id):
                     scheduled_time_start=offer.scheduled_start,
                     scheduled_time_end=offer.scheduled_end,
                     price_agreed=offer.total_amount,
+                    # Snapshot the agreed duration from the accepted offer: this is
+                    # what the service countdown measures once work truly starts.
+                    service_duration_value=offer.duration_value,
+                    service_duration_unit=offer.duration_unit,
                     status=Booking.Status.ACCEPTED,
                     source="WEB",
                 )
@@ -1734,44 +1969,6 @@ def _booking_for_conversation(conversation):
     )
 
 
-def _next_question(conversation):
-    if (
-        conversation.service_request_id
-        and conversation.service_request.status == "CLOSED"
-    ):
-        return None
-    if (
-        conversation.conversation_type != Conversation.ConversationType.SERVICE
-        or conversation.request_submitted
-    ):
-        return None
-    draft = conversation.draft or {}
-    if not draft.get("service_id"):
-        category_id = draft.get("category_id")
-        if category_id:
-            category_name = (
-                ServiceCategory.objects.filter(pk=category_id)
-                .values_list("name", flat=True)
-                .first()
-            )
-            if category_name:
-                return f"Which listed service in {category_name} do you need?"
-        return (
-            "What service do you need? Choose from this artisan’s available services."
-        )
-    if not draft.get("description"):
-        return "What do you need done, or what problem are you experiencing?"
-    if not draft.get("location_id"):
-        if draft.get("state"):
-            return f"Which area in {draft['state']} should the service be carried out? Choose it from the location catalogue."
-        if draft.get("country"):
-            return f"Which state or region and area in {draft['country']} should the service be carried out?"
-        return "Where should the service be carried out? Choose a location from the catalogue."
-    if not draft.get("preferred_date"):
-        return "What date would you prefer?"
-    return None
-
-
 def _available_actions(*, conversation, user, booking=None, offer=None):
     now = timezone.now()
     actions = ["SEND_MESSAGE"]
@@ -1789,17 +1986,29 @@ def _available_actions(*, conversation, user, booking=None, offer=None):
     ):
         return actions
     if not booking:
+        scope_confirmed = description_currently_confirmed(conversation)
         if is_artisan:
-            if offer and offer.status == Offer.Status.REVISION_REQUESTED:
+            if not scope_confirmed:
+                actions.append("CONFIRM_DESCRIPTION")
+            if (
+                offer
+                and offer.status == Offer.Status.REVISION_REQUESTED
+                and scope_confirmed
+            ):
                 actions.append("REVISE_OFFER")
             if (
                 offer
                 and offer.created_by_id == conversation.customer_id
                 and offer.status == Offer.Status.PROPOSED
                 and offer.expires_at > now
+                and scope_confirmed
             ):
                 actions.append("COUNTER_OFFER")
-            elif not offer and conversation.request_submitted:
+            elif (
+                not offer
+                and conversation.request_submitted
+                and scope_confirmed
+            ):
                 actions.append("SEND_OFFER")
         if (
             is_customer
@@ -1878,7 +2087,10 @@ def hydrate_conversation(conversation, *, user, unread_count=False):
     conversation._available_actions = _available_actions(
         conversation=conversation, user=user, booking=booking, offer=offer
     )
-    conversation._next_question = _next_question(conversation)
+    conversation._description_confirmed_at = getattr(
+        conversation, "description_confirmed_at", None
+    )
+    conversation._description_confirmed = description_currently_confirmed(conversation)
     read_state = getattr(conversation, "_read_state", None)
     unread_qs = Message.objects.filter(conversation=conversation).exclude(sender=user)
     if read_state and read_state.last_read_at:
@@ -1949,7 +2161,10 @@ def start_category_request(*, user, category_id=None, service_id=None):
                 conversation=room,
                 event_code="CONVERSATION_STARTED",
                 event_key=f"conversation:{room.pk}:started",
-                body="Hello! What do you need help with today? Describe the problem, send a picture or record a voice note. This is a draft until you review it and choose Send Request.",
+                body=(
+                    f"{_greeting_text(user)} Describe the problem; you can also send a photo "
+                    "or a voice note. This stays a draft until you review it and choose Send Request."
+                ),
             )
         return room, created
 
@@ -2055,6 +2270,19 @@ def quote_payload_hash(payload):
         data[key] = str(payload.get(key, "")).strip()
     for key in ("scheduled_start", "scheduled_end", "expires_at"):
         data[key] = payload.get(key)
+    data["duration_value"] = str(payload.get("duration_value") or "")
+    data["duration_unit"] = str(payload.get("duration_unit") or "").upper()
+    items = payload.get("materials") or []
+    data["materials"] = [
+        {
+            "name": str(item.get("name", "")).strip(),
+            "unit": str(item.get("unit", "")).strip(),
+            "quantity": str(item.get("quantity", "")),
+            "unit_price": str(item.get("unit_price", "")),
+        }
+        for item in items
+        if isinstance(item, dict)
+    ]
     data["materials_included"] = bool(payload.get("materials_included", False))
     return hashlib.sha256(
         json.dumps(data, sort_keys=True, cls=DjangoJSONEncoder).encode()

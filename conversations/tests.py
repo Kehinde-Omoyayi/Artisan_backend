@@ -25,7 +25,6 @@ from payments.models import EscrowPayment
 from services.models import ArtisanVerification, ServiceRequest
 from support.models import SupportCase
 
-from .automation import _location_is_negated, _parse_preferred_date
 from .models import Conversation, ConversationAttachment, Message, Offer
 from .services import (
     apply_request_patch,
@@ -84,6 +83,13 @@ class ConversationTestMixin:
         conversation.refresh_from_db()
         return ServiceRequest.objects.get(pk=conversation.service_request_id)
 
+    def confirm_scope(self, conversation=None):
+        from .services import confirm_description
+
+        conversation = conversation or self.conversation
+        conversation.refresh_from_db()
+        return confirm_description(conversation=conversation, user=self.artisan_user)
+
     def offer_payload(self, total=Decimal("25000.00")):
         start = timezone.now() + timedelta(days=1)
         end = start + timedelta(hours=2)
@@ -104,54 +110,6 @@ class ConversationTestMixin:
             "scheduled_end": end,
             "expires_at": expiry,
         }
-
-
-class PreferredDateParserTests(SimpleTestCase):
-    def test_location_negation_is_recognized(self):
-        self.assertTrue(_location_is_negated("not Ikeja", "Ikeja"))
-        self.assertTrue(_location_is_negated("not in Ikeja", "Ikeja"))
-        self.assertTrue(_location_is_negated("instead of Ikeja", "Ikeja"))
-        self.assertFalse(_location_is_negated("the job is in Ikeja", "Ikeja"))
-
-    def test_negated_date_is_ignored_and_explicit_correction_is_used(self):
-        today = date(2026, 10, 14)
-        self.assertEqual(
-            _parse_preferred_date("not 2026-10-15, use 16/10/2026", today),
-            date(2026, 10, 16),
-        )
-        self.assertEqual(
-            _parse_preferred_date("not October 15, use October 16", today),
-            date(2026, 10, 16),
-        )
-        self.assertEqual(
-            _parse_preferred_date("next Friday instead of next Thursday", today),
-            date(2026, 10, 16),
-        )
-        self.assertIsNone(_parse_preferred_date("not 15/10/2026", today))
-        self.assertIsNone(_parse_preferred_date("not next Friday", today))
-
-    def test_conflicting_positive_date_mentions_are_left_for_clarification(self):
-        today = date(2026, 10, 14)
-        self.assertIsNone(_parse_preferred_date("Friday or Monday", today))
-        self.assertIsNone(_parse_preferred_date("tomorrow, 20/10/2026", today))
-        self.assertEqual(
-            _parse_preferred_date("not tomorrow; today works", today), today
-        )
-
-    def test_measurements_and_clock_ranges_are_not_mistaken_for_dates(self):
-        today = date(2026, 10, 14)
-        self.assertEqual(
-            _parse_preferred_date(
-                "Replace the 3/4 inch pipe tomorrow at 9-11 am", today
-            ),
-            date(2026, 10, 15),
-        )
-        self.assertEqual(
-            _parse_preferred_date(
-                "Schedule between 9-11 in the morning tomorrow", today
-            ),
-            date(2026, 10, 15),
-        )
 
 
 class ConversationWorkflowTests(TestCase, ConversationTestMixin):
@@ -221,7 +179,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
             reverse("conversation-read", args=[cid]),
             reverse("conversation-payment-initialize", args=[cid]),
             reverse("conversation-dispute", args=[cid]),
-            reverse("conversation-direct-artisan", args=[self.other_artisan.id]),
+            reverse("conversation-description-confirm", args=[self.conversation.id]),
             reverse("conversation-inbox"),
         ]
         self.assertEqual(len(routes), 13)
@@ -321,6 +279,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
     def test_offer_decline_requires_and_respects_idempotency(self):
         conversation = self.conversation
         self.complete_request(conversation, budget=Decimal("30000.00"))
+        self.confirm_scope(conversation)
         self.auth(self.artisan_user)
         offer = create_offer(
             conversation=conversation,
@@ -344,69 +303,6 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         )
         self.assertEqual(second.status_code, status.HTTP_200_OK)
         self.assertEqual(first.data["id"], second.data["id"])
-
-    def test_artisan_to_artisan_direct_chat_is_supported(self):
-        self.auth(self.artisan_user)
-        response = self.client.post(
-            "/api/v1/conversations/",
-            {
-                "participants": [self.other_artisan_user.id],
-                "initial_message": "Let’s collaborate on a job.",
-            },
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="direct-create-1",
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        conversation_id = response.data["id"]
-        conversation = Conversation.objects.get(pk=conversation_id)
-        self.assertEqual(
-            conversation.conversation_type, Conversation.ConversationType.DIRECT
-        )
-        self.assertIsNone(conversation.customer_id)
-        self.assertIsNone(conversation.artisan_id)
-        self.assertEqual(
-            set(conversation.participants.values_list("id", flat=True)),
-            {self.artisan_user.id, self.other_artisan_user.id},
-        )
-        self.assertEqual(
-            Message.objects.filter(
-                conversation=conversation, sender=self.artisan_user
-            ).count(),
-            1,
-        )
-
-        self.auth(self.other_artisan_user)
-        reply = self.client.post(
-            f"/api/v1/conversations/{conversation_id}/messages/",
-            {"body": "Absolutely."},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="direct-msg-1",
-        )
-        self.assertEqual(reply.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(reply.data["sender_id"], self.other_artisan_user.id)
-
-    def test_direct_conversation_cannot_be_created_with_self_or_idor_viewed(self):
-        self.auth(self.artisan_user)
-        self_response = self.client.post(
-            "/api/v1/conversations/",
-            {"participants": [self.artisan_user.id]},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="direct-self-1",
-        )
-        self.assertEqual(self_response.status_code, status.HTTP_400_BAD_REQUEST)
-        create = self.client.post(
-            "/api/v1/conversations/",
-            {"participants": [self.other_artisan_user.id]},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="direct-idor-1",
-        )
-        self.assertEqual(create.status_code, status.HTTP_201_CREATED)
-        conversation_id = create.data["id"]
-        self.auth(self.other_customer)
-        self.assertEqual(
-            self.client.get(f"/api/v1/conversations/{conversation_id}/").status_code,
-            status.HTTP_404_NOT_FOUND,
-        )
 
     def test_start_and_resume_conversation(self):
         self.auth(self.other_customer)
@@ -587,7 +483,6 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         self.assertEqual(self.conversation.service_request.status, "DRAFT")
         self.assertEqual(ServiceRequest.objects.exclude(status="DRAFT").count(), 0)
         self.assertEqual(self.conversation.draft["preferred_time_start"], "09:30")
-        self.assertEqual(draft_response.data["assistant"]["mode"], "ready_for_review")
 
         submitted = self.client.patch(
             f"/api/v1/conversations/{self.conversation.id}/request/",
@@ -634,315 +529,6 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         self.assertIn("preferred_date", response.data["details"])
         self.assertEqual(ServiceRequest.objects.exclude(status="DRAFT").count(), 0)
         self.conversation.refresh_from_db()
-        self.assertEqual(self.conversation.service_request.status, "DRAFT")
-
-    def test_message_parsing_saves_catalogue_backed_draft_without_submitting(self):
-        plumbing = ServiceCategory.objects.create(name="Plumbing")
-        plumbing_service = Service.objects.create(
-            category=plumbing,
-            name="Household Pipe Repairs",
-            description="Repair taps and pipes",
-        )
-        ArtisanService.objects.create(
-            artisan=self.artisan,
-            service=plumbing_service,
-            location=self.location,
-            starting_price=Decimal("12000.00"),
-        )
-        self.auth(self.customer)
-        response = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": "The kitchen tap is leaking in Ikeja tomorrow at 2 pm."},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-natural-language-1",
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.conversation.refresh_from_db()
-        self.assertEqual(self.conversation.service_request.status, "DRAFT")
-        self.assertEqual(ServiceRequest.objects.exclude(status="DRAFT").count(), 0)
-        self.assertEqual(
-            self.conversation.draft["service_id"], str(plumbing_service.pk)
-        )
-        self.assertEqual(self.conversation.draft["location_id"], str(self.location.pk))
-        self.assertEqual(
-            self.conversation.draft["preferred_date"],
-            (timezone.localdate() + timedelta(days=1)).isoformat(),
-        )
-        self.assertEqual(self.conversation.draft["preferred_time_start"], "14:00")
-        self.assertIn("tap", self.conversation.draft["description"].lower())
-        self.assertEqual(
-            response.data["assistant"]["mode"], "collecting_optional_details"
-        )
-        self.assertEqual(response.data["assistant"]["prompt"]["field"], "budget")
-        self.assertTrue(response.data["assistant"]["prompt"]["optional"])
-
-    def test_natural_chat_extracts_service_location_date_time_and_budget_without_submitting(
-        self,
-    ):
-        self.auth(self.customer)
-        preferred_date = timezone.localdate() + timedelta(days=5)
-        message = (
-            "I need an electrician to fix a damaged socket in Ikeja, Lagos "
-            f"on {preferred_date.strftime('%d-%m-%Y')} at 2:37 pm. My budget is ₦10,000."
-        )
-
-        response = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": message},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-natural-multi-detail-1",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.conversation.refresh_from_db()
-        self.assertEqual(self.conversation.draft["service_id"], str(self.service.pk))
-        self.assertEqual(self.conversation.draft["location_id"], str(self.location.pk))
-        self.assertEqual(
-            self.conversation.draft["preferred_date"], preferred_date.isoformat()
-        )
-        self.assertEqual(self.conversation.draft["preferred_time_start"], "14:37")
-        self.assertEqual(
-            Decimal(str(self.conversation.draft["budget"])), Decimal("10000.00")
-        )
-        self.assertFalse(self.conversation.draft["budget_unknown"])
-        self.assertEqual(response.data["assistant"]["mode"], "ready_for_review")
-        self.assertEqual(
-            response.data["assistant"]["request_state"]["values"][
-                "preferred_time_start"
-            ],
-            "14:37",
-        )
-        self.assertEqual(self.conversation.service_request.status, "DRAFT")
-        self.assertEqual(ServiceRequest.objects.exclude(status="DRAFT").count(), 0)
-
-    def test_optional_budget_prompt_accepts_bare_amount_and_open_quote_reply(self):
-        self.auth(self.customer)
-        saved = self.client.patch(
-            f"/api/v1/conversations/{self.conversation.id}/request/",
-            {
-                "submit_request": False,
-                "service_id": self.service.pk,
-                "description": "Replace a cracked bedroom socket safely.",
-                "location_id": str(self.location.pk),
-                "preferred_date": (
-                    timezone.localdate() + timedelta(days=4)
-                ).isoformat(),
-            },
-            format="json",
-        )
-        self.assertEqual(saved.status_code, status.HTTP_200_OK, saved.data)
-        self.assertEqual(saved.data["assistant"]["prompt"]["field"], "budget")
-        self.assertTrue(saved.data["assistant"]["prompt"]["optional"])
-
-        amount = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": "10,000"},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-budget-short-answer-1",
-        )
-        self.assertEqual(amount.status_code, status.HTTP_201_CREATED, amount.data)
-        self.conversation.refresh_from_db()
-        self.assertEqual(
-            Decimal(str(self.conversation.draft["budget"])), Decimal("10000.00")
-        )
-        self.assertFalse(self.conversation.draft["budget_unknown"])
-        self.assertEqual(amount.data["assistant"]["mode"], "ready_for_review")
-
-        open_quote = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": "Open to a quote instead."},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-budget-open-quote-1",
-        )
-        self.assertEqual(
-            open_quote.status_code, status.HTTP_201_CREATED, open_quote.data
-        )
-        self.conversation.refresh_from_db()
-        self.assertTrue(self.conversation.draft["budget_unknown"])
-        self.assertIsNone(self.conversation.draft["budget"])
-        self.assertEqual(open_quote.data["assistant"]["mode"], "ready_for_review")
-        self.assertEqual(self.conversation.service_request.status, "DRAFT")
-        self.assertEqual(ServiceRequest.objects.exclude(status="DRAFT").count(), 0)
-
-    def test_chat_corrections_update_date_time_and_budget_without_overwriting_description(
-        self,
-    ):
-        self.auth(self.customer)
-        original_description = "Repair the damaged bedroom socket and test the circuit."
-        original_date = timezone.localdate() + timedelta(days=2)
-        revised_date = timezone.localdate() + timedelta(days=7)
-        saved = self.client.patch(
-            f"/api/v1/conversations/{self.conversation.id}/request/",
-            {
-                "submit_request": False,
-                "service_id": self.service.pk,
-                "description": original_description,
-                "location_id": str(self.location.pk),
-                "preferred_date": original_date.isoformat(),
-                "preferred_time_start": "09:00",
-                "preferred_time_end": "11:00",
-                "budget": "25000.00",
-                "budget_unknown": False,
-            },
-            format="json",
-        )
-        self.assertEqual(saved.status_code, status.HTTP_200_OK, saved.data)
-
-        response = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {
-                "body": (
-                    f"Move the preferred visit to {revised_date.strftime('%d-%m-%Y')} at 3:15 pm "
-                    "and change the budget to ₦12,500."
-                )
-            },
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-date-budget-correction-1",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.conversation.refresh_from_db()
-        self.assertEqual(
-            self.conversation.draft["preferred_date"], revised_date.isoformat()
-        )
-        self.assertEqual(self.conversation.draft["preferred_time_start"], "15:15")
-        self.assertIsNone(self.conversation.draft["preferred_time_end"])
-        self.assertEqual(
-            Decimal(str(self.conversation.draft["budget"])), Decimal("12500.00")
-        )
-        self.assertEqual(self.conversation.draft["description"], original_description)
-        self.assertEqual(self.conversation.service_request.status, "DRAFT")
-        self.assertEqual(ServiceRequest.objects.exclude(status="DRAFT").count(), 0)
-
-    def test_ambiguous_service_message_retains_category_without_picking_a_service(self):
-        plumbing = ServiceCategory.objects.create(name="Plumbing")
-        repair = Service.objects.create(
-            category=plumbing, name="Pipe Repairs", description="Repair household pipes"
-        )
-        install = Service.objects.create(
-            category=plumbing,
-            name="Plumbing Installation",
-            description="Install plumbing fixtures",
-        )
-        ArtisanService.objects.create(
-            artisan=self.artisan,
-            service=repair,
-            location=self.location,
-            starting_price=Decimal("10000.00"),
-        )
-        ArtisanService.objects.create(
-            artisan=self.artisan,
-            service=install,
-            location=self.location,
-            starting_price=Decimal("15000.00"),
-        )
-        self.auth(self.customer)
-        response = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": "I need plumbing."},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-ambiguous-service-1",
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.conversation.refresh_from_db()
-        self.assertEqual(self.conversation.draft.get("category_id"), plumbing.pk)
-        self.assertNotIn("service_id", self.conversation.draft)
-        self.assertEqual(self.conversation.service_request.status, "DRAFT")
-        self.assertEqual(response.data["assistant"]["prompt"]["field"], "service")
-        self.assertIn("Plumbing", response.data["assistant"]["prompt"]["text"])
-
-    def test_ambiguous_date_correction_clears_only_the_preferred_date(self):
-        self.auth(self.customer)
-        saved = self.client.patch(
-            f"/api/v1/conversations/{self.conversation.id}/request/",
-            {
-                "submit_request": False,
-                "service_id": self.service.pk,
-                "description": "Fix a kitchen socket that stopped working.",
-                "location_id": str(self.location.pk),
-                "preferred_date": (
-                    timezone.localdate() + timedelta(days=2)
-                ).isoformat(),
-            },
-            format="json",
-        )
-        self.assertEqual(saved.status_code, status.HTTP_200_OK, saved.data)
-
-        response = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": "Actually, Friday or Monday?"},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-ambiguous-date-correction-1",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
-        self.conversation.refresh_from_db()
-        self.assertIsNone(self.conversation.draft["preferred_date"])
-        self.assertEqual(
-            self.conversation.draft["description"],
-            "Fix a kitchen socket that stopped working.",
-        )
-        self.assertEqual(self.conversation.draft["location_id"], str(self.location.pk))
-        self.assertEqual(
-            response.data["assistant"]["prompt"]["field"], "preferred_date"
-        )
-
-    def test_message_corrections_replace_only_location_date_and_time(self):
-        plumbing = ServiceCategory.objects.create(name="Plumbing")
-        service = Service.objects.create(
-            category=plumbing,
-            name="Household Pipe Repairs",
-            description="Repair taps and pipes",
-        )
-        ArtisanService.objects.create(
-            artisan=self.artisan,
-            service=service,
-            location=self.location,
-            starting_price=Decimal("12000.00"),
-        )
-        ArtisanService.objects.create(
-            artisan=self.artisan,
-            service=service,
-            location=self.other_location,
-            starting_price=Decimal("12000.00"),
-        )
-        self.auth(self.customer)
-        saved = self.client.patch(
-            f"/api/v1/conversations/{self.conversation.id}/request/",
-            {
-                "submit_request": False,
-                "service_id": service.pk,
-                "description": "Fix a kitchen tap that is leaking.",
-                "location_id": str(self.location.pk),
-                "preferred_date": (
-                    timezone.localdate() + timedelta(days=1)
-                ).isoformat(),
-            },
-            format="json",
-        )
-        self.assertEqual(saved.status_code, status.HTTP_200_OK, saved.data)
-        corrected = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": "Actually, the job is in Lekki, not Ikeja, next Friday at 3 pm."},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="draft-location-correction-1",
-        )
-        self.assertEqual(corrected.status_code, status.HTTP_201_CREATED, corrected.data)
-        self.conversation.refresh_from_db()
-        self.assertEqual(
-            self.conversation.draft["description"], "Fix a kitchen tap that is leaking."
-        )
-        self.assertEqual(
-            self.conversation.draft["location_id"], str(self.other_location.pk)
-        )
-        self.assertEqual(
-            self.conversation.draft["preferred_date"],
-            (
-                timezone.localdate()
-                + timedelta(days=(4 - timezone.localdate().weekday()) % 7 or 7)
-            ).isoformat(),
-        )
-        self.assertEqual(self.conversation.draft["preferred_time_start"], "15:00")
         self.assertEqual(self.conversation.service_request.status, "DRAFT")
 
     def test_budget_can_be_supplied_after_budget_unknown(self):
@@ -1004,6 +590,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.complete_request()
+        self.confirm_scope()
         payload = self.offer_payload()
         payload["total_amount"] = Decimal("Infinity")
         payload["labour_amount"] = Decimal("Infinity")
@@ -1014,6 +601,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
 
     def test_offer_idempotency_key_cannot_be_reused_for_counter_operation(self):
         self.complete_request()
+        self.confirm_scope()
         offer = create_offer(
             conversation=self.conversation,
             user=self.artisan_user,
@@ -1137,58 +725,9 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(ConversationAttachment.objects.count(), 0)
 
-    def test_customer_and_artisan_receive_different_request_assistant_context(self):
-        self.auth(self.customer)
-        customer_response = self.client.get(
-            f"/api/v1/conversations/{self.conversation.id}/"
-        )
-        self.assertEqual(customer_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            customer_response.data["assistant"]["mode"], "collecting_details"
-        )
-        self.assertEqual(
-            customer_response.data["assistant"]["prompt"]["field"], "service"
-        )
-        self.assertEqual(
-            customer_response.data["next_question"],
-            "What service do you need? Choose from this artisan’s available services.",
-        )
-
-        self.auth(self.artisan_user)
-        artisan_response = self.client.get(
-            f"/api/v1/conversations/{self.conversation.id}/"
-        )
-        self.assertEqual(artisan_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            artisan_response.data["assistant"]["mode"], "waiting_customer_details"
-        )
-        self.assertIn(
-            "customer request is still a draft",
-            artisan_response.data["assistant"]["reply"],
-        )
-        self.assertIn(
-            "No offer can be made until the customer reviews and submits it",
-            artisan_response.data["assistant"]["reply"],
-        )
-        self.assertIsNone(artisan_response.data["assistant"]["prompt"]["field"])
-        self.assertIsNone(artisan_response.data["next_question"])
-        self.assertNotIn("SEND_OFFER", artisan_response.data["available_actions"])
-
-    def test_message_response_includes_human_like_assistant_context(self):
-        self.auth(self.customer)
-        response = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/messages/",
-            {"body": "I need the sockets checked."},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="assistant-1",
-        )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn("assistant", response.data)
-        self.assertTrue(response.data["assistant"]["reply"])
-        self.assertIn("prompt", response.data["assistant"])
-
     def test_terminal_offer_commercial_fields_are_immutable(self):
         self.complete_request()
+        self.confirm_scope()
         offer = create_offer(
             conversation=self.conversation,
             user=self.artisan_user,
@@ -1203,6 +742,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
 
     def test_offer_financial_validation_and_negotiation(self):
         self.complete_request()
+        self.confirm_scope()
         artisan_offer = create_offer(
             conversation=self.conversation,
             user=self.artisan_user,
@@ -1238,6 +778,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         self, delay
     ):
         self.complete_request()
+        self.confirm_scope()
         offer = create_offer(
             conversation=self.conversation,
             user=self.artisan_user,
@@ -1280,6 +821,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         self, delay
     ):
         self.complete_request()
+        self.confirm_scope()
         offer = create_offer(
             conversation=self.conversation,
             user=self.artisan_user,
@@ -1322,6 +864,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
 
     def test_expired_offer_cannot_be_accepted(self):
         self.complete_request()
+        self.confirm_scope()
         payload = self.offer_payload()
         payload["expires_at"] = timezone.now() + timedelta(seconds=1)
         offer = create_offer(
@@ -1342,6 +885,7 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
 
     def test_dispute_creates_one_support_case_and_blocks_duplicate(self):
         self.complete_request()
+        self.confirm_scope()
         offer = create_offer(
             conversation=self.conversation,
             user=self.artisan_user,
@@ -1446,3 +990,360 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
             200,
             msg=f"Conversation detail exceeded 200ms local API budget: {elapsed_ms:.2f}ms",
         )
+
+
+class ConversationWorkflowV2Tests(TestCase, ConversationTestMixin):
+    """Post-removal workflow: chat-only clarification, explicit Description Done,
+    itemized offers, tamper-proof totals and stale-offer protection."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = self.make_user("v2-customer@example.com")
+        self.customer.first_name = "Kehinde"
+        self.customer.save(update_fields=["first_name"])
+        CustomerProfile.objects.create(
+            user=self.customer, country="Nigeria", state="Lagos", area="Ikeja"
+        )
+        self.artisan_user, self.artisan = self.make_artisan("v2-artisan@example.com")
+        self.location = Locations.objects.create(
+            country="Nigeria", state="Lagos", area="Ikeja"
+        )
+        self.category = ServiceCategory.objects.create(name="Plumbing")
+        self.service = Service.objects.create(
+            category=self.category, name="Pipe fitting", description=""
+        )
+        ArtisanService.objects.create(
+            artisan=self.artisan, service=self.service, location=self.location
+        )
+
+    def auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def fresh_room(self):
+        """Start the room through the API (the Request Artisan surface)."""
+        self.auth(self.customer)
+        response = self.client.post(
+            "/api/v1/conversations/start/",
+            {"artisan_id": str(self.artisan.pk), "service_id": self.service.id},
+            format="json",
+        )
+        assert response.status_code in (200, 201), response.data
+        self.conversation = Conversation.objects.get(pk=response.data["id"])
+        return response
+
+    def describe(self):
+        self.auth(self.customer)
+        return self.client.patch(
+            f"/api/v1/conversations/{self.conversation.id}/request/",
+            {
+                "description": "The kitchen pipe leaks at the joint under the sink.",
+                "service_id": self.service.id,
+                "location_id": str(self.location.id),
+                "preferred_date": (timezone.localdate() + timedelta(days=2)).isoformat(),
+                "submit_request": True,
+            },
+            format="json",
+        )
+
+    def confirm_via_api(self):
+        self.auth(self.artisan_user)
+        return self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/description-confirm/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="desc-confirm-1",
+        )
+
+    def itemized_payload(self):
+        start = timezone.now() + timedelta(days=1)
+        return {
+            "labour_amount": "20000.00",
+            "materials_amount": "2500.00",
+            "total_amount": "22500.00",
+            "materials_details": "Pipe joint and sealant",
+            "payment_terms": "Full payment held in escrow.",
+            "exclusions": "None.",
+            "workmanship_terms": "I revisit within 7 days if the joint leaks again.",
+            "scope": "Replace the leaking pipe joint and reseal.",
+            "scheduled_start": start.isoformat(),
+            "expires_at": (start - timedelta(hours=2)).isoformat(),
+            "duration_value": 3,
+            "duration_unit": "DAYS",
+            "materials": [
+                {"name": "PVC joint", "quantity": "2", "unit_price": "1200.00"},
+                {"name": "Sealant tube", "quantity": "0.5", "unit_price": "200.00"},
+            ],
+        }
+
+    def test_opening_greeting_is_created_once_and_is_system_generated(self):
+        response = self.fresh_room()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        room = self.conversation
+        greetings = Message.objects.filter(
+            conversation=room, event_code="REQUEST_GREETING"
+        )
+        self.assertEqual(greetings.count(), 1)
+        greeting = greetings.first()
+        self.assertIsNone(greeting.sender_id)
+        self.assertEqual(greeting.message_type, "SYSTEM")
+        self.assertEqual(greeting.body, "Good day Kehinde, can you describe what you need.")
+        # Resuming never duplicates the greeting.
+        response2 = self.fresh_room()
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response2.data["id"], str(room.pk))
+        self.assertEqual(
+            Message.objects.filter(
+                conversation=room, event_code="REQUEST_GREETING"
+            ).count(),
+            1,
+        )
+
+    def test_chat_messages_never_silently_modify_the_request_draft(self):
+        self.fresh_room()
+        self.auth(self.customer)
+        response = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/messages/",
+            {"body": "Fix a leaking pipe in Ikeja tomorrow with a 5000 budget."},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-msg-1",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertNotIn("assistant", response.data)
+        self.assertIn("guidance", response.data)
+        self.conversation.refresh_from_db()
+        self.assertEqual(self.conversation.service_request.status, "DRAFT")
+        self.assertFalse(self.conversation.draft.get("description"))
+        self.assertFalse(self.conversation.draft.get("budget"))
+        self.assertFalse(self.conversation.draft.get("preferred_date"))
+
+    def test_new_direct_customer_artisan_conversations_are_rejected(self):
+        self.fresh_room()
+        self.auth(self.customer)
+        response = self.client.post(
+            "/api/v1/conversations/",
+            {"conversation_type": "DIRECT", "participants": [self.artisan_user.id]},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-direct-1",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        from rest_framework.exceptions import PermissionDenied
+        from .services import start_direct_conversation
+
+        with self.assertRaises(PermissionDenied):
+            start_direct_conversation(
+                user=self.customer, target_user=self.artisan_user
+            )
+
+    def test_historical_direct_conversation_survives_migrations_and_stays_readable(self):
+        self.fresh_room()
+        legacy = Conversation.objects.create(
+            conversation_type=Conversation.ConversationType.DIRECT,
+            direct_key=f"{min(self.customer.id, self.artisan_user.id)}:{max(self.customer.id, self.artisan_user.id)}",
+        )
+        legacy.participants.set([self.customer, self.artisan_user])
+        Message.objects.create(
+            conversation=legacy, sender=self.customer, body="Old direct chat."
+        )
+        self.auth(self.customer)
+        detail = self.client.get(f"/api/v1/conversations/{legacy.id}/")
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        inbox = self.client.get("/api/v1/conversations/inbox/")
+        self.assertEqual(inbox.status_code, status.HTTP_200_OK)
+        items = inbox.data["results"]
+        self.assertTrue(any(item["id"] == str(legacy.id) for item in items))
+
+    def test_only_assigned_artisan_can_confirm_description(self):
+        self.fresh_room()
+        self.describe()
+        self.conversation.refresh_from_db()
+        self.auth(self.customer)
+        response = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/description-confirm/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="desc-confirm-customer",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_description_confirm_requires_a_meaningful_description(self):
+        self.fresh_room()
+        self.conversation.refresh_from_db()
+        response = self.confirm_via_api()
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_offer_blocked_until_description_done_then_allowed(self):
+        self.fresh_room()
+        self.auth(self.artisan_user)
+        cant = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            self.itemized_payload(),
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-offer-before-confirm",
+        )
+        self.assertEqual(cant.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.describe()
+        self.conversation.refresh_from_db()
+        confirmed = self.confirm_via_api()
+        self.assertEqual(confirmed.status_code, status.HTTP_200_OK, confirmed.data)
+        self.assertTrue(confirmed.data["description_confirmed"])
+        self.assertTrue(confirmed.data["description_confirmed_at"])
+
+        payload = self.itemized_payload()
+        sent = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            payload,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-offer-1",
+        )
+        self.assertEqual(sent.status_code, status.HTTP_201_CREATED, sent.data)
+        offer = sent.data
+        self.assertEqual(offer["materials_amount"], "2500.00")
+        self.assertEqual(offer["total_amount"], "22500.00")
+        self.assertEqual(len(offer["materials"]), 2)
+        self.assertEqual(offer["materials"][0]["line_total"], "2400.00")
+        self.assertEqual(offer["materials"][1]["line_total"], "100.00")
+        self.assertEqual(offer["duration_label"], "3 days")
+
+        # Idempotent retry returns the same offer.
+        retry = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            payload,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-offer-1",
+        )
+        self.assertEqual(retry.status_code, status.HTTP_201_CREATED, retry.data)
+        self.assertEqual(retry.data["id"], offer["id"])
+        self.assertEqual(Offer.objects.count(), 1)
+
+    def test_tampered_materials_and_total_are_rejected(self):
+        self.fresh_room()
+        self.describe()
+        self.conversation.refresh_from_db()
+        self.confirm_via_api()
+        bad = self.itemized_payload()
+        bad["materials_amount"] = "1.00"  # client claims a lower subtotal
+        response = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            bad,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-tamper-1",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        bad2 = self.itemized_payload()
+        bad2["total_amount"] = "2000.00"  # client claims a lower payable total
+        response2 = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            bad2,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-tamper-2",
+        )
+        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Offer.objects.count(), 0)
+
+    def test_invalid_material_rows_and_duration_rejected(self):
+        self.fresh_room()
+        self.describe()
+        self.conversation.refresh_from_db()
+        self.confirm_via_api()
+        bad = self.itemized_payload()
+        bad["materials"] = [{"name": "", "quantity": "0", "unit_price": "-5"}]
+        bad["materials_amount"] = "0.00"
+        bad["total_amount"] = "20000.00"
+        response = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            bad,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-invalid-row",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        bad_duration = self.itemized_payload()
+        bad_duration["duration_value"] = 0
+        response2 = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            bad_duration,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-invalid-duration",
+        )
+        self.assertEqual(response2.status_code, status.HTTP_400_BAD_REQUEST)
+        bad_duration["duration_value"] = 3
+        bad_duration["duration_unit"] = "lightyears"
+        response3 = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            bad_duration,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-invalid-duration-unit",
+        )
+        self.assertEqual(response3.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Offer.objects.count(), 0)
+
+    def test_revised_scope_requires_reconfirmation_and_stale_offer_is_not_acceptable(self):
+        self.fresh_room()
+        self.describe()
+        self.conversation.refresh_from_db()
+        self.confirm_via_api()
+        self.auth(self.artisan_user)
+        sent = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            self.itemized_payload(),
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-offer-stale-1",
+        )
+        self.assertEqual(sent.status_code, status.HTTP_201_CREATED)
+        offer_id = sent.data["id"]
+
+        # Customer requests changes (revision) — the quote can no longer be accepted.
+        self.auth(self.customer)
+        revision = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/{offer_id}/decline/",
+            {"request_revision": True},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-revision-1",
+        )
+        self.assertEqual(revision.status_code, status.HTTP_200_OK)
+
+        stale = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/{offer_id}/accept/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-accept-stale",
+        )
+        self.assertEqual(stale.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Booking.objects.count(), 0)
+
+        # Materially changing the description invalidates the confirmation.
+        patch = self.client.patch(
+            f"/api/v1/conversations/{self.conversation.id}/request/",
+            {
+                "description": "Now also replace the trap under the sink, not just the joint.",
+                "submit_request": True,
+            },
+            format="json",
+        )
+        self.assertEqual(patch.status_code, status.HTTP_200_OK, patch.data)
+        self.assertFalse(patch.data["description_confirmed"])
+
+        self.auth(self.artisan_user)
+        blocked = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/counter/",
+            {**self.itemized_payload(), "parent_offer_id": offer_id},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-counter-blocked",
+        )
+        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
+
+        reconfirm = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/description-confirm/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="desc-confirm-2",
+        )
+        self.assertEqual(reconfirm.status_code, status.HTTP_200_OK, reconfirm.data)
+        counter = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/counter/",
+            {**self.itemized_payload(), "parent_offer_id": offer_id, "total_amount": "23500.00", "labour_amount": "21000.00"},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="v2-counter-2",
+        )
+        self.assertEqual(counter.status_code, status.HTTP_201_CREATED, counter.data)
+        self.assertEqual(counter.data["version"], 2)

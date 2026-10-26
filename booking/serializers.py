@@ -15,11 +15,17 @@ class BookingSerializer(serializers.ModelSerializer):
     artisan_id = serializers.PrimaryKeyRelatedField(source="artisan", queryset=ArtisanProfile.objects.all())
     conversation_id = serializers.SerializerMethodField()
     viewer_role = serializers.SerializerMethodField()
+    duration_label = serializers.SerializerMethodField()
+
+    def get_duration_label(self, obj) -> str:
+        from .models import duration_label
+
+        return duration_label(obj.service_duration_value, obj.service_duration_unit)
 
     class Meta:
         model = Booking
-        fields = ["id", "request_id", "customer_id", "artisan_id", "conversation_id", "viewer_role", "scheduled_time_start", "scheduled_time_end", "price_agreed", "status", "source", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
-        read_only_fields = ["id", "customer_id", "conversation_id", "viewer_role", "status", "source", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
+        fields = ["id", "request_id", "customer_id", "artisan_id", "conversation_id", "viewer_role", "scheduled_time_start", "scheduled_time_end", "price_agreed", "status", "source", "service_duration_value", "service_duration_unit", "duration_label", "actual_started_at", "countdown_ends_at", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
+        read_only_fields = ["id", "customer_id", "conversation_id", "viewer_role", "status", "source", "service_duration_value", "service_duration_unit", "duration_label", "actual_started_at", "countdown_ends_at", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
 
     def get_conversation_id(self, obj) -> str | None:
         if obj.request.requester_id != obj.customer.user_id:

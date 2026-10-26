@@ -2,7 +2,7 @@ from django.urls import path
 
 from .views import (
     ConversationCreateView,
-    ConversationDirectArtisanView,
+    ConversationDescriptionConfirmView,
     ConversationDetailView,
     ConversationDisputeView,
     ConversationListView,
@@ -27,11 +27,6 @@ urlpatterns = [
     ),
     path("", ConversationCreateView.as_view(), name="conversation-list"),
     path("start/", ConversationStartView.as_view(), name="conversation-start"),
-    path(
-        "direct/artisan/<uuid:artisan_id>/",
-        ConversationDirectArtisanView.as_view(),
-        name="conversation-direct-artisan",
-    ),
     path("inbox/", ConversationListView.as_view(), name="conversation-inbox"),
     path(
         "<uuid:conversation_id>/",
@@ -47,6 +42,11 @@ urlpatterns = [
         "<uuid:conversation_id>/request/",
         ConversationRequestView.as_view(),
         name="conversation-request",
+    ),
+    path(
+        "<uuid:conversation_id>/description-confirm/",
+        ConversationDescriptionConfirmView.as_view(),
+        name="conversation-description-confirm",
     ),
     path(
         "<uuid:conversation_id>/offers/",

@@ -46,6 +46,7 @@ from .services import (
     _booking_for_conversation,
     accept_offer,
     apply_request_patch,
+    confirm_description,
     create_offer,
     decline_offer,
     get_conversation_for_user,
@@ -54,7 +55,6 @@ from .services import (
     open_conversation_dispute,
     send_message,
     start_conversation,
-    start_direct_conversation,
 )
 
 MessagePageSerializer = inline_serializer(
@@ -126,51 +126,22 @@ class ConversationCreateView(APIView):
         serializer = ConversationCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        kind = data.get("conversation_type", Conversation.ConversationType.DIRECT)
-
-        if kind == Conversation.ConversationType.SERVICE:
-            conversation, created = start_conversation(
+        # Direct chats are retired: every new customer↔artisan conversation is a
+        # service-request conversation (see serializers.ConversationCreateSerializer).
+        conversation, created = start_conversation(
+            user=request.user,
+            artisan_id=data["artisan_id"],
+            service_id=data.get("service_id"),
+        )
+        initial_message = data.get("initial_message", "").strip()
+        if initial_message and created:
+            key = request.headers.get("Idempotency-Key", "").strip()
+            send_message(
+                conversation=conversation,
                 user=request.user,
-                artisan_id=data["artisan_id"],
-                service_id=data.get("service_id"),
+                body=initial_message,
+                idempotency_key=f"{key}:initial",
             )
-        else:
-            participant_ids = list(dict.fromkeys(data.get("participants") or []))
-            if request.user.id not in participant_ids:
-                participant_ids.insert(0, request.user.id)
-            if len(participant_ids) != 2:
-                return Response(
-                    {"detail": "A direct conversation must contain exactly two users."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            target_id = (
-                participant_ids[1]
-                if participant_ids[0] == request.user.id
-                else participant_ids[0]
-            )
-            from django.contrib.auth import get_user_model
-
-            User = get_user_model()
-            try:
-                target = User.objects.get(pk=target_id)
-            except User.DoesNotExist:
-                return Response(
-                    {"detail": "The selected participant was not found."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-            conversation, created = start_direct_conversation(
-                user=request.user, target_user=target
-            )
-            initial_message = data.get("initial_message", "").strip()
-            if initial_message and created:
-                key = request.headers.get("Idempotency-Key", "").strip()
-                send_message(
-                    conversation=conversation,
-                    user=request.user,
-                    body=initial_message,
-                    idempotency_key=f"{key}:initial",
-                )
-
         hydrate_conversation(conversation, user=request.user, unread_count=True)
         response = Response(
             ConversationDetailSerializer(
@@ -182,21 +153,15 @@ class ConversationCreateView(APIView):
         return response
 
 
-class ConversationDirectArtisanView(APIView):
-    permission_classes = [IsAuthenticated, RequireCompleteMarketplaceProfile]
+class ConversationDescriptionConfirmView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
     throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_start"
+    throttle_scope = "conversation_offer"
 
     @extend_schema(
         tags=["Conversations"],
-        request=inline_serializer(
-            name="DirectArtisanMessage",
-            fields={
-                "initial_message": serializers.CharField(
-                    required=False, allow_blank=True, max_length=5000
-                )
-            },
-        ),
+        summary="Confirm the clarified work description (Description Done)",
+        request=None,
         parameters=[
             OpenApiParameter(
                 "Idempotency-Key",
@@ -206,33 +171,51 @@ class ConversationDirectArtisanView(APIView):
             )
         ],
         responses={
-            201: ConversationDetailSerializer,
             200: ConversationDetailSerializer,
+            400: OpenApiResponse(description="Description cannot be confirmed yet."),
+            403: OpenApiResponse(description="Only the assigned artisan can confirm."),
         },
     )
-    @idempotent_action(
-        "conversation.direct_artisan.create", resource_type="Conversation"
-    )
-    def post(self, request, artisan_id):
-        message = str(request.data.get("initial_message", "") or "").strip()
-        conversation, created = start_direct_conversation(
-            user=request.user, artisan_id=artisan_id
+    def post(self, request, conversation_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
         )
-        if message and created:
-            key = request.headers.get("Idempotency-Key", "").strip()
-            send_message(
-                conversation=conversation,
-                user=request.user,
-                body=message,
-                idempotency_key=f"{key}:initial",
+        with transaction.atomic():
+            record, created, cached = begin(
+                actor=request.user,
+                operation="conversation.description.confirm",
+                key=key,
+                payload={"conversation_id": str(conversation_id)},
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
             )
-        hydrate_conversation(conversation, user=request.user, unread_count=True)
-        return Response(
-            ConversationDetailSerializer(
+            if not created:
+                return Response(cached[1], status=cached[0])
+            conversation = confirm_description(
+                conversation=conversation, user=request.user
+            )
+            hydrate_conversation(conversation, user=request.user, unread_count=True)
+            data = ConversationDetailSerializer(
                 conversation, context={"request": request}
-            ).data,
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
+            ).data
+            finish(
+                record,
+                status_code=200,
+                body=data,
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+            )
+            audit_request_action(
+                request=request,
+                action="DESCRIPTION_CONFIRMED",
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+                metadata={},
+            )
+        return Response(data)
 
 
 class ConversationStartView(APIView):
@@ -589,19 +572,7 @@ class ConversationMessageListCreateView(APIView):
             user=request.user, conversation_id=conversation_id
         )
         hydrate_conversation(conversation, user=request.user, unread_count=True)
-        from .automation import assistant_context
-
-        assistant = assistant_context(
-            conversation=conversation,
-            user=request.user,
-            booking=getattr(conversation, "_booking", None),
-            offer=getattr(conversation, "_active_offer", None),
-            payment=getattr(
-                getattr(conversation, "_booking", None), "escrow_payment", None
-            ),
-        )
         data = MessageSerializer(message, context={"request": request}).data
-        data["assistant"] = assistant
         data["guidance"] = ConversationDetailSerializer(
             conversation, context={"request": request}
         ).get_guidance(conversation)

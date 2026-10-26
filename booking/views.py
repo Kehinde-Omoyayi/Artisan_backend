@@ -36,7 +36,12 @@ from conversations.events import record_booking_event
 from risk.network import record_customer_network_observation
 from risk.services import record_customer_cancellation
 
-from .models import Booking, BookingAdditionalOrder, BookingStatusHistory
+from .models import (
+    Booking,
+    BookingAdditionalOrder,
+    BookingStatusHistory,
+    duration_timedelta,
+)
 from .permissions import IsBookingParticipant
 from .serializers import (
     BookingActionReasonSerializer,
@@ -549,6 +554,14 @@ class BookingStartView(APIView):
                     "Only the assigned artisan can start this booking."
                 )
 
+            if (
+                booking.status == "IN_PROGRESS"
+                and booking.actual_started_at is not None
+            ):
+                # Idempotent repeat: the countdown began at the recorded start and
+                # is never extended or reset by retries or page refreshes.
+                return Response(BookingSerializer(booking).data)
+
             if booking.status != "ACCEPTED":
                 raise BookingConflict("Booking must be accepted before it can start.")
 
@@ -566,8 +579,21 @@ class BookingStartView(APIView):
                     "Customer payment has not been verified and held."
                 )
 
+            started_at = timezone.now()
             booking.status = "IN_PROGRESS"
-            booking.save(update_fields=["status", "updated_at"])
+            booking.actual_started_at = started_at
+            booking.countdown_ends_at = started_at + duration_timedelta(
+                booking.service_duration_value or 1,
+                booking.service_duration_unit or "DAYS",
+            )
+            booking.save(
+                update_fields=[
+                    "status",
+                    "actual_started_at",
+                    "countdown_ends_at",
+                    "updated_at",
+                ]
+            )
 
             BookingStatusHistory.objects.create(
                 booking=booking,

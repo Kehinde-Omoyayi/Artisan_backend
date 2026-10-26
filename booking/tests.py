@@ -195,3 +195,142 @@ class BookingPaymentGuardTests(TestCase):
                 recipient=self.customer_user, event_key__startswith="booking_cancelled"
             ).exists()
         )
+
+
+class BookingCountdownTests(TestCase):
+    """Countdown starts only on the artisan's authorized start and never resets."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer_user = CustomUser.objects.create_user(
+            email="countdown-customer@example.com",
+            first_name="Ada",
+            last_name="Obi",
+            password="StrongPassword123!",
+            is_active=True,
+        )
+        self.artisan_user = CustomUser.objects.create_user(
+            email="countdown-artisan@example.com",
+            first_name="Tunde",
+            last_name="Bello",
+            password="StrongPassword123!",
+            is_active=True,
+        )
+        customer = CustomerProfile.objects.create(user=self.customer_user)
+        artisan = ArtisanProfile.objects.create(
+            user=self.artisan_user, profile_status="ACTIVE"
+        )
+        category = ServiceCategory.objects.create(name="Electrical")
+        location = Locations.objects.create(
+            country="Nigeria", state="Ogun", area="Abeokuta"
+        )
+        request = ServiceRequest.objects.create(
+            requester=self.customer_user,
+            category=category,
+            location=location,
+            preferred_date=(timezone.now() + timedelta(days=1)).date(),
+            description="Repair bathroom wiring.",
+        )
+        self.booking = Booking.objects.create(
+            request=request,
+            artisan=artisan,
+            customer=customer,
+            scheduled_time_start=timezone.now() + timedelta(days=1),
+            scheduled_time_end=timezone.now() + timedelta(days=4),
+            price_agreed="45000.00",
+            status=Booking.Status.ACCEPTED,
+            service_duration_value=2,
+            service_duration_unit="WEEKS",
+        )
+        self.payment = EscrowPayment.objects.create(
+            booking=self.booking,
+            customer=self.customer_user,
+            artisan=artisan,
+            reference="PAY-COUNTDOWN-1",
+            service_amount_kobo=4500000,
+            customer_fee_kobo=15000,
+            total_amount_kobo=4515000,
+            platform_commission_kobo=450000,
+            artisan_payout_kobo=4050000,
+            status=EscrowPayment.Status.HELD,
+        )
+
+    def test_start_without_held_payment_is_rejected(self):
+        self.payment.status = EscrowPayment.Status.PAYMENT_PENDING
+        self.payment.save(update_fields=["status"])
+        self.client.force_authenticate(user=self.artisan_user)
+        response = self.client.post(
+            f"/api/v1/booking/{self.booking.pk}/start/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="start-unpaid",
+        )
+        self.assertEqual(response.status_code, 409)
+        self.booking.refresh_from_db()
+        self.assertIsNone(self.booking.actual_started_at)
+
+    def test_non_assigned_user_cannot_start(self):
+        self.client.force_authenticate(user=self.customer_user)
+        response = self.client.post(
+            f"/api/v1/booking/{self.booking.pk}/start/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="start-wrong-user",
+        )
+        self.assertEqual(response.status_code, 403)
+        self.booking.refresh_from_db()
+        self.assertIsNone(self.booking.actual_started_at)
+
+    def test_start_sets_persisted_actual_start_and_countdown_end(self):
+        self.client.force_authenticate(user=self.artisan_user)
+        before = timezone.now()
+        response = self.client.post(
+            f"/api/v1/booking/{self.booking.pk}/start/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="start-ok",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.IN_PROGRESS)
+        self.assertIsNotNone(self.booking.actual_started_at)
+        expected_end = self.booking.actual_started_at + timedelta(weeks=2)
+        self.assertAlmostEqual(
+            self.booking.countdown_ends_at.timestamp(),
+            expected_end.timestamp(),
+            delta=2,
+        )
+        self.assertGreaterEqual(self.booking.countdown_ends_at, before)
+        # counts/timestamps are exposed by the API
+        self.assertTrue(response.data["actual_started_at"])
+        self.assertTrue(response.data["countdown_ends_at"])
+        self.assertEqual(response.data["service_duration_unit"], "WEEKS")
+        self.assertEqual(response.data["duration_label"], "2 weeks")
+
+    def test_repeated_start_does_not_reset_the_countdown(self):
+        self.client.force_authenticate(user=self.artisan_user)
+        first = self.client.post(
+            f"/api/v1/booking/{self.booking.pk}/start/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="start-repeat-1",
+        )
+        self.assertEqual(first.status_code, 200)
+        self.booking.refresh_from_db()
+        first_started = self.booking.actual_started_at
+        first_end = self.booking.countdown_ends_at
+
+        # Fresh idempotency key: still a repeat of the business action.
+        second = self.client.post(
+            f"/api/v1/booking/{self.booking.pk}/start/",
+            {},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="start-repeat-2",
+        )
+        self.assertEqual(second.status_code, 200)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.actual_started_at, first_started)
+        self.assertEqual(self.booking.countdown_ends_at, first_end)
+        self.assertEqual(
+            self.booking.status_history.filter(status="IN_PROGRESS").count(), 1
+        )

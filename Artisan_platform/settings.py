@@ -509,12 +509,14 @@ CELERY_TASK_ROUTES = {
     "home.tasks.send_otp_email": {"queue": "notifications"},
     "home.tasks.delete_unverified_accounts": {"queue": "maintenance"},
     "home.tasks.purge_expired_staff_security_challenges": {"queue": "maintenance"},
+    # Payout-account change authorisation email.
+    "payments.tasks.send_payout_change_email": {"queue": "notifications"},
     # KYC and verification.
     "services.tasks.verify_nin_async": {"queue": "verification"},
     "services.tasks.initiate_bvn_async": {"queue": "verification"},
     "services.tasks.request_bvn_otp_async": {"queue": "verification"},
     "services.tasks.complete_bvn_async": {"queue": "verification"},
-    # Conversation automation and media.
+    # Conversation workflow and media.
     "conversations.tasks.expire_conversation_offers": {"queue": "maintenance"},
     "conversations.tasks.send_conversation_reminders": {"queue": "notifications"},
     "conversations.signals_tasks.scan_conversation_attachment": {"queue": "media"},
@@ -531,7 +533,6 @@ CELERY_TASK_ROUTES = {
     "payments.tasks.reconcile_financial_ledger": {"queue": "maintenance"},
     "support.tasks.reconcile_support_refund": {"queue": "payments"},
     "promotions.tasks.initialize_promotion_payment": {"queue": "payments"},
-    "payments.tasks.send_payout_change_email": {"queue": "notifications"},
     "promotions.tasks.reconcile_promotion_payment_initialization": {
         "queue": "payments"
     },

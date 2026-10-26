@@ -16,7 +16,7 @@ class GuidanceTests(SimpleTestCase):
         self.artisan=NS(pk=2)
         self.room=NS(conversation_type='SERVICE',customer_id=1,artisan_id=3,
                      artisan=NS(user_id=2),service_request=None,request_submitted=False,
-                     draft={},_available_actions=[])
+                     draft={},_available_actions=[],_description_confirmed=True)
 
     def guide(self, user=None, **kwargs):
         return booking_guidance(conversation=self.room,user=user or self.customer,**kwargs)
@@ -32,6 +32,16 @@ class GuidanceTests(SimpleTestCase):
         self.room.draft=dict(service_id=1,description='Fix',location_id=4,preferred_date='2026-11-01')
         self.assertEqual(self.guide()['stage'],'DRAFT_REVIEW')
         self.assertFalse(self.room.request_submitted)
+
+    def test_quote_requires_description_confirmation_first(self):
+        self.room.request_submitted=True
+        self.room._description_confirmed=False
+        self.assertEqual(self.guide()['stage'],'CLARIFY_DESCRIPTION')
+        artisan_guide=self.guide(self.artisan,actions=['CONFIRM_DESCRIPTION'])
+        self.assertEqual(artisan_guide['stage'],'CLARIFY_DESCRIPTION')
+        self.assertEqual(artisan_guide['action']['code'],'CONFIRM_DESCRIPTION')
+        self.room._description_confirmed=True
+        self.assertEqual(self.guide()['stage'],'WAITING_FOR_QUOTE')
 
     def test_quote_wait_review_revision_and_expiry(self):
         self.room.request_submitted=True

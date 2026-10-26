@@ -60,6 +60,12 @@ class Conversation(models.Model):
         blank=True,
     )
     draft = models.JSONField(default=dict, blank=True)
+    # Persisted "Description Done" state: the assigned artisan has explicitly
+    # confirmed the clarified scope. description_confirmed_hash is a digest of the
+    # request description (+ additional details) at confirmation time; a later
+    # material change invalidates the confirmation for offer purposes.
+    description_confirmed_at = models.DateTimeField(null=True, blank=True)
+    description_confirmed_hash = models.CharField(max_length=64, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -280,6 +286,14 @@ class Offer(models.Model):
     notes = models.TextField(max_length=3000, blank=True)
     scheduled_start = models.DateTimeField()
     scheduled_end = models.DateTimeField()
+    # Canonical agreed duration that drives the service countdown once the
+    # booking starts. scheduled_end is computed from scheduled_start + duration.
+    duration_value = models.PositiveIntegerField(default=1)
+    duration_unit = models.CharField(
+        max_length=8,
+        choices=[("HOURS", "Hours"), ("DAYS", "Days"), ("WEEKS", "Weeks")],
+        default="DAYS",
+    )
     expires_at = models.DateTimeField()
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PROPOSED, db_index=True
@@ -357,6 +371,8 @@ class Offer(models.Model):
         "notes",
         "scheduled_start",
         "scheduled_end",
+        "duration_value",
+        "duration_unit",
         "expires_at",
         "created_by_id",
         "parent_offer_id",
@@ -383,6 +399,48 @@ class Offer(models.Model):
 
     def __str__(self):
         return f"Offer {self.id}"
+
+
+class OfferMaterial(models.Model):
+    """One itemized material line on an offer.
+
+    The financial truth for these rows is stored here and recomputed by the
+    backend from name, quantity and unit price: line total = quantity × unit
+    price, and the offer's materials_amount is the sum of its line totals.
+    Client-supplied totals are never trusted.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    offer = models.ForeignKey(
+        Offer, on_delete=models.CASCADE, related_name="materials"
+    )
+    position = models.PositiveSmallIntegerField(default=0)
+    name = models.CharField(max_length=120)
+    unit = models.CharField(max_length=40, blank=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(quantity__gt=0), name="offer_material_quantity_positive"
+            ),
+            models.CheckConstraint(
+                condition=Q(unit_price__gte=0), name="offer_material_price_nonnegative"
+            ),
+            models.CheckConstraint(
+                condition=Q(line_total__gte=0), name="offer_material_line_nonnegative"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["offer", "position"], name="offer_material_order_idx"),
+        ]
+
+    def __str__(self):
+        return f"OfferMaterial {self.name} x{self.quantity}"
 
 
 class MediaPreservationHold(models.Model):

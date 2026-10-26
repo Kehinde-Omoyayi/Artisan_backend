@@ -1,8 +1,23 @@
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
 from django.db.models import F, Q
+
+
+def duration_timedelta(value, unit):
+    """Canonical agreed-service-duration → timedelta mapping (server-side only)."""
+    if unit == "HOURS":
+        return timedelta(hours=int(value))
+    if unit == "WEEKS":
+        return timedelta(weeks=int(value))
+    return timedelta(days=int(value))
+
+
+def duration_label(value, unit):
+    label = {"HOURS": "hour", "DAYS": "day", "WEEKS": "week"}.get(unit, "day")
+    return f"{value} {label}{'' if value == 1 else 's'}"
 
 
 class Booking(models.Model):
@@ -38,6 +53,18 @@ class Booking(models.Model):
     customer_completed_at = models.DateTimeField(null=True, blank=True, editable=False)
     payout_eligible_at = models.DateTimeField(null=True, blank=True, editable=False)
     finalized_at = models.DateTimeField(null=True, blank=True, editable=False, db_index=True)
+    # Agreed duration copied from the accepted offer when the booking is created.
+    # The countdown starts only when the assigned artisan records the actual
+    # service start; countdown_ends_at = actual_started_at + duration and never
+    # resets while the booking stays in progress.
+    service_duration_value = models.PositiveIntegerField(default=1)
+    service_duration_unit = models.CharField(
+        max_length=8,
+        choices=[("HOURS", "Hours"), ("DAYS", "Days"), ("WEEKS", "Weeks")],
+        default="DAYS",
+    )
+    actual_started_at = models.DateTimeField(null=True, blank=True, editable=False)
+    countdown_ends_at = models.DateTimeField(null=True, blank=True, editable=False, db_index=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

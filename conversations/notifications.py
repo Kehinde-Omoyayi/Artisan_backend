@@ -59,7 +59,7 @@ def notify_room_event(message):
     # Draft greetings are not workflow alerts; only committed, explicit actions fan out.
     if message.event_code in {
         "CONVERSATION_STARTED",
-        "ASSISTANT_GREETING",
+        "REQUEST_GREETING",
         "REQUEST_DRAFT_CREATED",
         "DRAFT_SAVED",
     }:
