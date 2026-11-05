@@ -9,6 +9,8 @@ from .views import (
     FlutterwaveCallbackView,
     InitializeBookingPaymentView,
     InitializeAdditionalOrderPaymentView,
+    PaymentBankTransferView,
+    PaymentBankTransferVerifyView,
     PaymentDetailView,
     flutterwave_webhook,
 )
@@ -17,6 +19,8 @@ urlpatterns = [
     path("artisan/earnings/summary/", ArtisanEarningsSummaryView.as_view(), name="artisan-earnings-summary"),
     path("booking/<uuid:booking_id>/initialize/", InitializeBookingPaymentView.as_view(), name="initialize-booking-payment"),
     path("additional-orders/<uuid:order_id>/initialize/", InitializeAdditionalOrderPaymentView.as_view(), name="initialize-additional-order-payment"),
+    path("<uuid:payment_id>/bank-transfer/verify/", PaymentBankTransferVerifyView.as_view(), name="payment-bank-transfer-verify"),
+    path("<uuid:payment_id>/bank-transfer/", PaymentBankTransferView.as_view(), name="payment-bank-transfer"),
     path("<uuid:payment_id>/", PaymentDetailView.as_view(), name="payment-detail"),
     path("payout-account/banks/", PayoutBankListView.as_view(), name="payout-account-banks"),
     path("payout-account/", ArtisanPayoutAccountView.as_view(), name="artisan-payout-account"),

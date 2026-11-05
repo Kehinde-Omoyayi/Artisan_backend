@@ -1,0 +1,35 @@
+<section class="inbox-group" aria-labelledby="{{ group_id }}-heading">
+  <header class="inbox-group-heading">
+    <div><span class="eyebrow">{{ group_eyebrow }}</span><h2 id="{{ group_id }}-heading">{{ group_heading }}</h2></div>
+    <span class="inbox-group-count" aria-label="{{ items|length }} conversations">{{ items|length }}</span>
+  </header>
+  <div class="inbox-grid">
+    {% for item in items %}
+      <a class="inbox-card{% if item.unread_count %} is-unread{% endif %}" href="{% url 'conversation-detail' conversation_id=item.id %}" aria-label="Open conversation with {% if item.counterparty.first_name or item.counterparty.last_name %}{{ item.counterparty.first_name }} {{ item.counterparty.last_name }}{% else %}{{ item.counterparty.business_name|default:item.title|default:'participant' }}{% endif %}">
+        <span class="inbox-card-avatar" aria-hidden="true">
+          {% if item.counterparty.profile_photo %}
+          <img src="{{ item.counterparty.profile_photo }}" alt="" data-profile-photo-image loading="lazy" referrerpolicy="no-referrer">
+          <span data-profile-photo-fallback hidden>{{ item.counterparty.first_name|default:item.counterparty.business_name|default:'U'|slice:':1'|upper }}</span>
+          {% else %}
+          <span data-profile-photo-fallback>{{ item.counterparty.first_name|default:item.counterparty.business_name|default:'U'|slice:':1'|upper }}</span>
+          {% endif %}
+        </span>
+        <span class="inbox-card-body">
+          <span class="inbox-card-ident">
+            <strong class="inbox-card-name">{% if item.counterparty.first_name or item.counterparty.last_name %}{{ item.counterparty.first_name }} {{ item.counterparty.last_name }}{% else %}{{ item.counterparty.business_name|default:item.title|default:'Conversation' }}{% endif %}</strong>
+            <span class="inbox-card-role">
+              {% if item.viewer_role == 'direct' %}Private chat{% if item.counterparty.business_name %} <span class="inbox-card-dot" aria-hidden="true">•</span> {{ item.counterparty.business_name }}{% endif %}{% elif item.counterparty.role == 'artisan' %}{{ item.counterparty.service_label|default:'Artisan' }}{% if item.counterparty.business_name %} <span class="inbox-card-dot" aria-hidden="true">•</span> {{ item.counterparty.business_name }}{% endif %}{% else %}Customer <span class="inbox-card-dot" aria-hidden="true">•</span> Service request{% endif %}
+            </span>
+          </span>
+          <span class="inbox-card-preview">{{ item.last_message_text|default:item.last_message_preview|default:'Start the conversation'|truncatechars:150 }}</span>
+          {% with stamp=item.last_message_at|default:item.updated_at %}
+          <time class="inbox-card-time workflow-local-time" datetime="{{ stamp }}" data-utc-time="{{ stamp }}">{{ stamp|date:"M j, Y · g:i A" }}</time>
+          {% endwith %}
+        </span>
+        {% if item.unread_count %}
+        <span class="unread-count-badge" aria-label="{{ item.unread_count }} unread message{% if item.unread_count != 1 %}s{% endif %}">{{ item.unread_count }}</span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </div>
+</section>

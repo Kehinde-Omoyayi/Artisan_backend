@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Messages · Artisan Market{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/conversations.css' %}">
+{% endblock %}
+{% block body_class %}conversation-inbox-body{% endblock %}
+{% block content %}
+<section class="page-heading conversation-inbox-heading"><div><div class="eyebrow">Private messages</div><h1>Your conversations</h1><p>Customer-side service requests and conversations about your own services stay in separate sections. Any older direct chats remain below as read-only history.</p></div></section>
+<div class="conversation-inbox-groups" data-tour-target="transactions">
+  {% if customer_conversations %}{% include 'conversations/_inbox_group.html' with items=customer_conversations group_id='customer-conversations' group_eyebrow='Marketplace requests' group_heading='As a customer' %}{% endif %}
+  {% if artisan_conversations %}{% include 'conversations/_inbox_group.html' with items=artisan_conversations group_id='artisan-conversations' group_eyebrow='Your services' group_heading='As an artisan' %}{% endif %}
+  {% if direct_conversations %}{% include 'conversations/_inbox_group.html' with items=direct_conversations group_id='direct-conversations' group_eyebrow='Legacy history' group_heading='Legacy direct chats' %}{% endif %}
+  {% if not conversations %}<div class="empty">No conversations yet. Browse an artisan profile and use Request Artisan to start a service-request conversation.</div>{% endif %}
+</div>
+{% endblock %}

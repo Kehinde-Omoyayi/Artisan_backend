@@ -1,0 +1,59 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}System health · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Overall: {{ payload.overall }}</h2>
+  <p class="console-muted">Environment {{ payload.environment }} · generated {{ payload.generated_at|human_datetime }}</p>
+  <div class="health-grid">
+    {% for name, detail in payload.items %}
+      {% if name == 'database' or name == 'cache' or name == 'storage' or name == 'outbox' or name == 'payments' or name == 'notifications' or name == 'workers' or name == 'campaigns' or name == 'analytics' %}
+        <article class="health-card health-card--{{ detail.status }}">
+          <h3>{{ name|humanize_code }}</h3>
+          <p class="health-card__status">{{ detail.status }}</p>
+          <p class="console-muted">
+            {% if detail.latency_ms is not None %}latency {{ detail.latency_ms }} ms{% endif %}
+            {% if detail.detail %}{{ detail.detail }}{% endif %}
+            {% if detail.pending is not None %}pending {{ detail.pending }} · dead-lettered {{ detail.dead_lettered }}{% endif %}
+            {% if detail.queued is not None %}queued {{ detail.queued }}{% endif %}
+            {% if detail.events_24h is not None %}events 24h {{ detail.events_24h }} · lag {{ detail.lag_seconds }}s{% endif %}
+            {% if detail.failed_24h is not None %}failed 24h {{ detail.failed_24h }}{% endif %}
+            {% if detail.dispatching is not None %}dispatching {{ detail.dispatching }} · stale {{ detail.stale_dispatch }}{% endif %}
+          </p>
+        </article>
+      {% endif %}
+    {% endfor %}
+  </div>
+</section>
+
+<section class="console-block">
+  <h2>Request latency (platform, last 24 hours)</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.latency.overall.p50 }}</span><small>P50 ms</small></div>
+    <div class="stat"><span>{{ payload.latency.overall.p95 }}</span><small>P95 ms</small></div>
+    <div class="stat"><span>{{ payload.latency.overall.p99 }}</span><small>P99 ms</small></div>
+    <div class="stat"><span>{{ payload.latency.overall.max }}</span><small>Max ms</small></div>
+    <div class="stat"><span>{{ payload.latency.error_rate_percent }}%</span><small>Error rate</small></div>
+    <div class="stat"><span>{{ payload.latency.samples }}</span><small>Samples</small></div>
+  </div>
+  <table class="console-table">
+    <thead><tr><th>Endpoint</th><th>Calls</th><th>P50</th><th>P95</th><th>P99</th><th>Max</th></tr></thead>
+    <tbody>
+    {% for row in payload.latency.slowest_endpoints %}
+      <tr><td>{{ row.endpoint }}</td><td>{{ row.count }}</td><td>{{ row.p50 }}</td><td>{{ row.p95 }}</td><td>{{ row.p99 }}</td><td>{{ row.max }}</td></tr>
+    {% empty %}
+      <tr><td colspan="6">No request samples recorded yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="console-block">
+  <h2>Queues</h2>
+  <table class="console-table"><thead><tr><th>Queue</th><th>Queued jobs</th></tr></thead><tbody>
+    {% for queue in payload.workers.queues %}<tr><td>{{ queue.queue }}</td><td>{{ queue.queued }}</td></tr>
+    {% empty %}<tr><td colspan="2">No queues reported.</td></tr>{% endfor %}
+  </tbody></table>
+  <p class="console-muted">Job durations: average {{ payload.jobs.average_duration_seconds|default:'—' }} s, p95 {{ payload.jobs.p95_duration_seconds|default:'—' }} s over {{ payload.jobs.sample }} runs.</p>
+</section>
+{% endblock %}

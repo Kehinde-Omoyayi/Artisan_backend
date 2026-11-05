@@ -1,0 +1,90 @@
+{% if is_landing_page %}
+<footer class="landing-footer">
+  <div class="landing-wrap landing-footer__inner">
+    <a class="landing-brand" href="{% url 'home' %}" aria-label="Artisan Market home">
+      <svg class="landing-brand__mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+        <path d="M20 3.5 36 12.7v14.6L20 36.5 4 27.3V12.7L20 3.5Z" fill="currentColor"/>
+        <path d="M12.3 25.9 20 12.8l7.7 13.1M15.6 20.3h8.8" fill="none" stroke="#f9f5ee" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1"/>
+      </svg>
+      <span>Artisan <span class="landing-brand__light">Market</span></span>
+    </a>
+    <nav class="landing-footer__links" aria-label="Footer navigation">
+      {% if authenticated and nav_role == 'staff' and platform_manager %}
+        <a href="{% url 'home' %}">Manager Overview</a>
+        <a href="{% url 'support-operations' %}">Support Operations</a>
+        <a href="{% url 'support-cases' %}">Case Queue</a>
+        <a href="{% url 'support-refunds' %}">Refunds</a>
+        <a href="{% url 'support-staff' %}">Support Team</a>
+        <form method="post" action="{% url 'logout' %}" class="landing-nav__logout-form js-confirm-form" data-confirm-logout data-confirm="You will be signed out of this browser session.">{% csrf_token %}<button class="landing-nav__logout" type="submit">Log Out</button></form>
+      {% elif authenticated and nav_role == 'staff' %}
+        <a href="{% url 'support-operations' %}">Support Operations</a>
+        <a href="{% url 'support-cases' %}">Case Queue</a>
+        {% if support_capabilities.can_view_refunds or platform_manager %}<a href="{% url 'support-refunds' %}">Refunds</a>{% endif %}
+        {% if support_capabilities.can_manage_staff or platform_manager %}<a href="{% url 'support-staff' %}">Support Team</a>{% endif %}
+        <form method="post" action="{% url 'logout' %}" class="landing-nav__logout-form js-confirm-form" data-confirm-logout data-confirm="You will be signed out of this browser session.">{% csrf_token %}<button class="landing-nav__logout" type="submit">Log out</button></form>
+      {% elif authenticated %}
+        <a href="{% url 'home' %}">Dashboard</a>
+        <a href="{% url 'artisans' %}">Find artisans</a>
+        {% if nav_role == 'customer' %}
+          <a href="{% url 'customer-profile' %}">Profile</a>
+          <a href="{% url 'service-requests' %}">Requests</a>
+          <a href="{% url 'bookings' %}">Bookings</a>
+          <a href="{% url 'conversation-inbox' %}">Messages</a>
+        {% elif nav_role == 'artisan' %}
+          <a href="{% url 'artisan-requests' %}">Requests</a>
+          <a href="{% url 'artisan-services' %}">My services</a>
+          <a href="{% url 'bookings' %}">Bookings</a>
+          <a href="{% url 'conversation-inbox' %}">Messages</a>
+        {% endif %}
+        <a href="{% url 'support-cases' %}">Support</a>
+      {% else %}
+        <a href="{% url 'artisans' %}">Find artisans</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#payments">Payments</a>
+        <a href="{% url 'login' %}">Sign in</a>
+      {% endif %}
+    </nav>
+    <p class="landing-footer__note">{% if authenticated %}Account actions and operational access continue to follow your role and permissions.{% else %}The six homepage themes and photographs are illustrative—not live listings or artisan profiles.{% endif %}</p>
+  </div>
+  <div class="landing-wrap landing-footer__bottom"><span>© {% now "Y" %} Artisan Market</span><span>A marketplace for artisan work in Nigeria</span></div>
+</footer>
+{% else %}
+<footer class="site-footer">
+  <div class="site-footer__inner">
+    <a class="brand" href="{% url 'home' %}" aria-label="Artisan Market home">
+      <svg class="brand__mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+        <path d="M20 3.5 36 12.7v14.6L20 36.5 4 27.3V12.7L20 3.5Z" fill="currentColor"/>
+        <path d="M12.3 25.9 20 12.8l7.7 13.1M15.6 20.3h8.8" fill="none" stroke="#f9f5ee" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1"/>
+      </svg>
+      <span>Artisan <span class="brand__light">Market</span></span>
+    </a>
+    <nav class="site-footer__links" aria-label="Footer navigation">
+      {% if authenticated and nav_role == 'staff' and platform_manager %}
+        <a href="{% url 'home' %}">Manager Overview</a>
+        <a href="{% url 'support-operations' %}">Support Operations</a>
+        <a href="{% url 'support-cases' %}">Case Queue</a>
+        <a href="{% url 'support-refunds' %}">Refunds</a>
+        <a href="{% url 'support-staff' %}">Support Team</a>
+        <form method="post" action="{% url 'logout' %}" class="inline-form js-confirm-form" data-confirm-logout data-confirm="You will be signed out of this browser session.">{% csrf_token %}<button class="nav-logout" type="submit">Log Out</button></form>
+      {% elif authenticated and nav_role == 'staff' %}
+        <a href="{% url 'support-operations' %}">Support Operations</a>
+        <a href="{% url 'support-cases' %}">Case Queue</a>
+        {% if support_capabilities.can_view_refunds %}<a href="{% url 'support-refunds' %}">Refunds</a>{% endif %}
+        {% if support_capabilities.can_manage_staff %}<a href="{% url 'support-staff' %}">Support Team</a>{% endif %}
+        <form method="post" action="{% url 'logout' %}" class="inline-form js-confirm-form" data-confirm-logout data-confirm="You will be signed out of this browser session.">{% csrf_token %}<button class="nav-logout" type="submit">Log out</button></form>
+      {% elif authenticated %}
+        <a href="{% url 'home' %}">Dashboard</a>
+        <a href="{% url 'artisans' %}">Find artisans</a>
+        <a href="{% url 'support-cases' %}">Support</a>
+      {% else %}
+        <a href="{% url 'home' %}">Home</a>
+        <a href="{% url 'artisans' %}">Find artisans</a>
+        <a href="{% url 'login' %}">Sign in</a>
+        <a href="{% url 'register' %}">Create an account</a>
+      {% endif %}
+    </nav>
+    <p class="site-footer__note">Artisan work begins with a clear conversation.</p>
+  </div>
+  <div class="site-footer__bottom"><span>© {% now "Y" %} Artisan Market</span><span>A marketplace for artisan work in Nigeria</span></div>
+</footer>
+{% endif %}

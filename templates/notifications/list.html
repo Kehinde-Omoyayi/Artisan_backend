@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Notifications · Artisan Market{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/notifications.css' %}">
+{% endblock %}
+{% block content %}
+<div class="notification-page" aria-labelledby="notifications-title" data-tour-target="notifications">
+  <nav class="notification-back-nav" aria-label="Back navigation">
+    <a class="notification-back-link" href="{{ back_url }}"><span aria-hidden="true">←</span> {% if back_url_is_fallback %}Back to marketplace{% else %}Back{% endif %}</a>
+  </nav>
+
+  <section class="page-heading notification-page-heading">
+    <div><div class="eyebrow">Activity</div><h1 id="notifications-title">Notifications</h1><p>Updates about your bookings, payments, conversations and account.</p></div>
+  </section>
+
+  <section class="notification-inbox panel" aria-labelledby="notification-list-heading">
+    <header class="notification-toolbar">
+      <div><span class="notification-kicker">YOUR ACCOUNT ACTIVITY</span><h2 id="notification-list-heading">{% if only_unread %}Unread notifications{% else %}All notifications{% endif %}</h2><p>{% if only_unread %}Updates that still need your attention.{% else %}Your latest marketplace updates, with the newest first.{% endif %}</p></div>
+      <div class="notification-toolbar-actions">
+        <nav class="notification-filter-nav" aria-label="Filter notifications">
+          {% if only_unread %}<a class="notification-filter-link" href="{% url 'notifications-page' %}?filter=all{% if back_query %}&amp;{{ back_query }}{% endif %}">Show all</a>{% else %}<a class="notification-filter-link" href="{% url 'notifications-page' %}?filter=unread{% if back_query %}&amp;{{ back_query }}{% endif %}">Show unread</a>{% endif %}
+        </nav>
+        {% if items %}
+        <form method="post" class="notification-action-form">
+          {% csrf_token %}<input type="hidden" name="action" value="read_all"><input type="hidden" name="back_to" value="{{ back_url }}"><input type="hidden" name="filter" value="{% if only_unread %}unread{% else %}all{% endif %}">
+          <button class="notification-secondary-button" type="submit">Mark all as read</button>
+        </form>
+        <form method="post" class="notification-action-form js-confirm-form" data-confirm="This permanently deletes every notification in your inbox, including notifications not shown by the current filter. This cannot be undone.">
+          {% csrf_token %}<input type="hidden" name="action" value="delete_all"><input type="hidden" name="back_to" value="{{ back_url }}"><input type="hidden" name="filter" value="{% if only_unread %}unread{% else %}all{% endif %}">
+          <button class="notification-danger-button" type="submit">Delete all</button>
+        </form>
+        {% endif %}
+      </div>
+    </header>
+
+    {% if items %}
+      <ul class="notification-list" aria-label="Your notifications">
+        {% for item in items %}
+        <li class="notification-item{% if not item.read_at %} unread{% endif %}">
+          <span class="notification-item-mark" aria-hidden="true">{% if not item.read_at %}•{% else %}✓{% endif %}</span>
+          <div class="notification-item-copy">
+            <div class="notification-item-heading"><h3>{{ item.title|default:'Marketplace update' }}</h3>{% if not item.read_at %}<span class="notification-unread-badge">Unread</span>{% endif %}</div>
+            <p>{{ item.message }}</p>
+            <time class="notification-timestamp" datetime="{{ item.created_at }}">{{ item.created_at_display }}</time>
+            <div class="notification-item-actions">
+              {% if item.safe_url %}<a class="notification-open-link" href="{{ item.safe_url }}">{{ item.safe_action_label }} <span aria-hidden="true">→</span></a>{% endif %}
+              {% if not item.read_at %}
+              <form method="post" class="notification-action-form">
+                {% csrf_token %}<input type="hidden" name="action" value="read"><input type="hidden" name="notification_id" value="{{ item.id }}"><input type="hidden" name="back_to" value="{{ back_url }}"><input type="hidden" name="filter" value="{% if only_unread %}unread{% else %}all{% endif %}">
+                <button class="notification-text-button" type="submit">Mark as read</button>
+              </form>
+              {% endif %}
+              <form method="post" class="notification-action-form">
+                {% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="notification_id" value="{{ item.id }}"><input type="hidden" name="back_to" value="{{ back_url }}"><input type="hidden" name="filter" value="{% if only_unread %}unread{% else %}all{% endif %}">
+                <button class="notification-delete-button" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      <nav class="notification-pagination" aria-label="Notification pages">
+        <span>{% if previous_offset is not None %}<a href="{% url 'notifications-page' %}?offset={{ previous_offset }}{% if only_unread %}&amp;filter=unread{% endif %}{% if back_query %}&amp;{{ back_query }}{% endif %}" rel="prev">← Newer</a>{% endif %}</span>
+        <span>{% if next_offset %}<a href="{% url 'notifications-page' %}?offset={{ next_offset }}{% if only_unread %}&amp;filter=unread{% endif %}{% if back_query %}&amp;{{ back_query }}{% endif %}" rel="next">Older →</a>{% endif %}</span>
+      </nav>
+    {% else %}
+      <div class="notification-empty-state"><span class="notification-empty-mark" aria-hidden="true">◌</span><strong>No {% if only_unread %}unread {% endif %}notifications</strong><p>{% if only_unread %}You are all caught up. Switch to all notifications to review older updates.{% else %}Updates about your requests, bookings and account will appear here.{% endif %}</p></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

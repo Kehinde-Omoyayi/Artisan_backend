@@ -13,6 +13,7 @@ from django.core.cache import cache
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -61,7 +62,15 @@ from .payout_accounts import (
     resolved_account_details,
 )
 from .serializers import ArtisanPayoutAccountSerializer, PaymentSerializer
-from .services import prepare_booking_payment, prepare_additional_order_payment
+from .services import (
+    auto_verify_pending_transfer,
+    bank_transfer_window,
+    ensure_bank_transfer_charge,
+    ensure_checkout_link,
+    prepare_booking_payment,
+    prepare_additional_order_payment,
+    renew_bank_transfer_charge,
+)
 from .tasks import (
     initialize_prepared_payment,
     reconcile_artisan_payout,
@@ -212,14 +221,116 @@ class PaymentDetailView(APIView):
     def get(self, request, payment_id):
         payment = (
             EscrowPayment.objects
-            .select_related("booking__customer__user", "booking__artisan__user")
+            .select_related("booking__customer__user", "booking__artisan__user", "artisan__user")
             .filter(id=payment_id)
             .filter(Q(customer=request.user) | Q(artisan__user=request.user))
             .first()
         )
         if not payment:
             return Response({"detail": "Payment not found."}, status=status.HTTP_404_NOT_FOUND)
+        if payment.customer_id == request.user.id:
+            # The payer's own screen is polling this record: if the checkout is
+            # missing, expired or older than the card/bank-transfer rule, ask for
+            # a fresh one instead of leaving the page waiting forever.
+            try:
+                ensure_checkout_link(payment)
+            except Exception:
+                logger.warning("checkout_renewal_failed", exc_info=True)
+            # A transfer can land while the webhook has nowhere to go (local or
+            # staging). The payer's page polls this record every few seconds, so
+            # that poll is where the money is confirmed and the booking moves on
+            # by itself -- nobody has to press "I have made this bank transfer".
+            try:
+                payment = auto_verify_pending_transfer(payment)
+            except Exception:
+                logger.warning("bank_transfer_auto_verify_failed", exc_info=True)
         return Response(PaymentSerializer(payment, context={"request": request}).data)
+
+class PaymentBankTransferView(APIView):
+    """The account the payer transfers into, minted for this one payment.
+
+    Paying by bank transfer used to mean leaving the app for the provider's
+    hosted page. The provider will hand the same details to us directly, so the
+    chat can show the number, the bank, the exact amount and the expiry in
+    place, and the payer never leaves the conversation.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        tags=["Payments"],
+        request=OpenApiTypes.OBJECT,
+        responses={
+            200: OpenApiResponse(description="Account details to transfer into."),
+            400: OpenApiResponse(description="The provider refused to mint an account."),
+            404: OpenApiResponse(description="Payment not found."),
+        },
+    )
+    def post(self, request, payment_id):
+        payment = (
+            EscrowPayment.objects.select_related("customer", "booking")
+            .filter(id=payment_id, customer=request.user)
+            .first()
+        )
+        if not payment:
+            return Response({"detail": "Payment not found."}, status=status.HTTP_404_NOT_FOUND)
+        renew = str(request.data.get("renew") or "").strip().lower() in {"1", "true", "yes"}
+        if renew:
+            # One live account at a time. The chat hides the button that would
+            # get here while the window is open; this is the same rule enforced
+            # where it cannot be bypassed.
+            window = bank_transfer_window(payment)
+            if window["live"]:
+                return Response(
+                    {
+                        "detail": (
+                            "The transfer account on screen is still open. Use it, "
+                            "or wait for its timer to finish before asking for a new one."
+                        ),
+                        "live_until": window["until"],
+                        "seconds_left": window["seconds_left"],
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+        try:
+            details = (
+                renew_bank_transfer_charge(payment)
+                if renew
+                else ensure_bank_transfer_charge(payment)
+            )
+        except FlutterwaveUnknownError:
+            return Response(
+                {"detail": "The provider did not answer. Nothing has been charged — try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except (FlutterwaveError, ValueError) as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(details, status=status.HTTP_200_OK)
+
+
+class PaymentBankTransferVerifyView(APIView):
+    """The payer says the transfer is done: go and confirm it with the provider.
+
+    Verification works from our own reference, because a bank-transfer charge has
+    no transaction id until the money lands. Calling this twice is harmless.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(tags=["Payments"], responses={202: OpenApiResponse(description="Verification queued.")})
+    def post(self, request, payment_id):
+        payment = EscrowPayment.objects.filter(id=payment_id, customer=request.user).first()
+        if not payment:
+            return Response({"detail": "Payment not found."}, status=status.HTTP_404_NOT_FOUND)
+        if payment.status != EscrowPayment.Status.PAYMENT_PENDING:
+            return Response({"status": payment.status}, status=status.HTTP_200_OK)
+        try:
+            verify_flutterwave_payment.delay(str(payment.id))
+        except Exception:
+            logger.warning("bank_transfer_verify_enqueue_failed payment=%s", payment.id, exc_info=True)
+            return Response({"detail": "Could not reach the queue. Try again."}, status=503)
+        return Response({"status": "checking"}, status=status.HTTP_202_ACCEPTED)
+
 
 class FlutterwaveCallbackView(APIView):
     permission_classes: list[type] = []
@@ -232,6 +343,19 @@ class FlutterwaveCallbackView(APIView):
         request=OpenApiTypes.OBJECT,
         responses={200: OpenApiResponse(description="Callback received."), 400: OpenApiResponse(description="Invalid callback payload.")},
     )
+    def _browser_return(self, request, payment=None):
+        """Send a real browser back into the chat after checkout.
+
+        Flutterwave redirects the payer here. An API client still gets JSON, but
+        a browser is handed to the frontend return route, which puts the payer
+        straight back into the conversation that owns the payment.
+        """
+        accept = str(request.headers.get("Accept") or "").lower()
+        site_url = str(getattr(settings, "SITE_URL", "") or "").rstrip("/")
+        if "text/html" not in accept or not site_url or payment is None:
+            return None
+        return redirect(f"{site_url}/payments/{payment.id}/return/")
+
     def get(self, request):
         transaction_id = str(request.query_params.get("transaction_id") or "").strip()
         tx_ref = str(request.query_params.get("tx_ref") or "").strip()
@@ -242,8 +366,14 @@ class FlutterwaveCallbackView(APIView):
 
         payment = EscrowPayment.objects.filter(reference=tx_ref).first()
         if payment:
+            # The payer id travels back with the acknowledgement: a web frontend
+            # that forwards this call (single tunnel, no public API) needs it to
+            # put the browser on the right return page.
             if payment.provider_transaction_id and str(payment.provider_transaction_id) != transaction_id:
-                return Response({"status": "received"}, status=status.HTTP_202_ACCEPTED)
+                return Response(
+                    {"status": "received", "payment_id": str(payment.id)},
+                    status=status.HTTP_202_ACCEPTED,
+                )
             try:
                 verify_flutterwave_payment.delay(
                     str(payment.id),
@@ -252,14 +382,23 @@ class FlutterwaveCallbackView(APIView):
             except Exception:
                 # The periodic reconciliation task re-verifies pending payments; never fail the redirect.
                 logger.exception("payment_callback_enqueue_failed payment=%s", payment.id)
-            return Response({"status": "received"}, status=status.HTTP_202_ACCEPTED)
+            bounce = self._browser_return(request, payment)
+            if bounce is not None:
+                return bounce
+            return Response(
+                {"status": "received", "payment_id": str(payment.id)},
+                status=status.HTTP_202_ACCEPTED,
+            )
 
         # Promotion fees have their own payment model and verifier; never route them through escrow.
         from promotions.models import PromotionPayment
         promotion_payment = PromotionPayment.objects.filter(reference=tx_ref).first()
         if promotion_payment:
             if promotion_payment.provider_transaction_id and str(promotion_payment.provider_transaction_id) != transaction_id:
-                return Response({"status": "received"}, status=status.HTTP_202_ACCEPTED)
+                return Response(
+                    {"status": "received", "promotion_payment_id": str(promotion_payment.id)},
+                    status=status.HTTP_202_ACCEPTED,
+                )
             try:
                 from promotions.tasks import verify_promotion_payment
                 verify_promotion_payment.delay(
@@ -268,6 +407,10 @@ class FlutterwaveCallbackView(APIView):
                 )
             except Exception:
                 logger.exception("promotion_payment_callback_enqueue_failed payment=%s", promotion_payment.id)
+            return Response(
+                {"status": "received", "promotion_payment_id": str(promotion_payment.id)},
+                status=status.HTTP_202_ACCEPTED,
+            )
         return Response({"status": "received"}, status=status.HTTP_202_ACCEPTED)
 
 def _valid_flutterwave_signature(request):
@@ -323,7 +466,16 @@ def flutterwave_webhook(request):
             tx_ref = str(data.get("tx_ref") or "")
             payment = EscrowPayment.objects.filter(reference=tx_ref).first() if tx_ref else None
             if payment:
-                transaction.on_commit(lambda payment_id=str(payment.id), webhook_event_id=event.id: verify_flutterwave_payment.delay(payment_id, webhook_event_id=webhook_event_id))
+                # The provider's own transaction id travels with the event. A
+                # bank-transfer charge has none until this arrives, so without
+                # it verification could only guess.
+                provider_id = str(data.get("id") or "").strip()
+                provider_id = provider_id if provider_id.isdigit() else None
+                transaction.on_commit(
+                    lambda payment_id=str(payment.id), webhook_event_id=event.id, provider_id=provider_id: verify_flutterwave_payment.delay(
+                        payment_id, provider_id, webhook_event_id=webhook_event_id
+                    )
+                )
             elif tx_ref:
                 from promotions.models import PromotionPayment
                 promotion_payment = PromotionPayment.objects.filter(reference=tx_ref).first()

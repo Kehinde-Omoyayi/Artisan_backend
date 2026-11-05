@@ -1,0 +1,620 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Request & Chat · Artisan Market{% endblock %}
+{% block body_class %}conversation-shell-body{% endblock %}
+{% block main_class %}conversation-main-shell{% endblock %}
+{% block site_header %}
+<header class="conversation-nav" aria-label="Conversation navigation">
+  <div class="conversation-nav-inner">
+    <a class="conversation-nav-back" href="{% url 'conversation-inbox' %}" aria-label="Back to messages"><span aria-hidden="true">←</span></a>
+    <strong>{% if conversation.conversation_type == 'DIRECT' %}Direct Chat{% else %}Request &amp; Chat{% endif %}</strong>
+    <details class="conversation-more">
+      <summary aria-label="More conversation options">⋮</summary>
+      <div class="conversation-more-menu">
+        <button class="conversation-tour-trigger" type="button" data-onboarding-open aria-haspopup="dialog" aria-controls="site-onboarding-tour">Take a tour</button>
+        <a href="{% url 'home' %}" data-tour-target="discovery">Marketplace home</a>
+        <a href="{% url 'categories' %}" data-tour-target="discovery">Browse categories</a>
+        <a href="{% url 'artisans' %}" data-tour-target="profiles-services">Find artisans</a>
+        {% if conversation.viewer_role == 'customer' %}<a href="{% url 'customer-profile' %}" data-tour-target="account">Customer profile</a>{% elif conversation.viewer_role == 'artisan' %}<a href="{% url 'artisan-profile' %}" data-tour-target="account">Artisan profile</a>{% endif %}
+        <a href="{% url 'conversation-inbox' %}" data-tour-target="transactions">All messages</a>
+        {% if conversation.booking %}<a href="{% url 'booking-activity' pk=conversation.booking.id %}" data-booking-activity>Booking activity</a><a href="{% url 'booking-detail' pk=conversation.booking.id %}">Booking details</a>{% endif %}
+        {% if conversation.payment %}<a href="{% url 'payment-detail' payment_id=conversation.payment.id %}">Payment details</a>{% endif %}
+        {% if conversation.dispute_case %}<a href="{% url 'support-case-detail' pk=conversation.dispute_case.id %}">Support case</a>{% else %}<a href="{% url 'support-cases' %}?conversation_id={{ conversation.id }}">Get support</a>{% endif %}
+      </div>
+    </details>
+  </div>
+</header>
+{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">
+<link rel="stylesheet" href="{% static 'css/conversations.css' %}">
+{% endblock %}
+{% block content %}
+<section class="artisan-motion-page conversation-page" data-tour-target="transactions" data-artisan-page="conversation" data-viewer-role="{{ conversation.viewer_role }}">
+  <div class="conversation-layout">
+    <div class="conversation-main">
+      <header class="conversation-header" data-artisan-reveal data-motion="left">
+        <div class="participant-avatar" aria-hidden="true">
+          {% if conversation.counterparty.profile_photo %}<img class="participant-avatar-image" src="{{ conversation.counterparty.profile_photo }}" alt="" data-profile-photo-image referrerpolicy="no-referrer"><span class="participant-avatar-fallback" data-profile-photo-fallback hidden>{{ conversation.counterparty.first_name|default:'A'|slice:':1'|upper }}</span>{% else %}<span class="participant-avatar-fallback" data-profile-photo-fallback>{{ conversation.counterparty.first_name|default:'A'|slice:':1'|upper }}</span>{% endif %}
+        </div>
+        <div class="participant-meta">
+          <div class="eyebrow">{% if conversation.conversation_type == 'DIRECT' %}Private conversation{% elif conversation.viewer_role == 'artisan' %}Customer service request{% else %}Selected artisan{% endif %}</div>
+          <h1>{{ conversation.title }}</h1>
+          <p>{% if conversation.viewer_role == 'artisan' %}Customer{% else %}Artisan{% endif %}</p>
+        </div>
+        <span class="status-pill {{ conversation.state|status_class }}">{{ conversation.state|title }}</span>
+        <span class="chat-unread-count" id="chat-unread-count" aria-live="polite">{{ conversation.unread_count }} unread</span>
+      </header>
+
+      {% if conversation.booking and conversation.booking.status == 'IN_PROGRESS' %}
+      <div class="chat-status-strip">
+        <div class="countdown-strip" data-countdown data-countdown-start="{{ conversation.booking.actual_started_at|default:'' }}" data-countdown-end="{{ conversation.booking.countdown_ends_at|default:'' }}" data-duration-label="{{ conversation.booking.duration_label|default:'' }}" role="status" aria-live="polite">
+          <div><strong>Service in progress</strong><small data-countdown-note>{% if conversation.booking.countdown_ends_at %}Agreed duration: {{ conversation.booking.duration_label|default:'—' }}{% elif conversation.booking.duration_label %}Agreed duration: {{ conversation.booking.duration_label }} · countdown starts when the artisan starts the paid booking{% else %}No agreed duration was recorded; track progress with the artisan before completion{% endif %}</small></div>
+          <span class="countdown-value" data-countdown-value>{% if conversation.booking.countdown_ends_at %}…{% endif %}</span>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="chat-workspace" data-artisan-reveal data-motion="scale">
+        <div class="conversation-scroll-area" id="conversation-scroll-area">
+        <div class="chat-stream" id="conversation-stream" role="log" aria-label="Conversation messages" aria-live="off" data-conversation-id="{{ conversation.id }}" data-role="{{ conversation.viewer_role }}" data-viewer-id="{{ conversation.viewer_id|default:'' }}" data-unread-count="{{ conversation.unread_count }}" data-counterparty-avatar="{{ conversation.counterparty.profile_photo|default:'' }}">
+          {% for item in conversation_messages %}
+          {% if item.event_code != 'CONVERSATION_STARTED' and item.event_code != 'OFFER_CREATED' and item.event_code != 'OFFER_COUNTERED' %}
+          <article class="chat-message {% if item.message_type == 'SYSTEM' %}system{% elif item.sender_id == conversation.viewer_id %}mine{% else %}theirs{% endif %}">
+            {% if item.message_type != 'SYSTEM' and item.sender_id != conversation.viewer_id %}<span class="chat-message-avatar" aria-hidden="true">{% if conversation.counterparty.profile_photo %}<img src="{{ conversation.counterparty.profile_photo }}" alt="" data-profile-photo-image loading="lazy" referrerpolicy="no-referrer"><span data-profile-photo-fallback hidden>{{ item.sender_name|default:conversation.title|slice:':1'|upper }}</span>{% else %}<span data-profile-photo-fallback>{{ item.sender_name|default:conversation.title|slice:':1'|upper }}</span>{% endif %}</span>{% endif %}
+            <div class="chat-bubble">
+              <strong>{% if item.message_type == 'SYSTEM' %}Artisan Market{% elif item.sender_id == conversation.viewer_id %}You{% else %}{{ item.sender_name|default:conversation.title }}{% endif %}</strong>
+              {% if item.body %}<p>{% if item.message_type == 'SYSTEM' %}{{ item.body|short_system_message }}{% else %}{{ item.body }}{% endif %}</p>{% endif %}
+              {% for attachment in item.attachments %}
+                {% if not attachment.url %}
+                <p class="chat-attachment-pending">{% if attachment.content_type|slice:':6' == 'image/' %}Photo{% elif attachment.content_type|slice:':6' == 'audio/' %}Audio{% elif attachment.content_type|slice:':6' == 'video/' %}Video{% else %}File{% endif %} could not be shown{% if attachment.scan_status == 'PENDING' %} yet (still being checked){% endif %}.</p>
+                {% elif attachment.url %}
+                  {% if attachment.content_type|slice:':6' == 'image/' %}
+                  <a class="chat-attachment-image" href="{{ attachment.url }}" target="_blank" rel="noopener"><img src="{{ attachment.url }}" alt="Shared photo; open full size" loading="lazy"></a>
+                  {% elif attachment.content_type|slice:':6' == 'audio/' %}
+                  <audio controls preload="none" src="{{ attachment.url }}">Audio playback unavailable.</audio>
+                  {% elif attachment.content_type|slice:':6' == 'video/' %}
+                  <video controls preload="none" playsinline src="{{ attachment.url }}">Video playback unavailable.</video>
+                  {% else %}
+                  <a class="chat-attachment-file" href="{{ attachment.url }}" target="_blank" rel="noopener" download>
+                    <span class="chat-attachment-file-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3.8H7.4A2.4 2.4 0 0 0 5 6.2v11.6a2.4 2.4 0 0 0 2.4 2.4h9.2a2.4 2.4 0 0 0 2.4-2.4V8.8Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7"/><path d="M14 3.8V9h5" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7"/></svg></span>
+                    <span><strong>{% if attachment.content_type == 'application/pdf' %}Document{% else %}Attachment{% endif %}</strong><small>{{ attachment.content_type }} · tap to download</small></span>
+                  </a>
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
+              <time datetime="{{ item.created_at }}">{{ item.created_at|chat_time }}</time>
+            </div>
+          </article>
+          {% endif %}
+          {% empty %}
+          <div class="empty chat-empty-state">No messages yet. Start the conversation naturally — you can write a note or attach a photo.</div>
+          {% endfor %}
+        </div>
+
+        {% comment %}The offer lands in the conversation, where the person deciding is already looking — not behind Service tools.{% endcomment %}
+        {% if conversation.active_offer %}
+        <section class="workflow-card offer-card chat-offer-bubble" id="offer-card" data-artisan-reveal
+                 data-offer-event="{{ conversation.active_offer.id }}:{{ conversation.active_offer.version }}:{{ conversation.active_offer.status }}">
+          <div class="workflow-card-head">
+            <div><span class="eyebrow">{% if conversation.active_offer.creator_id == conversation.viewer_id %}YOUR OFFER{% else %}OFFER FROM {{ conversation.title|upper }}{% endif %}</span><h2>₦{{ conversation.active_offer.total_amount }}</h2></div>
+            <span class="valid-pill">Quote v{{ conversation.active_offer.version }}</span>
+          </div>
+          {% if not conversation.active_offer.notification_delivered and conversation.active_offer.creator_id == conversation.viewer_id %}
+          <div class="inline-alert" role="status">
+            <span>Saved. The other participant was not notified automatically.</span>
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="offer_renotify"><input type="hidden" name="offer_id" value="{{ conversation.active_offer.id }}"><button class="button button-secondary button-small" type="submit">Retry notification</button></form>
+          </div>
+          {% endif %}
+          <dl class="offer-facts">
+            <dt>Scheduled start</dt><dd><time class="workflow-local-time" datetime="{{ conversation.active_offer.scheduled_start }}" data-utc-time="{{ conversation.active_offer.scheduled_start }}">{{ conversation.active_offer.scheduled_start|human_datetime }}</time></dd>
+            <dt>Duration</dt><dd>{% if conversation.active_offer.duration_label %}{{ conversation.active_offer.duration_label }}{% elif conversation.active_offer.duration_minutes %}{{ conversation.active_offer.duration_minutes }} minutes{% else %}Not recorded{% endif %}</dd>
+            <dt>Transport</dt><dd>₦{{ conversation.active_offer.transport_amount }}</dd>
+            <dt>Additional charges</dt><dd>₦{{ conversation.active_offer.additional_amount }}{% if conversation.active_offer.additional_charge_details %} · {{ conversation.active_offer.additional_charge_details }}{% endif %}</dd>
+          </dl>
+          {% if conversation.active_offer.materials %}
+          <div class="materials-table-scroll">
+            <table class="materials-table materials-table-readonly">
+              <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Unit price (₦)</th><th>Line total (₦)</th></tr></thead>
+              <tbody>
+                {% for item in conversation.active_offer.materials %}
+                <tr><td data-label="Item">{{ item.name }}</td><td data-label="Qty">{{ item.quantity }}</td><td data-label="Unit">{{ item.unit|default:"—" }}</td><td data-label="Unit price (₦)">₦{{ item.unit_price }}</td><td data-label="Line total (₦)">₦{{ item.line_total }}</td></tr>
+                {% endfor %}
+              </tbody>
+              <tfoot><tr><td colspan="4">Materials subtotal{% if conversation.active_offer.materials_included %} (included in this price){% endif %}</td><td>₦{{ conversation.active_offer.materials_amount }}</td></tr></tfoot>
+            </table>
+          </div>
+          {% endif %}
+          <div class="money-grid"><div><span>Labour</span><strong>₦{{ conversation.active_offer.labour_amount }}</strong></div><div><span>Materials</span><strong>₦{{ conversation.active_offer.materials_amount }}</strong></div><div><span>Transport</span><strong>₦{{ conversation.active_offer.transport_amount }}</strong></div><div><span>Additional</span><strong>₦{{ conversation.active_offer.additional_amount }}</strong></div><div><span>Payable total</span><strong>₦{{ conversation.active_offer.total_amount }}</strong></div>{% if conversation.active_offer.materials_included %}<div><span>Materials included</span><strong>Yes</strong></div>{% endif %}</div>
+          <div class="offer-actions">
+            {% if 'ACCEPT_OFFER' in conversation.available_actions %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="accept"><input type="hidden" name="offer_id" value="{{ conversation.active_offer.id }}"><button class="button button-primary" type="submit" data-artisan-action>Accept offer · ₦{{ conversation.active_offer.total_amount }}</button></form>{% endif %}
+
+            {% if 'DECLINE_OFFER' in conversation.available_actions %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="decline"><input type="hidden" name="offer_id" value="{{ conversation.active_offer.id }}"><button class="button button-secondary" type="submit" data-artisan-action>Reject offer</button></form>{% endif %}
+          </div>
+          {% if 'DECLINE_OFFER' in conversation.available_actions %}
+          <details class="chat-revision">
+            <summary class="button button-secondary">Request changes</summary>
+            <form method="post" class="workflow-form chat-revision-form">
+              {% csrf_token %}<input type="hidden" name="action" value="revision"><input type="hidden" name="offer_id" value="{{ conversation.active_offer.id }}">
+              <label>What should change?
+                <textarea class="field-input" name="note" rows="3" maxlength="5000" required placeholder="Type it plainly — e.g. “Remove the ceiling fan and the two extra sockets. I’ll buy the sockets myself.”"></textarea>
+              </label>
+              <button class="button button-primary" type="submit" data-artisan-action>Send to {{ conversation.title }}</button>
+            </form>
+          </details>
+          {% endif %}
+        </section>
+        {% endif %}
+
+
+        </div>
+
+        <details class="chat-tools-panel" id="chat-service-tools" {% if 'PAY' in conversation.available_actions or 'ACCEPT_OFFER' in conversation.available_actions or 'SEND_OFFER' in conversation.available_actions or 'START_BOOKING' in conversation.available_actions or 'CONFIRM_COMPLETION' in conversation.available_actions or 'SUBMIT_COMPLETION' in conversation.available_actions or 'REVIEW' in conversation.available_actions or can_edit_request and not request_brief.description %}data-pending="true"{% endif %}>
+          <summary class="chat-tools-summary" aria-label="Service tools">
+            <span class="chat-tools-icon" aria-hidden="true">☰</span>
+            <span class="chat-tools-copy"><strong>Service tools</strong><small data-tools-hint>{% if 'PAY' in conversation.available_actions %}Card or bank transfer{% elif 'ACCEPT_OFFER' in conversation.available_actions %}Review the offer · accept or request changes{% elif 'SEND_OFFER' in conversation.available_actions %}Prepare an itemized offer{% elif 'START_BOOKING' in conversation.available_actions %}Start the service{% elif 'CONFIRM_COMPLETION' in conversation.available_actions %}Confirm completion{% elif 'SUBMIT_COMPLETION' in conversation.available_actions %}Mark service complete{% elif 'REVIEW' in conversation.available_actions %}Leave a review{% elif conversation.conversation_type == 'SERVICE' %}Offers, booking &amp; support{% else %}Conversation options{% endif %}</small></span>
+            <span class="chat-tools-chevron" aria-hidden="true">⌄</span>
+          </summary>
+          <div class="chat-tools-body">
+
+
+      {% if conversation.state == 'ACTIVE' and conversation.payment %}
+        <section class="journey-status active" role="status" data-artisan-reveal>
+          <div>
+            <strong>{% if conversation.booking.status == 'COMPLETION_REQUESTED' %}Completion is ready for review{% elif conversation.booking.status == 'ACCEPTED' and conversation.viewer_role == 'artisan' %}Payment secured · ready to start{% elif conversation.booking.status == 'ACCEPTED' %}Payment is secure · waiting for the artisan to start{% else %}Service in progress{% endif %}</strong>
+            <span>₦{{ conversation.payment.total_amount }} · Escrow {{ conversation.payment.status|title|cut:'_' }}{% if conversation.booking.scheduled_start %} · <time class="workflow-local-time" datetime="{{ conversation.booking.scheduled_start }}" data-utc-time="{{ conversation.booking.scheduled_start }}">{{ conversation.booking.scheduled_start }}</time>{% endif %}</span>
+          </div>
+          <span class="journey-status-icon" aria-hidden="true">✓</span>
+        </section>
+      {% elif conversation.payment and conversation.payment.status == 'PAYMENT_PENDING' %}
+        <section class="journey-status waiting" role="status" data-artisan-reveal>
+          <div><strong>{% if conversation.viewer_role == 'artisan' %}Waiting for customer payment{% else %}Secure payment is the next step{% endif %}</strong><span>₦{{ conversation.payment.total_amount }} {% if conversation.viewer_role == 'artisan' %}is awaiting payment through the marketplace escrow.{% else %}is ready to pay into escrow securely.{% endif %}</span></div>
+          {% if 'PAY' in conversation.available_actions %}
+          <form method="post">
+            {% csrf_token %}<input type="hidden" name="action" value="pay">
+            <button class="button button-primary button-small" type="submit" data-artisan-action>Pay securely · card or bank transfer</button>
+          </form>
+          {% endif %}
+        </section>
+      {% elif conversation.state == 'COMPLETED' %}
+        <section class="journey-status active" role="status" data-artisan-reveal>
+          <div><strong>Service completed</strong><span>Your booking is complete. Leave a review or contact support if anything still needs attention.</span></div>
+          <span class="journey-status-icon" aria-hidden="true">✓</span>
+        </section>
+      {% elif conversation.state == 'DISPUTED' %}
+        <section class="journey-status waiting" role="status" data-artisan-reveal>
+          <div><strong>Support is following up</strong><span>{% if conversation.dispute_case %}Case {{ conversation.dispute_case.reference }} is {{ conversation.dispute_case.status|title|cut:'_' }}.{% else %}Your service issue is with customer care.{% endif %}</span></div>
+          {% if conversation.dispute_case %}<a class="button button-secondary button-small" href="{% url 'support-case-detail' pk=conversation.dispute_case.id %}" data-artisan-action>View case</a>{% endif %}
+        </section>
+      {% elif conversation.state == 'NEGOTIATING' %}
+        <section class="journey-status waiting" role="status" data-artisan-reveal>
+          <div><strong>{% if conversation.viewer_role == 'artisan' %}Offer negotiation{% else %}Review the artisan’s offer{% endif %}</strong><span>{% if conversation.viewer_role == 'artisan' %}Answer the customer’s questions; the quote itself is the card in the chat above.{% else %}Review the scope and price in the offer card above the tools, then accept, decline or ask for changes there.{% endif %}</span></div>
+          <span class="journey-status-icon" aria-hidden="true">↔</span>
+        </section>
+      {% endif %}
+
+
+
+
+        {% if 'SEND_OFFER' in conversation.available_actions %}
+        <details class="workflow-card details-card offer-create-card" data-artisan-reveal {% if offer_errors or resend_mode %}open{% endif %}>
+          <summary>{% if resend_mode %}Edit the agreement and resend it{% else %}Prepare an itemized offer{% endif %} <span>Labour · items · transport · schedule</span></summary>
+          <form method="post" class="workflow-form offer-pricing-form" data-offer-form="new"
+                data-draft-key="offer:{{ conversation.id }}:new">
+            {% csrf_token %}<input type="hidden" name="action" value="offer">
+            <input type="hidden" name="idempotency_key" value="{{ offer_action_key }}">
+            {% include "conversations/partials/offer_errors.html" %}
+            <label>Labour (₦)<input class="field-input" name="labour_amount" inputmode="decimal" data-money-input data-offer-labour placeholder="25000" value="{{ offer_draft.labour_amount|default:'' }}" required></label>
+            <div class="materials-panel" data-materials-panel>
+              <div class="materials-panel-head"><strong>Materials &amp; items</strong><label class="check-row"><input type="checkbox" name="materials_included" value="true" data-materials-included{% if offer_draft.materials_included %} checked{% endif %}> Materials included in this price</label></div>
+              <div class="materials-table-scroll">
+                <table class="materials-table">
+                  <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Unit price (₦)</th><th>Line total (₦)</th><th><span class="sr-only">Remove</span></th></tr></thead>
+                  <tbody data-materials-rows></tbody>
+                </table>
+              </div>
+              <button class="button button-secondary" type="button" data-materials-add>Add item</button>
+              <input type="hidden" name="materials_json" data-materials-json value="{{ offer_draft.materials_json|default:'[]' }}">
+              <input type="hidden" name="materials_amount" data-materials-amount data-money-input value="{{ offer_draft.materials_amount|default:'0' }}">
+              <p class="materials-subtotal">Materials subtotal: <strong>₦<span data-materials-subtotal>0.00</span></strong></p>
+            </div>
+            <div class="offer-summary-strip" data-offer-summary>
+              <span>Labour <strong data-summary-labour>₦0.00</strong></span>
+              <span>Materials <strong data-summary-materials>₦0.00</strong></span>
+              <span>Transport <strong data-summary-transport>₦0.00</strong></span>
+              <span>Additional <strong data-summary-additional>₦0.00</strong></span>
+              <span>Payable total <strong data-summary-total>₦0.00</strong></span>
+            </div>
+            <input type="hidden" name="total_amount" data-money-total value="{{ offer_draft.total_amount|default:'' }}">
+            <div class="form-grid two">
+              <label>Scheduled start<input class="field-input" type="datetime-local" name="scheduled_start" value="{{ offer_draft.scheduled_start|default:'' }}" required></label>
+              <div class="duration-fields"><label>Duration value<input class="field-input" type="number" name="duration_value" min="1" max="365" step="1" value="{{ offer_draft.duration_value|default:'' }}" required></label><label>Duration unit<select class="field-input" name="duration_unit" required>{% for value,label in duration_unit_options %}<option value="{{ value }}"{% if offer_draft.duration_unit == value or not offer_draft.duration_unit and value == 'DAYS' %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label></div>
+            </div>
+            <div class="form-grid two">
+              <label>Transport (₦)<input class="field-input" name="transport_amount" value="{{ offer_draft.transport_amount|default:'0' }}" data-money-input data-offer-transport inputmode="decimal" required></label>
+              <label>Additional charges (₦)<input class="field-input" name="additional_amount" value="{{ offer_draft.additional_amount|default:'0' }}" data-money-input data-offer-additional inputmode="decimal" required></label>
+            </div>
+            <label>What the additional charge covers<input class="field-input" name="additional_charge_details" maxlength="1500" value="{{ offer_draft.additional_charge_details|default:'' }}" placeholder="e.g. Replace the burnt back-box (₦3,500)"></label>
+            <button class="button button-primary" type="submit" data-artisan-action data-offer-submit>{% if resend_mode %}Send the updated agreement{% else %}Send itemized offer{% endif %}</button>
+            <p class="request-submit-status" data-offer-review-status role="status" aria-live="polite">Add labour, items and the schedule, then review the payable total before sending.</p>
+          </form>
+        </details>
+        {% endif %}
+
+        {% if conversation.viewer_role == 'artisan' and conversation.active_offer %}{% if 'COUNTER_OFFER' in conversation.available_actions or 'REVISE_OFFER' in conversation.available_actions %}
+        <details class="workflow-card details-card counter-offer-card" data-artisan-reveal {% if offer_errors and offer_form == 'counter' %}open{% endif %}>
+          <summary>Edit the quote and resend it</summary>
+          <form method="post" class="workflow-form offer-pricing-form" data-offer-form="counter"
+                data-draft-key="offer:{{ conversation.id }}:{{ conversation.active_offer.id }}"
+                data-draft-prefill='{{ counter_prefill }}'>
+            {% csrf_token %}<input type="hidden" name="action" value="counter"><input type="hidden" name="parent_offer_id" value="{{ conversation.active_offer.id }}">
+            <input type="hidden" name="idempotency_key" value="{{ offer_counter_key }}">
+            {% include "conversations/partials/offer_errors.html" %}
+            <label>Labour (₦)<input class="field-input" name="labour_amount" value="{{ conversation.active_offer.labour_amount }}" data-money-input data-offer-labour required></label>
+            <div class="materials-panel" data-materials-panel data-materials-source="counter-materials-data">
+              <div class="materials-panel-head"><strong>Materials &amp; items</strong><label class="check-row"><input type="checkbox" name="materials_included" value="true" data-materials-included{% if conversation.active_offer.materials_included %} checked{% endif %}> Materials included in this price</label></div>
+              <div class="materials-table-scroll">
+                <table class="materials-table">
+                  <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Unit price (₦)</th><th>Line total (₦)</th><th><span class="sr-only">Remove</span></th></tr></thead>
+                  <tbody data-materials-rows></tbody>
+                </table>
+              </div>
+              <button class="button button-secondary" type="button" data-materials-add>Add item</button>
+              <input type="hidden" name="materials_json" data-materials-json value="[]">
+              <input type="hidden" name="materials_amount" data-materials-amount data-money-input value="{{ conversation.active_offer.materials_amount }}">
+              <p class="materials-subtotal">Materials subtotal: <strong>₦<span data-materials-subtotal>{{ conversation.active_offer.materials_amount }}</span></strong></p>
+            </div>
+            <div class="offer-summary-strip" data-offer-summary>
+              <span>Labour <strong data-summary-labour>₦{{ conversation.active_offer.labour_amount }}</strong></span>
+              <span>Materials <strong data-summary-materials>₦{{ conversation.active_offer.materials_amount }}</strong></span>
+              <span>Transport <strong data-summary-transport>₦{{ conversation.active_offer.transport_amount }}</strong></span>
+              <span>Additional <strong data-summary-additional>₦{{ conversation.active_offer.additional_amount }}</strong></span>
+              <span>Payable total <strong data-summary-total>₦{{ conversation.active_offer.total_amount }}</strong></span>
+            </div>
+            <input type="hidden" name="total_amount" data-money-total value="{{ conversation.active_offer.total_amount }}">
+            <div class="form-grid two">
+              <label>Scheduled start<input class="field-input" type="datetime-local" name="scheduled_start" value="{{ conversation.active_offer.scheduled_start_local }}" data-utc-value="{{ conversation.active_offer.scheduled_start }}" required></label>
+              <div class="duration-fields"><label>Duration value<input class="field-input" type="number" name="duration_value" min="1" max="365" step="1" value="{{ conversation.active_offer.duration_value|default:1 }}" required></label><label>Duration unit<select class="field-input" name="duration_unit" required>{% for value,label in duration_unit_options %}<option value="{{ value }}"{% if conversation.active_offer.duration_unit == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label></div>
+            </div>
+            <div class="form-grid two">
+              <label>Transport (₦)<input class="field-input" name="transport_amount" value="{{ conversation.active_offer.transport_amount|default:'0' }}" data-money-input data-offer-transport inputmode="decimal" required></label>
+              <label>Additional charges (₦)<input class="field-input" name="additional_amount" value="{{ conversation.active_offer.additional_amount|default:'0' }}" data-money-input data-offer-additional inputmode="decimal" required></label>
+            </div>
+            <label>What the additional charge covers<input class="field-input" name="additional_charge_details" maxlength="1500" value="{{ conversation.active_offer.additional_charge_details }}" placeholder="e.g. Replace the burnt back-box (₦3,500)"></label>
+            <button class="button button-primary" type="submit" data-artisan-action>Send revised quote</button>
+            <p class="request-submit-status" data-offer-review-status role="status" aria-live="polite">The payable total updates as you edit the items.</p>
+          </form>
+        </details>
+        {% endif %}{% endif %}
+
+        {% if offer_history %}
+        <details class="workflow-card offer-history-card" data-artisan-reveal>
+          <summary>Offer activity <span>{{ offer_history|length }} updates</span></summary>
+          <ol class="offer-history-list">
+            {% for item in offer_history %}
+              {% if not conversation.active_offer or item.id != conversation.active_offer.id %}
+              <li class="offer-history-item">
+                <div class="offer-history-head"><span>{% if item.creator_id == conversation.viewer_id %}You{% else %}{{ conversation.title }}{% endif %}{% if item.parent_offer_id %} · Counter offer{% else %} · Offer{% endif %}</span><strong>₦{{ item.total_amount }}</strong></div>
+                <p>{{ item.summary|default:"Itemized quote" }}</p>
+                <small>{{ item.status|title|cut:'_' }} · {{ item.created_at }}</small>
+              </li>
+              {% endif %}
+            {% endfor %}
+          </ol>
+        </details>
+        {% endif %}
+
+        {% if conversation.booking %}
+        <section class="workflow-card booking-card" data-artisan-reveal>
+          <div class="workflow-card-head"><div><span class="eyebrow">SERVICE BOOKING</span><h2>{{ conversation.booking.status|title|cut:'_' }}</h2></div><span class="status-pill {{ conversation.booking.status|status_class }}">{{ conversation.booking.status|title|cut:'_' }}</span></div>
+          <p class="booking-reference">Booking with <strong>{% if conversation.viewer_role == 'customer' %}{{ conversation.booking.artisan_name|default:'your artisan' }}{% else %}{{ conversation.booking.customer_name|default:'your customer' }}{% endif %}</strong></p>
+          <div class="money-grid"><div><span>Agreed price</span><strong>{{ conversation.booking.price_agreed|ngn }}</strong></div><div><span>Start</span><strong><time class="workflow-local-time" datetime="{{ conversation.booking.scheduled_start }}" data-utc-time="{{ conversation.booking.scheduled_start }}">{{ conversation.booking.scheduled_start }}</time></strong></div><div><span>End</span><strong><time class="workflow-local-time" datetime="{{ conversation.booking.scheduled_end }}" data-utc-time="{{ conversation.booking.scheduled_end }}">{{ conversation.booking.scheduled_end }}</time></strong></div></div>
+          {% if conversation.payment and role == 'artisan' %}<div class="escrow-strip"><div><strong>Escrow · {{ conversation.payment.status|title|cut:'_' }}</strong>{% if conversation.payment.verified_at %}<small>Provider verified · <time class="workflow-local-time" datetime="{{ conversation.payment.verified_at }}" data-utc-time="{{ conversation.payment.verified_at }}">{{ conversation.payment.verified_at }}</time></small>{% elif conversation.payment.status == 'PAYMENT_PENDING' %}<small>Awaiting trusted provider confirmation</small>{% endif %}</div><span>₦{{ conversation.payment.total_amount }}</span></div>{% endif %}
+          <div class="workflow-actions">
+            {% if 'START_BOOKING' in conversation.available_actions %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="start_booking"><button class="button button-primary" type="submit" data-artisan-action>Start service</button></form>{% endif %}
+            {% if 'SUBMIT_COMPLETION' in conversation.available_actions %}<details class="inline-details"><summary>Mark service complete</summary><form method="post" class="workflow-form">{% csrf_token %}<input type="hidden" name="action" value="complete"><label>Completion note<textarea class="field-input" name="note" rows="2" maxlength="1000"></textarea></label><button class="button button-primary" type="submit" data-artisan-action>Submit completion</button></form></details>{% endif %}
+            {% if 'CONFIRM_COMPLETION' in conversation.available_actions %}<form method="post">{% csrf_token %}<input type="hidden" name="action" value="confirm_completion"><p class="media-retention-notice">Confirm that the service is finished and the agreed work has been delivered. When both the request and booking are completed, voice notes, audio recordings and video clips in this service room will be automatically deleted under the media retention policy. If there is a problem that needs support, raise it before confirming completion.</p><button class="button button-success" type="submit" data-artisan-action>Confirm completion</button></form>{% endif %}
+            {% if 'REVIEW' in conversation.available_actions %}<a class="button button-primary" href="{% url 'review-create' %}?booking={{ conversation.booking.id }}" data-artisan-action>Review service</a>{% endif %}
+            {% if conversation.booking %}<a class="workflow-text-link" href="{% url 'booking-detail' pk=conversation.booking.id %}">Booking details</a>{% endif %}
+            {% if conversation.payment %}<a class="workflow-text-link" href="{% url 'payment-detail' payment_id=conversation.payment.id %}">Payment details</a>{% endif %}
+            {% if payment_paid %}<a class="workflow-text-link" href="{% url 'payment-receipt-pdf' payment_id=conversation.payment.id %}">Download receipt</a>{% endif %}
+          </div>
+        </section>
+        {% endif %}
+
+        {% if conversation.booking and conversation.booking.status == 'IN_PROGRESS' and conversation.viewer_role == 'artisan' and conversation.payment and conversation.payment.status == 'HELD' %}
+        <details class="workflow-card details-card additional-order-create-card" data-artisan-reveal>
+          <summary>Propose separate add-on work <span>Does not change the original booking price or scope</span></summary>
+          <form method="post" class="workflow-form">
+            {% csrf_token %}<input type="hidden" name="action" value="additional_order_propose">
+            <label>Separate add-on amount (₦)<input class="field-input" name="amount" inputmode="numeric" pattern="[0-9]+" placeholder="12000" required></label>
+            <label>New work scope<textarea class="field-input" name="description" rows="3" maxlength="3000" placeholder="Describe only the extra work being proposed." required></textarea></label>
+            <p class="muted">This creates an independent order linked to the active booking. The customer can accept, decline, or counter it.</p>
+            <button class="button button-primary" type="submit" data-artisan-action>Send separate add-on proposal</button>
+          </form>
+        </details>
+        {% endif %}
+
+        {% for addon in conversation.additional_orders %}
+        <section class="workflow-card additional-order-card" data-artisan-reveal aria-labelledby="additional-order-title-{{ forloop.counter }}">
+          <div class="workflow-card-head">
+            <div><span class="eyebrow">SEPARATE ADD-ON ORDER {{ forloop.counter }}</span><h2 id="additional-order-title-{{ forloop.counter }}">{{ addon.status|title|cut:'_' }}</h2></div>
+            <span class="status-pill {% if addon.status == 'APPROVED' %}ok{% elif addon.status == 'DECLINED' %}bad{% else %}warn{% endif %}">{{ addon.status|title|cut:'_' }}</span>
+          </div>
+          <p class="addon-parent-note">Linked to booking <strong>· Original price stays ₦{{ conversation.booking.price_agreed }}</strong></p>
+
+          {% if addon.current_offer %}
+          <article class="addon-current-offer">
+            <div class="addon-offer-heading"><span>{% if addon.current_offer.created_by_id == conversation.viewer_id %}Your proposal{% else %}Proposal from {{ conversation.title }}{% endif %} · revision {{ addon.current_offer.revision }}</span><strong>₦{{ addon.current_offer.amount }}</strong></div>
+            <p>{{ addon.current_offer.description }}</p>
+            <small>{{ addon.current_offer.status|title|cut:'_' }} · {{ addon.current_offer.created_at }}</small>
+          </article>
+          {% endif %}
+
+          {% if addon.status == 'NEGOTIATING' and addon.current_offer.status == 'PROPOSED' and addon.current_offer.created_by_id != conversation.viewer_id %}
+          <div class="addon-response-actions">
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="additional_order_respond"><input type="hidden" name="order_id" value="{{ addon.id }}"><input type="hidden" name="offer_id" value="{{ addon.current_offer.id }}"><input type="hidden" name="response_action" value="accept"><button class="button button-primary button-small" type="submit" data-artisan-action>Accept ₦{{ addon.current_offer.amount }}</button></form>
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="additional_order_respond"><input type="hidden" name="order_id" value="{{ addon.id }}"><input type="hidden" name="offer_id" value="{{ addon.current_offer.id }}"><input type="hidden" name="response_action" value="decline"><button class="button button-secondary button-small" type="submit" data-artisan-action>Decline add-on</button></form>
+            <details class="inline-details addon-counter-details">
+              <summary>Counter offer</summary>
+              <form method="post" class="workflow-form">{% csrf_token %}<input type="hidden" name="action" value="additional_order_respond"><input type="hidden" name="order_id" value="{{ addon.id }}"><input type="hidden" name="offer_id" value="{{ addon.current_offer.id }}"><input type="hidden" name="response_action" value="counter">
+                <label>Counter amount (₦)<input class="field-input" name="amount" inputmode="numeric" pattern="[0-9]+" required></label>
+                <label>Counter scope<textarea class="field-input" name="description" rows="3" maxlength="3000" required></textarea></label>
+                <button class="button button-primary button-small" type="submit" data-artisan-action>Send counter</button>
+              </form>
+            </details>
+          </div>
+          {% elif addon.status == 'NEGOTIATING' %}
+          <p class="addon-waiting-note" role="status">Waiting for the other participant to respond. This add-on is still separate from the original booking.</p>
+          {% endif %}
+
+          {% if addon.status == 'APPROVED' %}
+          <div class="addon-payment-panel">
+            <div class="addon-payment-copy">
+              <strong>Independent escrow payment</strong>
+              {% if addon.payment %}
+                <span>₦{{ addon.payment.total_amount }} total · {{ addon.payment.status|title|cut:'_' }}</span>
+                {% if addon.payment.status == 'PAYMENT_PENDING' %}<small>Payment is being prepared or verified. It is not considered paid until the provider confirms escrow.</small>{% elif addon.payment.status == 'HELD' %}<small>Provider-confirmed and held in escrow; this add-on is funded.</small>{% elif addon.payment.status == 'FAILED' %}<small>Payment was not confirmed. A new provider payment can be prepared.</small>{% endif %}
+              {% else %}
+                <span>₦{{ addon.current_offer.amount }} add-on amount · escrow fee is shown at checkout</span>
+                <small>Service completion remains blocked until this approved add-on payment is confirmed in escrow.</small>
+              {% endif %}
+            </div>
+            {% if addon.can_pay %}
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="additional_order_pay"><input type="hidden" name="order_id" value="{{ addon.id }}"><button class="button button-primary button-small" type="submit" data-artisan-action>{% if addon.payment.status == 'FAILED' %}Retry secure payment{% else %}Pay through escrow{% endif %}</button></form>
+            {% endif %}
+            {% if addon.payment %}<a class="workflow-text-link" href="{% url 'payment-detail' payment_id=addon.payment.id %}">Payment details</a>{% endif %}
+          </div>
+          {% elif addon.status == 'DECLINED' %}
+          <p class="addon-declined-note">No separate payment was collected for this declined add-on.</p>
+          {% endif %}
+
+          {% if addon.offers|length > 1 %}
+          <details class="addon-history">
+            <summary>Negotiation history · {{ addon.offers|length }} entries</summary>
+            <ol>
+              {% for offer in addon.offers %}
+              <li><div><strong>Revision {{ offer.revision }} · {{ offer.status|title|cut:'_' }}</strong><span>₦{{ offer.amount }} · {{ offer.created_at }}</span></div><p>{{ offer.description }}</p></li>
+              {% endfor %}
+            </ol>
+          </details>
+          {% endif %}
+        </section>
+        {% endfor %}
+
+        {% if conversation.dispute_case %}
+        <section class="workflow-card support-case-card" data-artisan-reveal>
+          <div class="workflow-card-head"><div><span class="eyebrow">SUPPORT CASE</span><h2>{{ conversation.dispute_case.reference }}</h2></div><span class="status-pill {{ conversation.dispute_case.status|status_class }}">{{ conversation.dispute_case.status|title|cut:'_' }}</span></div>
+          <p class="workflow-scope">{{ conversation.dispute_case.subject }}</p>
+          <a class="button button-primary" href="{% url 'support-case-detail' pk=conversation.dispute_case.id %}" data-artisan-action>View case and follow up</a>
+        </section>
+        {% endif %}
+
+        {% if 'DISPUTE' in conversation.available_actions or 'CANCEL' in conversation.available_actions or conversation.booking %}
+        <details class="workflow-card support-card" data-artisan-reveal>
+          <summary>More options · Payment & support</summary>
+          <div class="support-options">
+            {% if conversation.booking %}<a href="{% url 'booking-detail' pk=conversation.booking.id %}">View booking details</a>{% endif %}
+            {% if conversation.payment %}<a href="{% url 'payment-detail' payment_id=conversation.payment.id %}">View payment details</a>{% endif %}
+            {% if conversation.dispute_case %}<a href="{% url 'support-case-detail' pk=conversation.dispute_case.id %}">View case {{ conversation.dispute_case.reference }}</a>{% endif %}
+            {% if 'DISPUTE' in conversation.available_actions %}
+            <form method="post" class="workflow-form"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="dispute"><input type="hidden" name="support_message_key" value="{{ dispute_message_key }}"><label>Message to customer support<textarea class="field-input" name="reason" rows="3" maxlength="1000" placeholder="Tell support what went wrong and what you need reviewed." required></textarea></label><button class="button button-danger" type="submit" data-artisan-action>Send message &amp; open dispute</button></form>
+            {% endif %}
+            {% if 'CANCEL' in conversation.available_actions %}
+            <form method="post" class="workflow-form"><input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}"><input type="hidden" name="action" value="cancel"><input type="hidden" name="reason_code" value="OTHER"><label>Cancellation reason<textarea class="field-input" name="reason" rows="2" maxlength="1000" placeholder="Why do you need to cancel?"></textarea></label><button class="button button-secondary" type="submit" data-artisan-action>Cancel service</button></form>
+            {% endif %}
+          </div>
+        </details>
+        {% endif %}
+
+        {% if conversation.viewer_role == 'customer' and not conversation.booking and conversation.request_reference.status != 'CLOSED' %}
+        {% comment %}Withdrawing is possible, but it is not on the main path: no button in the action strip, no red call to action — a quiet link at the very bottom of Service tools, behind one confirmation.{% endcomment %}
+        <div class="chat-tools-danger">
+          <p>Withdrawing ends this request for good. Nothing has been paid, the artisan is told, and the chat stays readable.</p>
+          <form method="post" class="js-confirm-form" data-confirm="Cancel this request? No booking and no payment exist. The artisan is told the request is withdrawn, and the chat stays readable.">{% csrf_token %}<input type="hidden" name="action" value="request_close"><button type="submit" class="chat-tools-danger-link" data-artisan-action>Cancel this request</button></form>
+        </div>
+        {% endif %}
+        <p class="chat-tools-note">Audio and video shared here are deleted after the service and booking are completed, unless a lawful hold applies.</p>
+          </div>
+        </details>
+
+        {% if 'PAY' in conversation.available_actions or 'RESEND_AGREEMENT' in conversation.available_actions or conversation.payment and conversation.payment.status == 'HELD' %}
+        <section class="chat-action-strip" aria-label="Booking actions" data-artisan-reveal{% if payment_status_url and conversation.payment and conversation.payment.status == 'PAYMENT_PENDING' %} data-payment-watch="{{ payment_status_url }}"{% endif %}>
+          <div class="chat-action-strip-copy">
+            <strong>{% if conversation.payment and conversation.payment.status == 'HELD' %}Payment secured in escrow · ₦{{ conversation.payment.total_amount }}{% elif conversation.payment and conversation.payment.status == 'CANCELLED' %}Payment cancelled — this booking was cancelled{% elif 'PAY' in conversation.available_actions %}Payment is the next step{% elif 'ACCEPT_OFFER' in conversation.available_actions %}An offer is waiting for you{% elif 'RESEND_AGREEMENT' in conversation.available_actions %}This booking was cancelled{% elif 'CANCEL' in conversation.available_actions %}This booking can still be cancelled{% else %}This request has no booking yet{% endif %}</strong>
+            <small>{% if conversation.payment and conversation.payment.status == 'HELD' %}The artisan is paid only after you confirm the work is complete.{% elif 'PAY' in conversation.available_actions %}Nothing is taken until you pay into escrow.{% elif 'ACCEPT_OFFER' in conversation.available_actions %}Accept, decline or counter it in the chat below.{% elif 'RESEND_AGREEMENT' in conversation.available_actions %}The artisan can send the same agreement again.{% elif 'CANCEL' in conversation.available_actions %}No money has been taken. Cancelling closes it for good.{% else %}This chat is the request; the artisan builds the booking here.{% endif %}</small>
+          </div>
+          <div class="chat-action-strip-buttons">
+            {% if payment_paid %}
+            <a class="chat-quiet-link receipt-link" href="{% url 'payment-receipt' payment_id=conversation.payment.id %}">
+              <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2z"/><path d="M9 8.5h6M9 12.5h6"/></svg>
+              View receipt
+            </a>
+            {% endif %}
+            {% if 'PAY' in conversation.available_actions %}
+            {% comment %}One payment method at a time. While a bank-transfer account is open, starting another one is hidden here and refused by the API, so a payer can never answer the same payment twice. The buttons come back the moment the account's timer finishes.{% endcomment %}
+            <div class="chat-pay-gate" data-pay-gate data-pay-live="{% if bank_transfer.live %}true{% else %}false{% endif %}">
+              <p class="chat-pay-wait" data-pay-wait{% if not bank_transfer.live %} hidden{% endif %}>
+                A transfer account is open for this payment{% if bank_transfer.expires_at %} until {{ bank_transfer.expires_at }}{% endif %}. This button comes back when its timer finishes — nothing has been charged.
+              </p>
+              <div class="chat-pay-start" data-pay-start{% if bank_transfer.live %} hidden{% endif %}>
+                <form method="post">{% csrf_token %}<input type="hidden" name="action" value="pay_transfer">{% if payment_id %}<input type="hidden" name="payment_id" value="{{ payment_id }}">{% endif %}<button class="button button-primary button-small" type="submit" data-artisan-action>Pay ₦{{ conversation.payment.total_amount }} into escrow</button></form>
+                {% if payment_checkout_url %}<a class="chat-quiet-link" href="{{ payment_checkout_url }}">Pay by card instead</a>{% endif %}
+              </div>
+            </div>
+            {% endif %}
+            {% if 'RESEND_AGREEMENT' in conversation.available_actions and resend_offer_id %}
+            <form method="post">{% csrf_token %}<input type="hidden" name="action" value="offer_resend"><input type="hidden" name="offer_id" value="{{ resend_offer_id }}"><button class="button button-primary button-small" type="submit" data-artisan-action>Resend this agreement</button></form>
+            <a class="button button-secondary button-small" href="?resend={{ resend_offer_id }}">Edit and resend</a>
+            {% endif %}
+          </div>
+        </section>
+        {% endif %}
+
+        {% if bank_transfer and bank_transfer.account_number %}
+        <section class="chat-transfer" data-transfer-card data-payment-status="{{ payment_status_url }}" data-transfer-seconds="{{ bank_transfer.seconds_left|default:0 }}" data-transfer-expires="{{ bank_transfer.expires_at }}" aria-label="Bank transfer account">
+          <header class="chat-transfer-top">
+            <span class="chat-transfer-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"><path d="M3 10h18M5 10V7.6c0-.4.24-.76.62-.9L12 4.2l6.38 2.5c.38.14.62.5.62.9V10M5 10v9m4.5-9v9m5-9v9m4.5-9v9M3.5 19.5h17"/></svg>
+            </span>
+            <div class="chat-transfer-title">
+              <span class="chat-transfer-eyebrow">Bank transfer · escrow</span>
+              <strong>Transfer ₦{{ conversation.payment.total_amount }}</strong>
+              <small>The exact amount only — a different amount is declined.</small>
+            </div>
+            <span class="chat-transfer-chip" data-transfer-chip>Waiting</span>
+          </header>
+
+          <div class="chat-transfer-hero">
+            <div class="chat-transfer-field">
+              <span class="chat-transfer-label">Amount to send</span>
+              <span class="chat-transfer-value">₦{{ bank_transfer.amount|default:conversation.payment.total_amount }}</span>
+              <small class="chat-transfer-hint">Escrow total ₦{{ conversation.payment.total_amount }}. Your bank adds its own transfer fee — send the amount above.</small>
+            </div>
+            <button type="button" class="chat-transfer-copy" data-copy="{{ bank_transfer.amount|default:conversation.payment.total_amount }}" data-copy-style="chip"><span data-copy-label>Copy</span></button>
+          </div>
+
+          <div class="chat-transfer-hero chat-transfer-hero-number">
+            <div class="chat-transfer-field">
+              <span class="chat-transfer-label">Account number</span>
+              <span class="chat-transfer-value chat-transfer-digits" data-copy-value>{{ bank_transfer.account_number }}</span>
+            </div>
+            <button type="button" class="chat-transfer-copy" data-copy="{{ bank_transfer.account_number }}" data-copy-style="chip"><span data-copy-label>Copy</span></button>
+          </div>
+
+          <dl class="chat-transfer-meta">
+            <div><dt>Bank</dt><dd>{{ bank_transfer.bank|default:"—" }}</dd></div>
+            <div><dt>Beneficiary</dt><dd>{{ bank_transfer.account_name|default:"—" }}</dd></div>
+          </dl>
+
+          <div class="chat-transfer-clock">
+            <div class="chat-transfer-clock-head">
+              <span class="chat-transfer-label">Time left</span>
+              <strong class="chat-transfer-countdown" data-transfer-count>—</strong>
+            </div>
+            <span class="chat-transfer-track" aria-hidden="true"><span class="chat-transfer-track-fill" data-transfer-bar></span></span>
+            <p class="chat-transfer-clock-copy" data-transfer-clock>This account closes at {{ bank_transfer.expires_at|default:"the time shown in your bank app" }}.</p>
+          </div>
+
+          {% if bank_transfer.note %}<p class="chat-transfer-note">{{ bank_transfer.note }}</p>{% endif %}
+
+          <div class="chat-transfer-actions">
+            <form method="post" data-transfer-confirm>{% csrf_token %}<input type="hidden" name="action" value="pay_transfer_check"><input type="hidden" name="payment_id" value="{{ payment_id }}"><button class="button button-primary chat-transfer-submit" type="submit" data-artisan-action>I have made this bank transfer</button></form>
+            <form method="post" data-transfer-renew hidden>{% csrf_token %}<input type="hidden" name="action" value="pay_transfer"><input type="hidden" name="payment_id" value="{{ payment_id }}"><input type="hidden" name="renew" value="1"><button class="button button-primary chat-transfer-submit" type="submit" data-artisan-action>Get a new transfer account</button></form>
+            <p class="chat-transfer-expiry-note" data-transfer-expired-note hidden>This account has closed. Nothing has been charged — get a fresh one.</p>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if request_is_draft %}
+        <section class="chat-start" data-request-draft>
+          <header class="chat-start-top">
+            <span class="chat-start-badge" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"><path d="M4 5.5h16M4 12h10M4 18.5h7"/></svg>
+            </span>
+            <div class="chat-start-title">
+              <span class="chat-start-eyebrow">New request</span>
+              <strong>Describe what you need</strong>
+              <small>{% if conversation.title %}{{ conversation.title }} sees this once you send it, then replies with an itemised offer.{% else %}The artisan sees this once you send it, then replies with an itemised offer.{% endif %}</small>
+            </div>
+          </header>
+          <form method="post" class="chat-start-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="request_submit">
+            <label class="chat-start-field">
+              <span>What needs doing?</span>
+              <textarea name="description" rows="4" maxlength="2000" required placeholder="The kitchen tap drips under the sink. Two-handle mixer, about three years old.">{{ request_brief.description|default:'' }}</textarea>
+            </label>
+            <div class="chat-start-meta">
+              {% if request_brief.service %}<span>{{ request_brief.service }}</span>{% endif %}
+              {% if request_brief.location %}<span>{{ request_brief.location }}</span>{% endif %}
+              {% if request_brief.preferred_date %}<span>{{ request_brief.preferred_date }}</span>{% endif %}
+            </div>
+            <button class="button button-primary chat-start-submit" type="submit" data-artisan-action>Request service</button>
+          </form>
+        </section>
+        {% endif %}
+
+        <div class="chat-composer{% if request_is_draft %} is-locked{% endif %}" data-artisan-reveal>
+          <form method="post" enctype="multipart/form-data" id="conversation-message-form">
+            {% csrf_token %}<input type="hidden" name="action" value="message">
+            <div class="chat-compose-row">
+              <button type="button" class="chat-round-button chat-attach-button" data-composer-attach aria-label="Attach a photo, video or document" title="Photo, video or document · up to 30 MB">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 12.5 14.8 6a3.5 3.5 0 0 1 5 5l-8.5 8.5a5 5 0 0 1-7.1-7.1l8.2-8.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+              </button>
+              <label class="visually-hidden" for="conversation-message-body">Message</label>
+              <textarea class="field-input" id="conversation-message-body" name="body" rows="1" maxlength="5000" placeholder="Message"></textarea>
+              <button type="button" class="chat-round-button chat-camera-button" data-composer-camera aria-label="Take a photo or video, or upload one" title="Take or upload a photo or video · up to 30 MB">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 8.5h2.2l1.4-2.1h7.8l1.4 2.1h2.2a1.8 1.8 0 0 1 1.8 1.8v7.4a1.8 1.8 0 0 1-1.8 1.8H4.5a1.8 1.8 0 0 1-1.8-1.8v-7.4a1.8 1.8 0 0 1 1.8-1.8Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.7"/><circle cx="12" cy="13.6" r="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>
+              </button>
+              {% if conversation.recording_enabled %}
+              <button type="button" class="chat-round-button chat-mic-button" data-voice-record aria-label="Record an audio message" aria-pressed="false" hidden>
+                <svg class="chat-mic-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a3 3 0 0 1 3 3v4a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.9"/><path d="M6.5 11a5.5 5.5 0 0 0 11 0M12 16.5V20M9.5 20h5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.9"/></svg>
+                <svg class="chat-stop-glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></svg>
+              </button>
+              {% endif %}
+              <button class="chat-round-button chat-send-button" type="submit" aria-label="Send message" data-artisan-action{% if conversation.recording_enabled %} hidden{% endif %}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 12 15-7-4.8 14-2.4-5.2L4 12Z" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/><path d="m11.8 13.8 7.2-8.8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+              </button>
+            </div>
+
+            <input id="conversation-attachments" type="file" name="attachments" accept="image/*,video/*,audio/*,application/pdf" multiple hidden>
+            <input id="conversation-camera" type="file" accept="image/*,video/*" capture="environment" multiple hidden>
+
+            {% if conversation.recording_enabled %}
+            <div class="voice-note-tools" data-voice-tools hidden>
+              <span class="voice-note-dot" data-voice-dot aria-hidden="true"></span>
+              <span class="voice-note-status" data-voice-status role="status" aria-live="polite"></span>
+              <audio data-voice-preview controls hidden></audio>
+              <button type="button" class="button button-secondary button-small" data-voice-discard hidden>Discard / re-record</button>
+            </div>
+            {% endif %}
+            <div class="attachment-preview" id="attachment-preview" aria-live="polite" hidden></div>
+            <p class="chat-status" id="chat-status" aria-live="polite"></p>
+          </form>
+        </div>
+
+      </div>
+
+        <section class="chat-phase" aria-label="Where this request is now" data-current-phase="{{ current_phase.key|default:'' }}">
+          <header class="chat-phase-head">
+            <span class="chat-phase-kicker">Where this request is now</span>
+            <strong class="chat-phase-now">{{ current_phase.title }}</strong>
+            {% if current_phase.description %}<small class="chat-phase-note">{{ current_phase.description }}</small>{% endif %}
+          </header>
+          <ol class="chat-phase-track">
+            {% for step in conversation.journey %}
+            <li class="chat-phase-step{% if step.complete %} done{% endif %}{% if step.current %} current{% endif %}{% if step.optional %} optional{% endif %}"{% if step.current %} aria-current="step"{% endif %}>
+              <span class="chat-phase-dot" aria-hidden="true">{% if step.complete %}✓{% else %}{{ step.step }}{% endif %}</span>
+              <span class="chat-phase-copy"><strong>{{ step.title }}</strong>{% if step.current and step.description %}<small>{{ step.description }}</small>{% endif %}</span>
+            </li>
+            {% endfor %}
+          </ol>
+        </section>
+
+    </div>
+
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script><script src="{% static 'js/offer-draft.js' %}"></script><script src="{% static 'js/offer-panel.js' %}" defer></script>{% endblock %}

@@ -1,0 +1,4 @@
+{% extends 'base.html' %}
+{% load site_tags %}
+{% block title %}Booking history · Artisan Market{% endblock %}
+{% block content %}<section class="page-heading"><div><div class="eyebrow">Audit trail</div><h1>Booking history</h1><p>The API's recorded state changes for this booking.</p></div></section><section class="timeline">{% for item in history %}<div class="timeline-row"><div class="timeline-dot"></div><div><strong>{{ item.status|title }}</strong><span>{{ item.changed_by|title }} · {{ item.created_at }}</span>{% if item.notes %}<p>{{ item.notes }}</p>{% endif %}</div></div>{% empty %}<div class="empty">No history was returned.</div>{% endfor %}</section>{% endblock %}

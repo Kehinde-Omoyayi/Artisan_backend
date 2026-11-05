@@ -1,0 +1,107 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Configuration centre · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Settings</h2>
+  <p class="console-muted">{{ payload.note }}</p>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead><tr><th>Setting</th><th>Current value</th><th>Version</th><th>Effective from</th><th>Change</th></tr></thead>
+      <tbody>
+      {% for setting in settings_rows %}
+        <tr>
+          <td>{{ setting.label }}<br><span class="console-muted"><code>{{ setting.key }}</code> · {{ setting.description }}</span></td>
+          <td>{{ setting.value }}</td><td>{{ setting.version }}</td><td>{% if setting.effective_from %}{{ setting.effective_from|human_datetime }}{% else %}immediately{% endif %}</td>
+          <td>
+            <form method="post" action="{% url 'console-config-change' %}" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="key" value="{{ setting.key }}">
+              <input type="hidden" name="category" value="{{ setting.category }}">
+              <input type="text" name="value" value="{{ setting.value }}" aria-label="New value for {{ setting.key }}">
+              <input type="text" name="reason" placeholder="Reason" maxlength="300">
+              <button class="console-button console-button--quiet" type="submit">Propose</button>
+            </form>
+            <form method="post" action="{% url 'console-config-preview' %}" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="key" value="{{ setting.key }}">
+              <input type="text" name="value" placeholder="Preview a value" aria-label="Preview value for {{ setting.key }}">
+              <button class="console-button console-button--quiet" type="submit">Preview effect</button>
+            </form>
+            {% if setting.category == 'sensitive' %}<p class="console-muted">Sensitive: needs step-up and a second approver.</p>{% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No settings returned.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if preview %}
+  <section class="console-block">
+    <h2>Preview for <code>{{ preview.key }}</code></h2>
+    <pre class="console-pre">{{ preview.payload }}</pre>
+  </section>
+{% endif %}
+
+<section class="console-block">
+  <h2>Awaiting approval</h2>
+  <table class="console-table">
+    <thead><tr><th>Setting</th><th>Proposed value</th><th>Requested by</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for change in pending_changes %}
+      <tr>
+        <td><code>{{ change.key }}</code></td><td>{{ change.proposed_value }}</td>
+        <td>{{ change.requested_by|default:'—' }}</td><td>{{ change.status }}</td>
+        <td class="console-cell-actions">
+          <form method="post" action="{% url 'console-config-approve' change.id %}">{% csrf_token %}
+            <button class="console-button" type="submit">Approve and apply</button></form>
+          <form method="post" action="{% url 'console-config-reject' change.id %}" class="inline-form">{% csrf_token %}
+            <input type="text" name="reason" placeholder="Reason" maxlength="300">
+            <button class="console-button console-button--danger" type="submit">Reject</button></form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">Nothing awaiting approval.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="console-block">
+  <h2>Version history</h2>
+  <form class="console-filters" method="get" action="{% url 'console-config' %}">
+    <label class="console-field"><span>Setting key</span>
+      <input type="text" name="key" value="{{ history_key }}" placeholder="fees.customer_service_fee_kobo">
+    </label>
+    <button class="console-button console-button--quiet" type="submit">Show history</button>
+  </form>
+  {% if history %}
+    <p class="console-muted">Current: {{ history.current.value }} (version {{ history.current.version }})</p>
+    <table class="console-table">
+      <thead><tr><th>Version</th><th>Value</th><th>Effective from</th><th>Changed by</th><th>Rollback</th></tr></thead>
+      <tbody>
+      {% for row in history.history %}
+        <tr>
+          <td>{{ row.version }}</td><td>{{ row.value }}</td><td>{{ row.effective_from|human_datetime }}</td>
+          <td>{{ row.changed_by|default:'—' }}</td>
+          <td>
+            <form method="post" action="{% url 'console-config-rollback' %}" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="key" value="{{ history_key }}">
+              <input type="hidden" name="version" value="{{ row.version }}">
+              <input type="text" name="reason" placeholder="Reason" maxlength="300">
+              <button class="console-button console-button--quiet" type="submit">Roll back to this version</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="5">No versions recorded for this key.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}

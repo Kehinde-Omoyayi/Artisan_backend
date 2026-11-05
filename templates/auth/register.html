@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Create account · Artisan Market{% endblock %}
+{% block content %}
+<section class="auth-wrap">
+  <article class="auth-card register-card" aria-labelledby="register-title">
+    <div class="eyebrow">Join the marketplace</div>
+    <h1 id="register-title">Create account</h1>
+    <p>Your account is created through the marketplace API, then verified by email.</p>
+
+    <p class="register-step-status" data-register-step-status aria-live="polite">
+      {% if register_step == 'details' %}Step 2 of 2 · Enter your account details.{% else %}Step 1 of 2 · Choose your role first.{% endif %}
+    </p>
+
+    <form method="post" class="js-submit-form register-form" data-register-flow data-register-start-step="{{ register_step }}">
+      {% csrf_token %}
+      {% if next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+
+      <section class="register-stage" data-register-stage="role" aria-labelledby="register-role-title">
+        <h2 id="register-role-title">How will you use Artisan Market?</h2>
+        <fieldset class="register-role-options {% if form.role.errors %}has-error{% endif %}" aria-describedby="register-role-help{% if form.role.errors %} register-role-errors{% endif %}">
+          <legend>{{ form.role.label }}</legend>
+          <div class="register-role-grid">
+            {% for value, label in form.fields.role.choices %}
+              <label class="register-role-choice" data-register-reveal>
+                <input type="radio" name="{{ form.role.html_name }}" value="{{ value }}" {% if form.role.value == value %}checked{% endif %} required {% if form.role.errors %}aria-invalid="true"{% endif %}>
+                <span class="register-role-copy">
+                  <span class="register-role-name">{{ label }}</span>
+                  {% if value == 'customer' %}<span class="register-role-description">I’m joining as a customer.</span>{% else %}<span class="register-role-description">I’m joining as an artisan.</span>{% endif %}
+                </span>
+              </label>
+            {% endfor %}
+          </div>
+          <p class="help" id="register-role-help">Choose one role before continuing.</p>
+          {% if form.role.errors %}<p class="field-error" id="register-role-errors">{{ form.role.errors|striptags }}</p>{% endif %}
+          <p class="field-error" data-register-role-feedback role="alert" hidden></p>
+        </fieldset>
+        <div class="register-step-actions">
+          <button class="button button-primary full" type="button" data-register-next hidden>Continue</button>
+        </div>
+      </section>
+
+      <section class="register-stage" data-register-stage="details" aria-labelledby="register-details-title">
+        <div class="register-details-panel" data-register-reveal>
+          <div class="register-details-heading">
+            <h2 id="register-details-title" tabindex="-1">Your account details</h2>
+            <p class="register-panel-copy">Create your account with an email address and password.</p>
+          </div>
+
+          <div class="register-details-grid">
+            {% for field in form %}
+              {% if field.name == 'first_name' or field.name == 'last_name' %}
+                <div class="form-field {% if field.errors %}has-error{% endif %}">
+                  {{ field.label_tag }}{{ field }}
+                  {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+                  {% if field.errors %}<div class="field-error">{{ field.errors|striptags }}</div>{% endif %}
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% for field in form %}
+            {% if field.name == 'email' or field.name == 'password' %}
+              <div class="form-field {% if field.errors %}has-error{% endif %}">
+                {{ field.label_tag }}{{ field }}
+                {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+                {% if field.errors %}<div class="field-error">{{ field.errors|striptags }}</div>{% endif %}
+              </div>
+            {% endif %}
+          {% endfor %}
+          <div class="register-step-actions register-submit-actions">
+            <button class="button button-secondary" type="button" data-register-back hidden>Back</button>
+            <button class="button button-primary full" type="submit">Create account</button>
+          </div>
+        </div>
+
+        <section class="register-provider-options" data-register-reveal aria-label="Social registration options">
+          <div class="register-divider"><span>Or sign up with</span></div>
+          <p class="register-social-note">Choose a provider instead. If it doesn’t share your name, we’ll ask you to add it.</p>
+          <div class="register-provider-grid">
+            <button class="button register-provider-button" type="button" data-social-provider="google">
+              <img class="provider-brand-icon" src="{% static 'images/auth-google.svg' %}" alt="" aria-hidden="true" width="18" height="18">
+              <span>Continue with Google</span>
+            </button>
+            <button class="button register-provider-button" type="button" data-social-provider="apple">
+              <img class="provider-brand-icon" src="{% static 'images/auth-apple.svg' %}" alt="" aria-hidden="true" width="18" height="18">
+              <span>Continue with Apple</span>
+            </button>
+          </div>
+          <noscript><p class="help">Provider sign-up needs JavaScript. Use the email registration form above when JavaScript is disabled.</p></noscript>
+        </section>
+      </section>
+    </form>
+
+    <div class="auth-links">
+      {% if next_target %}<a href="{% url 'login' %}?next={{ next_target|urlencode }}">Already have an account?</a>{% else %}<a href="{% url 'login' %}">Already have an account?</a>{% endif %}
+      <a href="{% url 'forgot-password' %}">Forgot password?</a>
+    </div>
+  </article>
+</section>
+{% endblock %}

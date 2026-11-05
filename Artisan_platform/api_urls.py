@@ -23,6 +23,7 @@ urlpatterns = [
     path("api/v1/conversations/", include("conversations.urls")),
     path("api/v1/notifications/", include("notifications.urls")),
     path("api/v1/profile/", include("profiles.urls")),
+    path("api/v1/manager/", include("manager.urls")),
     path("api/v1/social-auth/", include("social_auth.api_urls")),
     # Operational probes remain outside the versioned API.
     path("health/", include("health.urls")),

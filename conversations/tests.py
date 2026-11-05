@@ -92,23 +92,17 @@ class ConversationTestMixin:
 
     def offer_payload(self, total=Decimal("25000.00")):
         start = timezone.now() + timedelta(days=1)
-        end = start + timedelta(hours=2)
-        expiry = start - timedelta(hours=1)
         labour = total - Decimal("5000.00")
+        # The itemised form is the only pricing surface: labour, itemised
+        # materials, transport, additional charges, schedule and duration.
         return {
-            "materials_details": "Replacement socket parts",
-            "payment_terms": "Pay through the confirmed platform payment step.",
-            "exclusions": "Decorating is excluded.",
-            "workmanship_terms": "No additional rectification term offered.",
             "labour_amount": labour,
             "materials_amount": Decimal("5000.00"),
             "total_amount": total,
-            "materials_included": True,
-            "scope": "Repair and test affected sockets.",
-            "notes": "Bring replacement parts.",
+            "materials_included": False,
             "scheduled_start": start,
-            "scheduled_end": end,
-            "expires_at": expiry,
+            "duration_value": 2,
+            "duration_unit": "HOURS",
         }
 
 
@@ -511,25 +505,64 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         self.assertEqual(self.conversation.service_request_id, request_id)
         self.assertEqual(ServiceRequest.objects.count(), 1)
 
-    def test_explicit_submit_validates_all_required_fields_without_creating_a_request(
-        self,
-    ):
+    def test_submit_needs_only_the_work_and_invents_no_place_or_date(self):
+        """The chat asks one question: what needs doing.
+
+        The artisan proposes the priced lines and the schedule in the itemised
+        offer and the customer accepts it there, so a request sent from the chat
+        must not be blocked on a service, a location or a preferred date — and
+        must not have one made up for it.
+        """
+        self.auth(self.customer)
+        response = self.client.patch(
+            f"/api/v1/conversations/{self.conversation.id}/request/",
+            {
+                "submit_request": True,
+                "description": "Repair the damaged socket safely.",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.conversation.refresh_from_db()
+        request = ServiceRequest.objects.get(pk=self.conversation.service_request_id)
+        self.assertEqual(request.status, "OPEN")
+        self.assertEqual(request.description, "Repair the damaged socket safely.")
+        self.assertIsNone(request.location)
+        self.assertIsNone(request.preferred_date)
+
+    def test_submit_succeeds_when_the_artisan_offers_no_catalogue_service(self):
+        """The artisan itemises the work, so their catalogue cannot block the chat."""
+        ArtisanService.objects.filter(artisan=self.artisan).delete()
+        self.auth(self.customer)
+        response = self.client.patch(
+            f"/api/v1/conversations/{self.conversation.id}/request/",
+            {
+                "submit_request": True,
+                "description": "The kitchen tap drips under the sink.",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.conversation.refresh_from_db()
+        request = ServiceRequest.objects.get(pk=self.conversation.service_request_id)
+        self.assertEqual(request.status, "OPEN")
+        self.assertIsNone(request.service_id)
+        self.assertIsNone(request.category_id)
+
+    def test_submit_still_refuses_an_empty_description(self):
         self.auth(self.customer)
         response = self.client.patch(
             f"/api/v1/conversations/{self.conversation.id}/request/",
             {
                 "submit_request": True,
                 "service_id": self.service.id,
-                "description": "Repair the damaged socket safely.",
-                "location_id": str(self.location.id),
+                "description": "   ",
             },
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("preferred_date", response.data["details"])
+        self.assertIn("description", response.data["details"])
         self.assertEqual(ServiceRequest.objects.exclude(status="DRAFT").count(), 0)
-        self.conversation.refresh_from_db()
-        self.assertEqual(self.conversation.service_request.status, "DRAFT")
 
     def test_budget_can_be_supplied_after_budget_unknown(self):
         self.auth(self.customer)
@@ -639,13 +672,24 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
                 idempotency_key="same-op",
             )
 
-    def test_offer_cannot_be_created_before_request_is_complete(self):
-        with self.assertRaises(Exception):
-            create_offer(
-                conversation=self.conversation,
-                user=self.artisan_user,
-                payload=self.offer_payload(),
-            )
+    def test_the_artisan_can_quote_before_the_customer_fills_in_a_request(self):
+        """Quoting belongs to the artisan: the request is completed from the quote.
+
+        This used to raise only because the offer notification crashed on a
+        request with no catalogue category. The rule is the opposite: the artisan
+        prices the work whenever they are ready, and the stored request is filled
+        in from that itemised offer.
+        """
+        offer = create_offer(
+            conversation=self.conversation,
+            user=self.artisan_user,
+            payload=self.offer_payload(),
+        )
+        self.conversation.refresh_from_db()
+        request = self.conversation.service_request
+        self.assertEqual(offer.conversation_id, self.conversation.id)
+        self.assertEqual(request.status, "OPEN")
+        self.assertTrue(request.description.strip())
 
     def test_request_rejects_wrong_location_for_artisan_service(self):
         self.auth(self.customer)
@@ -839,10 +883,17 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
         payment = EscrowPayment.objects.get(
             booking__request_id=self.conversation.service_request_id
         )
+        # A link minted by the current code: provider id plus the method marker
+        # the checkout writes when it mints.
+        payment.provider_transaction_id = "5150"
         payment.provider_payload = {
-            "data": {"link": "https://checkout.flutterwave.com/pay/sample"}
+            "data": {"link": "https://checkout.flutterwave.com/pay/sample"},
+            "_checkout": {
+                "minted_at": timezone.now().isoformat(),
+                "methods": "card, banktransfer",
+            },
         }
-        payment.save(update_fields=["provider_payload"])
+        payment.save(update_fields=["provider_payload", "provider_transaction_id"])
 
         self.auth(self.artisan_user)
         artisan_detail = self.client.get(
@@ -860,6 +911,16 @@ class ConversationWorkflowTests(TestCase, ConversationTestMixin):
             customer_detail.data["payment"]["authorization_url"],
             "https://checkout.flutterwave.com/pay/sample",
         )
+
+        # A link from before checkout was restricted to card and bank transfer
+        # (no marker, or minted for other methods) is never surfaced: the payer
+        # would land on the old PayPal page instead of a fresh checkout.
+        payment.provider_payload = {
+            "data": {"link": "https://checkout.flutterwave.com/pay/legacy"}
+        }
+        payment.save(update_fields=["provider_payload"])
+        legacy = self.client.get(f"/api/v1/conversations/{self.conversation.id}/")
+        self.assertIsNone(legacy.data["payment"]["authorization_url"])
         delay.assert_called_once()
 
     def test_expired_offer_cannot_be_accepted(self):
@@ -1060,13 +1121,7 @@ class ConversationWorkflowV2Tests(TestCase, ConversationTestMixin):
             "labour_amount": "20000.00",
             "materials_amount": "2500.00",
             "total_amount": "22500.00",
-            "materials_details": "Pipe joint and sealant",
-            "payment_terms": "Full payment held in escrow.",
-            "exclusions": "None.",
-            "workmanship_terms": "I revisit within 7 days if the joint leaks again.",
-            "scope": "Replace the leaking pipe joint and reseal.",
             "scheduled_start": start.isoformat(),
-            "expires_at": (start - timedelta(hours=2)).isoformat(),
             "duration_value": 3,
             "duration_unit": "DAYS",
             "materials": [
@@ -1171,24 +1226,15 @@ class ConversationWorkflowV2Tests(TestCase, ConversationTestMixin):
         response = self.confirm_via_api()
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_offer_blocked_until_description_done_then_allowed(self):
+    def test_artisan_can_quote_without_a_description_confirmation_step(self):
         self.fresh_room()
-        self.auth(self.artisan_user)
-        cant = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/offers/",
-            self.itemized_payload(),
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="v2-offer-before-confirm",
-        )
-        self.assertEqual(cant.status_code, status.HTTP_400_BAD_REQUEST)
-
         self.describe()
         self.conversation.refresh_from_db()
-        confirmed = self.confirm_via_api()
-        self.assertEqual(confirmed.status_code, status.HTTP_200_OK, confirmed.data)
-        self.assertTrue(confirmed.data["description_confirmed"])
-        self.assertTrue(confirmed.data["description_confirmed_at"])
+        from conversations.services import description_currently_confirmed
 
+        self.assertFalse(description_currently_confirmed(self.conversation))
+
+        self.auth(self.artisan_user)
         payload = self.itemized_payload()
         sent = self.client.post(
             f"/api/v1/conversations/{self.conversation.id}/offers/",
@@ -1311,7 +1357,8 @@ class ConversationWorkflowV2Tests(TestCase, ConversationTestMixin):
         self.assertEqual(stale.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(Booking.objects.count(), 0)
 
-        # Materially changing the description invalidates the confirmation.
+        # Changing the description no longer locks quoting: the artisan can revise
+        # the quote straight away.
         patch = self.client.patch(
             f"/api/v1/conversations/{self.conversation.id}/request/",
             {
@@ -1321,24 +1368,8 @@ class ConversationWorkflowV2Tests(TestCase, ConversationTestMixin):
             format="json",
         )
         self.assertEqual(patch.status_code, status.HTTP_200_OK, patch.data)
-        self.assertFalse(patch.data["description_confirmed"])
 
         self.auth(self.artisan_user)
-        blocked = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/offers/counter/",
-            {**self.itemized_payload(), "parent_offer_id": offer_id},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="v2-counter-blocked",
-        )
-        self.assertEqual(blocked.status_code, status.HTTP_400_BAD_REQUEST)
-
-        reconfirm = self.client.post(
-            f"/api/v1/conversations/{self.conversation.id}/description-confirm/",
-            {},
-            format="json",
-            HTTP_IDEMPOTENCY_KEY="desc-confirm-2",
-        )
-        self.assertEqual(reconfirm.status_code, status.HTTP_200_OK, reconfirm.data)
         counter = self.client.post(
             f"/api/v1/conversations/{self.conversation.id}/offers/counter/",
             {**self.itemized_payload(), "parent_offer_id": offer_id, "total_amount": "23500.00", "labour_amount": "21000.00"},
@@ -1347,3 +1378,332 @@ class ConversationWorkflowV2Tests(TestCase, ConversationTestMixin):
         )
         self.assertEqual(counter.status_code, status.HTTP_201_CREATED, counter.data)
         self.assertEqual(counter.data["version"], 2)
+
+
+class ItemizedOfferContractTests(TestCase, ConversationTestMixin):
+    """The itemised pricing form is the only pricing contract.
+
+    Labour, itemised materials, transport, additional charges, scheduled start
+    and duration are the whole payload. The retired free-text fields are not
+    required, not stored and not echoed back.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = self.make_user("itemized-customer@example.com")
+        CustomerProfile.objects.create(
+            user=self.customer, country="Nigeria", state="Lagos", area="Ikeja"
+        )
+        self.artisan_user, self.artisan = self.make_artisan(
+            "itemized-artisan@example.com"
+        )
+        self.location = Locations.objects.create(
+            country="Nigeria", state="Lagos", area="Ikeja"
+        )
+        self.category = ServiceCategory.objects.create(name="Electrical")
+        self.service = Service.objects.create(
+            category=self.category, name="Electrical Repairs"
+        )
+        ArtisanService.objects.create(
+            artisan=self.artisan,
+            service=self.service,
+            location=self.location,
+            starting_price=Decimal("10000.00"),
+        )
+        self.conversation = self.make_conversation()
+        self.complete_request()
+
+    def payload(self, **overrides):
+        data = {
+            "labour_amount": "25000.00",
+            "materials_amount": "0.00",
+            "total_amount": "25000.00",
+            "transport_amount": "0.00",
+            "additional_amount": "0.00",
+            "materials": [],
+            "scheduled_start": (timezone.now() + timedelta(days=2)).isoformat(),
+            "duration_value": 3,
+            "duration_unit": "DAYS",
+        }
+        data.update(overrides)
+        return data
+
+    def post_offer(self, payload, key="itemized-1"):
+        self.client.force_authenticate(self.artisan_user)
+        return self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/",
+            payload,
+            format="json",
+            HTTP_IDEMPOTENCY_KEY=key,
+        )
+
+    def test_the_quote_needs_neither_scope_nor_terms_nor_expiry(self):
+        response = self.post_offer(
+            self.payload(
+                materials=[
+                    {"name": "Socket", "quantity": "2", "unit_price": "1500.00"},
+                    {"name": "Cable", "quantity": "5", "unit_price": "400.00"},
+                ],
+                materials_amount="5000.00",
+                total_amount="30000.00",
+            )
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        offer = Offer.objects.get(pk=response.data["id"])
+        self.assertEqual(offer.total_amount, Decimal("30000.00"))
+        self.assertEqual(offer.materials.count(), 2)
+        self.assertEqual(offer.duration_value, 3)
+        self.assertEqual(offer.duration_unit, "DAYS")
+        self.assertEqual(offer.scheduled_end, offer.scheduled_start + timedelta(days=3))
+        # Expiry is derived, never asked for.
+        self.assertLessEqual(offer.expires_at, offer.scheduled_start)
+        self.assertGreater(offer.expires_at, timezone.now())
+        for retired in ("scope", "notes", "payment_terms", "exclusions"):
+            self.assertNotIn(retired, response.data)
+        self.assertIn("summary", response.data)
+        self.assertIn("Labour", response.data["summary"])
+
+    def test_materials_included_removes_the_materials_from_the_payable_total(self):
+        response = self.post_offer(
+            self.payload(
+                materials=[{"name": "Socket", "quantity": "2", "unit_price": "1500.00"}],
+                materials_amount="3000.00",
+                materials_included=True,
+                total_amount="25000.00",
+            )
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data["materials_included"])
+        self.assertEqual(response.data["materials_amount"], "3000.00")
+        self.assertEqual(response.data["total_amount"], "25000.00")
+
+    def test_materials_included_still_rejects_a_total_that_double_charges_them(self):
+        response = self.post_offer(
+            self.payload(
+                materials=[{"name": "Socket", "quantity": "2", "unit_price": "1500.00"}],
+                materials_amount="3000.00",
+                materials_included=True,
+                total_amount="28000.00",
+            ),
+            key="itemized-included-bad",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("total_amount", response.data["details"])
+
+    def test_the_payable_total_is_computed_when_the_client_does_not_send_it(self):
+        payload = self.payload()
+        payload.pop("total_amount")
+        response = self.post_offer(payload, key="itemized-derived-total")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["total_amount"], "25000.00")
+
+    def test_transport_and_additional_charges_are_added_and_must_be_described(self):
+        missing_description = self.post_offer(
+            self.payload(
+                transport_amount="1500.00",
+                additional_amount="2500.00",
+                total_amount="29000.00",
+            ),
+            key="itemized-additional-1",
+        )
+        self.assertEqual(missing_description.status_code, status.HTTP_400_BAD_REQUEST)
+        described = self.post_offer(
+            self.payload(
+                transport_amount="1500.00",
+                additional_amount="2500.00",
+                additional_charge_details="Replace the burnt back-box",
+                total_amount="29000.00",
+            ),
+            key="itemized-additional-2",
+        )
+        self.assertEqual(described.status_code, status.HTTP_201_CREATED, described.data)
+        self.assertEqual(described.data["additional_amount"], "2500.00")
+
+    def test_duration_is_required_and_the_schedule_must_be_in_the_future(self):
+        missing = self.post_offer(
+            {k: v for k, v in self.payload().items() if k != "duration_value"},
+            key="itemized-duration-1",
+        )
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("duration_value", missing.data["details"])
+        past = self.post_offer(
+            self.payload(scheduled_start=(timezone.now() - timedelta(days=1)).isoformat()),
+            key="itemized-past-1",
+        )
+        self.assertEqual(past.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_the_other_participant_is_notified_with_a_modalisable_decision(self):
+        from notifications.models import InAppNotification
+
+        response = self.post_offer(self.payload(), key="itemized-notify-1")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertTrue(response.data["notification_delivered"])
+        notification = InAppNotification.objects.get(
+            recipient=self.customer, event_key__startswith="offer_received"
+        )
+        self.assertEqual(notification.data["popup"], "modal")
+        self.assertIn(
+            f"/discover/conversations/{self.conversation.id}/",
+            notification.data["action_url"],
+        )
+        # The sender is never told about the offer they just sent.
+        self.assertFalse(
+            InAppNotification.objects.filter(
+                recipient=self.artisan_user,
+                event_key__startswith="offer_received",
+            ).exists()
+        )
+
+    def test_both_sides_get_an_immediate_popup_when_the_work_is_itemised(self):
+        """Itemising a request pops up on both screens, each naming the other side.
+
+        The customer has to answer, so their popup is a decision; the artisan
+        only needs to know it landed, so theirs is a confirmation. Each person's
+        feed carries only their own popup.
+        """
+        from notifications.models import InAppNotification
+
+        response = self.post_offer(self.payload(), key="itemized-popup-1")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        decision = InAppNotification.objects.get(
+            recipient=self.customer, event_key__startswith="offer_received"
+        )
+        self.assertEqual(decision.data["popup"], "modal")
+        self.assertIn(
+            "Test Artisan", decision.title, "the customer cannot tell who quoted"
+        )
+        self.assertIn("25,000.00", decision.message)
+
+        confirmation = InAppNotification.objects.get(
+            recipient=self.artisan_user, event_key__startswith="offer_sent"
+        )
+        self.assertEqual(confirmation.data["popup"], "toast")
+        self.assertIn("Quote sent to", confirmation.title)
+        self.assertEqual(str(self.conversation.id), confirmation.data["conversation_id"])
+
+        self.client.force_authenticate(self.customer)
+        customer_feed = self.client.get("/api/v1/notifications/popups/")
+        self.assertEqual(customer_feed.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["id"] for row in customer_feed.data], [decision.id])
+
+        self.client.force_authenticate(self.artisan_user)
+        artisan_feed = self.client.get("/api/v1/notifications/popups/")
+        self.assertEqual(artisan_feed.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["id"] for row in artisan_feed.data], [confirmation.id])
+
+    def test_notification_delivery_can_be_retried_without_duplicating_the_offer(self):
+        from notifications.models import InAppNotification
+
+        response = self.post_offer(self.payload(), key="itemized-retry-1")
+        offer_id = response.data["id"]
+        InAppNotification.objects.all().delete()
+        self.client.force_authenticate(self.artisan_user)
+        retry = self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/offers/{offer_id}/renotify/",
+            {},
+            format="json",
+        )
+        self.assertEqual(retry.status_code, status.HTTP_200_OK, retry.data)
+        self.assertTrue(retry.data["notification_delivered"])
+        self.assertEqual(Offer.objects.filter(conversation=self.conversation).count(), 1)
+
+    def test_a_retry_with_the_same_key_returns_the_same_offer(self):
+        payload = self.payload()
+        first = self.post_offer(payload, key="itemized-idem-1")
+        second = self.post_offer(payload, key="itemized-idem-1")
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED, first.data)
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED, second.data)
+        self.assertEqual(first.data["id"], second.data["id"])
+        self.assertEqual(Offer.objects.filter(conversation=self.conversation).count(), 1)
+
+
+class UnreadMessageCountTests(TestCase, ConversationTestMixin):
+    """The message badge is counted separately from workflow notifications."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer = self.make_user("badge-customer@example.com")
+        CustomerProfile.objects.create(
+            user=self.customer, country="Nigeria", state="Lagos", area="Ikeja"
+        )
+        self.artisan_user, self.artisan = self.make_artisan("badge-artisan@example.com")
+        self.location = Locations.objects.create(
+            country="Nigeria", state="Lagos", area="Ikeja"
+        )
+        self.category = ServiceCategory.objects.create(name="Electrical")
+        self.service = Service.objects.create(
+            category=self.category, name="Electrical Repairs"
+        )
+        ArtisanService.objects.create(
+            artisan=self.artisan,
+            service=self.service,
+            location=self.location,
+            starting_price=Decimal("10000.00"),
+        )
+        self.conversation = self.make_conversation()
+
+    def count(self, user):
+        self.client.force_authenticate(user)
+        response = self.client.get("/api/v1/conversations/unread-count/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        return response.data["unread_count"]
+
+    def test_messages_are_counted_per_read_watermark_and_never_include_own_messages(self):
+        for index in range(2):
+            send_message(
+                conversation=self.conversation,
+                user=self.artisan_user,
+                body=f"Update {index}",
+                idempotency_key=f"badge-in-{index}",
+            )
+        send_message(
+            conversation=self.conversation,
+            user=self.customer,
+            body="My own message",
+            idempotency_key="badge-own-1",
+        )
+        self.assertEqual(self.count(self.customer), 2)
+        # Reading clears exactly what was read; a second poll cannot double count.
+        self.client.force_authenticate(self.customer)
+        self.client.post(
+            f"/api/v1/conversations/{self.conversation.id}/read/", {}, format="json"
+        )
+        self.assertEqual(self.count(self.customer), 0)
+        self.assertEqual(self.count(self.artisan_user), 1)
+
+    def test_notifications_never_inflate_the_message_badge(self):
+        from notifications.models import InAppNotification
+
+        InAppNotification.objects.create(
+            recipient=self.customer,
+            event_key="badge-notification-1",
+            title="A workflow notification",
+            message="Not a chat message.",
+        )
+        self.assertEqual(self.count(self.customer), 0)
+
+    def test_popups_endpoint_returns_only_unread_flagged_events(self):
+        from notifications.models import InAppNotification
+
+        InAppNotification.objects.create(
+            recipient=self.customer,
+            event_key="popup-1",
+            title="Decision",
+            message="Decide.",
+            data={"popup": "modal", "action_url": "/x/"},
+        )
+        InAppNotification.objects.create(
+            recipient=self.customer,
+            event_key="popup-2",
+            title="Plain",
+            message="Nothing to decide.",
+        )
+        self.client.force_authenticate(self.customer)
+        response = self.client.get("/api/v1/notifications/popups/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["event_key"] for item in response.data], ["popup-1"])
+        notification_id = response.data[0]["id"]
+        self.client.post(f"/api/v1/notifications/{notification_id}/read/", {}, format="json")
+        refreshed = self.client.get("/api/v1/notifications/popups/")
+        self.assertEqual(refreshed.data, [])

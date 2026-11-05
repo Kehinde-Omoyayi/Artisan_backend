@@ -4,7 +4,7 @@ from PIL import Image, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 from rest_framework.exceptions import ValidationError
 
-MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+MAX_ATTACHMENT_SIZE = 30 * 1024 * 1024
 MAX_ATTACHMENTS_PER_MESSAGE = 5
 MAX_IMAGE_PIXELS = 20_000_000
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".pdf"}
@@ -17,11 +17,23 @@ IMAGE_MIME_BY_EXT = {
 }
 
 
+def attachment_limit():
+    """Per-file attachment ceiling (30 MB by default, settings-overridable)."""
+    from django.conf import settings
+
+    return int(
+        getattr(settings, "CONVERSATION_ATTACHMENT_MAX_BYTES", MAX_ATTACHMENT_SIZE)
+    )
+
+
 def validate_attachment(upload):
     if not upload or not getattr(upload, "name", None):
         raise ValidationError("Attachment is invalid.")
-    if upload.size > MAX_ATTACHMENT_SIZE:
-        raise ValidationError("Each attachment must be 10 MB or smaller.")
+    limit = attachment_limit()
+    if upload.size > limit:
+        raise ValidationError(
+            f"Each attachment must be {limit // (1024 * 1024)} MB or smaller."
+        )
     name = str(upload.name).replace("\\", "/")
     base = Path(name).name
     if base != name or "\x00" in name or base in {".", ".."} or "/" in name:

@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Verify reset code · Artisan Market{% endblock %}
+{% block content %}
+{% include 'partials/auth_flow_page.html' with flow_kind='password-reset' title='Verify reset code' intro='Enter the six-digit code from your password reset email.' page_eyebrow='Password reset · step two' flow_kicker='PASSWORD RESET' flow_side_title='Confirm it is you before changing your password.' flow_side_copy='The code is one-time use. After verification, you can set a new password.' active_step=2 step_total=3 step_one='Account email' step_two='Reset code' step_three='New password' submit_label='Verify code' cancel_url='/auth/login/' extra_href='/auth/forgot-password/' extra_label='Restart password reset' %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% load site_tags %}
+<form class="console-filters" method="get" action="{{ request.path }}" role="search" aria-label="Report filters">
+  <label class="console-field">
+    <span>Date range</span>
+    <select name="period" data-console-period>
+      {% for key, label in period_choices %}
+        <option value="{{ key }}"{% if console_filters.period == key %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="console-field console-field--date" data-console-custom hidden>
+    <span>Start</span>
+    <input type="date" name="start" value="{{ console_filters.start|default:'' }}">
+  </label>
+  <label class="console-field console-field--date" data-console-custom hidden>
+    <span>End</span>
+    <input type="date" name="end" value="{{ console_filters.end|default:'' }}">
+  </label>
+  <label class="console-field">
+    <span>Category</span>
+    <input type="text" name="category" value="{{ console_filters.category|default:'' }}" maxlength="80" placeholder="Any">
+  </label>
+  <label class="console-field">
+    <span>Location</span>
+    <input type="text" name="location" value="{{ console_filters.location|default:'' }}" maxlength="80" placeholder="Any">
+  </label>
+  <label class="console-field">
+    <span>Booking status</span>
+    <input type="text" name="booking_status" value="{{ console_filters.booking_status|default:'' }}" maxlength="40" placeholder="Any">
+  </label>
+  <label class="console-field">
+    <span>Payment status</span>
+    <input type="text" name="payment_status" value="{{ console_filters.payment_status|default:'' }}" maxlength="40" placeholder="Any">
+  </label>
+  <button class="console-button" type="submit">Apply</button>
+  <a class="console-link" href="{{ request.path }}">Reset</a>
+</form>

@@ -23,6 +23,17 @@ SITE_URL = config(
     "SITE_URL", default=(CSRF_TRUSTED_ORIGINS[0] if CSRF_TRUSTED_ORIGINS else "")
 ).rstrip("/")
 
+# Ngrok tunnels: the public hostname changes every time the tunnel restarts, so
+# development accepts any ngrok subdomain instead of forcing an .env edit (and a
+# CSRF failure on every form) after each restart. Production stays explicit.
+NGROK_HOSTS = (".ngrok-free.app", ".ngrok-free.dev", ".ngrok.app", ".ngrok.dev", ".ngrok.io")
+NGROK_ORIGINS = tuple("https://*" + suffix for suffix in NGROK_HOSTS)
+if ENVIRONMENT != "production":
+    ALLOWED_HOSTS = list(ALLOWED_HOSTS) + [h for h in NGROK_HOSTS if h not in ALLOWED_HOSTS]
+    CSRF_TRUSTED_ORIGINS = list(CSRF_TRUSTED_ORIGINS) + [
+        o for o in NGROK_ORIGINS if o not in CSRF_TRUSTED_ORIGINS
+    ]
+
 if ENVIRONMENT == "production":
     if DEBUG:
         raise ImproperlyConfigured("DEBUG must be False in production.")
@@ -79,6 +90,7 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "django_filters",
     "core.apps.CoreConfig",
+    "manager.apps.ManagerConfig",
     "rest_framework_simplejwt.token_blacklist",
 ]
 
@@ -201,6 +213,13 @@ PASSWORD_HASHERS = [
 REST_FRAMEWORK["NUM_PROXIES"] = config(
     "DRF_NUM_PROXIES", default=1 if ENVIRONMENT == "production" else 0, cast=int
 )
+
+# Production serves JSON only: the DRF browsable-API HTML renderer is heavy to
+# serialize and exposes interactive forms/introspection to anonymous visitors.
+if ENVIRONMENT == "production":
+    REST_FRAMEWORK["DEFAULT_RENDERER_CLASSES"] = [
+        "rest_framework.renderers.JSONRenderer",
+    ]
 
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
     "anon": config("DRF_ANON_RATE", default="60/min"),
@@ -331,7 +350,8 @@ STORAGES = {
 }
 
 # Conversation uploads are constrained further at the serializer/storage layer.
-DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 32 * 1024 * 1024
+# Files above this are spooled to disk instead of memory (not a size limit).
 FILE_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 
 USE_S3 = config("USE_S3", cast=bool)
@@ -482,6 +502,17 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "visibility_timeout": config("CELERY_VISIBILITY_TIMEOUT", default=7200, cast=int)
 }
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+# Publishing must never hold a web request open. If the broker is unreachable the
+# job row stays QUEUED for the watchdog inside a second or two, instead of the
+# request retrying the connection for seconds while the manager waits.
+CELERY_BROKER_CONNECTION_TIMEOUT = config("CELERY_BROKER_CONNECTION_TIMEOUT", default=1, cast=float)
+CELERY_TASK_PUBLISH_RETRY = False
+CELERY_TASK_PUBLISH_RETRY_POLICY = {"max_retries": 0, "interval_start": 0, "interval_step": 0, "interval_max": 0}
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    **CELERY_BROKER_TRANSPORT_OPTIONS,
+    "socket_connect_timeout": config("CELERY_SOCKET_CONNECT_TIMEOUT", default=1, cast=float),
+    "socket_timeout": config("CELERY_SOCKET_TIMEOUT", default=2, cast=float),
+}
 PROMOTION_DEFAULT_TARGET_CAPACITY = config(
     "PROMOTION_DEFAULT_TARGET_CAPACITY", default=20, cast=int
 )
@@ -503,6 +534,18 @@ PROMOTION_PAYMENT_EXPIRY_MINUTES = config(
 )
 
 CELERY_TASK_ROUTES = {
+    # Manager console: analytical work on its own queues so it can never starve payments.
+    "manager.tasks.run_snapshot_job": {"queue": "manager"},
+    "manager.tasks.run_aggregation_job": {"queue": "manager"},
+    "manager.tasks.run_report_job": {"queue": "manager"},
+    "manager.tasks.run_reconciliation_job": {"queue": "manager"},
+    "manager.tasks.run_data_quality_job": {"queue": "manager"},
+    "manager.tasks.run_export_job": {"queue": "exports"},
+    "manager.tasks.run_campaign_dispatch": {"queue": "campaigns"},
+    "manager.tasks.dispatch_due_campaigns": {"queue": "campaigns"},
+    "manager.tasks.capture_operational_snapshot": {"queue": "manager"},
+    "manager.tasks.requeue_stalled_jobs": {"queue": "maintenance"},
+    "manager.tasks.purge_manager_retention": {"queue": "maintenance"},
     # Authentication and email lifecycle.
     "home.tasks.send_verification_email": {"queue": "notifications"},
     "home.tasks.send_password_reset_email": {"queue": "notifications"},
@@ -615,9 +658,10 @@ CONVERSATION_RETENTION_DAYS = config(
 CONVERSATION_IMAGE_RETENTION_DAYS = config(
     "CONVERSATION_IMAGE_RETENTION_DAYS", default=7, cast=int
 )
-REQUIRE_MEDIA_SCAN = config(
-    "REQUIRE_MEDIA_SCAN", default=ENVIRONMENT == "production", cast=bool
-)
+# Media scanning (ClamAV-style) is opt-in. Uploads are always signature-validated
+# in conversations/security.py, so the platform does not need an external scanner
+# (and no AI/classification step) to preview photos or deliver documents.
+REQUIRE_MEDIA_SCAN = config("REQUIRE_MEDIA_SCAN", default=False, cast=bool)
 CLAMAV_SCAN_URL = config("CLAMAV_SCAN_URL", default="")
 MEDIA_SCAN_TIMEOUT_SECONDS = config("MEDIA_SCAN_TIMEOUT_SECONDS", default=15, cast=int)
 if not 1 <= MEDIA_SCAN_TIMEOUT_SECONDS <= 120:
@@ -697,9 +741,26 @@ SECURE_CSP = config(
 EXPOSE_DB_QUERY_METRICS = config("EXPOSE_DB_QUERY_METRICS", default=False, cast=bool)
 
 
-# Enable only after private storage, FFmpeg, purge worker and policy rollout checks.
+# Audio/video descriptions (up to 30 MB) are available out of the box outside
+# production. Production stays an explicit opt-in: enable only after private
+# storage, FFmpeg, the purge worker and the policy rollout checks are in place.
 CONVERSATION_RECORDINGS_ENABLED = config(
-    "CONVERSATION_RECORDINGS_ENABLED", default=False, cast=bool
+    "CONVERSATION_RECORDINGS_ENABLED",
+    # On for local/dev so the audio+video option works out of the box; off in
+    # production (explicit opt-in after the readiness checks) and in tests
+    # (which turn it on per case with override_settings).
+    default=ENVIRONMENT not in ("production", "test"),
+    cast=bool,
+)
+CONVERSATION_ATTACHMENT_MAX_BYTES = config(
+    "CONVERSATION_ATTACHMENT_MAX_BYTES", default=30 * 1024 * 1024, cast=int
+)
+# 30 MB of compressed audio (10 min) or video (5 min) fits comfortably.
+CONVERSATION_AUDIO_MAX_SECONDS = config(
+    "CONVERSATION_AUDIO_MAX_SECONDS", default=600, cast=int
+)
+CONVERSATION_VIDEO_MAX_SECONDS = config(
+    "CONVERSATION_VIDEO_MAX_SECONDS", default=300, cast=int
 )
 CONVERSATION_PRIVATE_MEDIA_ROOT = config(
     "CONVERSATION_PRIVATE_MEDIA_ROOT",

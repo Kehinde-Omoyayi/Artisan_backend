@@ -1,0 +1,82 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block title %}Apply for Promotion · Artisan Market{% endblock %}
+{% block content %}
+<section class="artisan-motion-page promotion-page" data-artisan-page="promotion-applications">
+  <header class="page-heading artisan-page-heading promotion-page-heading" data-artisan-reveal data-motion="left">
+    <div><div class="eyebrow">Artisan account · Reach</div><h1 data-text-motion>Apply for Promotion</h1><p>Submit a target-specific application for authorized Customer Support review.</p></div>
+    <div class="promotion-page-heading-actions"><a class="button button-secondary" href="{% url 'my-promotions' %}">My Promotions</a><a class="button button-secondary" href="{% url 'artisan-profile' %}">Back to profile</a></div>
+  </header>
+
+  <section class="promotion-scope-notice" role="note">
+    <span class="promotion-scope-icon" aria-hidden="true">i</span>
+    <div><strong>Application review and paid campaign are separate records</strong><p>Institution, Area, State and Homepage Feature are separate products and targets. Approval is limited to the exact reviewed revision and target. For an approved application, review the manager-configured price, terms and estimated start date before payment; a campaign is queued or started only after trusted payment verification.</p></div>
+  </section>
+
+  <section class="promotion-eligibility panel" aria-labelledby="promotion-eligibility-title">
+    <div class="promotion-section-heading"><div><span class="artisan-panel-kicker">Before applying</span><h2 id="promotion-eligibility-title">Eligibility check</h2></div><span class="promotion-eligibility-pill {% if eligibility.eligible %}is-ready{% else %}is-incomplete{% endif %}">{% if eligibility.eligible %}Eligible to apply{% else %}Requirements to complete{% endif %}</span></div>
+    {% if eligibility.eligible %}
+      <p class="promotion-eligibility-ready">Your current profile is eligible to submit. Customer Support will review the profile and selected work evidence as it exists at submission.</p>
+    {% else %}
+      <p>Complete the items below to apply. This check uses your server-side profile and verification status.</p>
+      {% if eligibility.requirements %}<ul class="promotion-requirement-list">{% for requirement in eligibility.requirements %}<li>{{ requirement.message }}</li>{% endfor %}</ul>{% else %}<p class="promotion-eligibility-ready">Eligibility could not be confirmed. Refresh this page or contact support if this continues.</p>{% endif %}
+    {% endif %}
+    <p class="promotion-privacy-note">Successful identity verification is checked securely; this form never asks you to enter an identity number again. Social accounts, a website and portfolio links are optional. Suitable work evidence can be reviewed alongside a complete profile.</p>
+  </section>
+
+  {% if selected_application %}
+  <section class="promotion-current panel" aria-labelledby="promotion-current-title">
+    <div class="promotion-section-heading"><div><span class="artisan-panel-kicker">Application record</span><h2 id="promotion-current-title">{{ selected_application.promotion_type_label }}</h2></div><span class="promotion-status-pill promotion-status--{{ selected_application.status|lower }}">{{ selected_application.status_label }}</span></div>
+    <dl class="promotion-summary-grid">
+      <div><dt>Target</dt><dd>{% if selected_application.target.name %}{{ selected_application.target.name }}{% if selected_application.target.campus %} — {{ selected_application.target.campus }}{% endif %}{% elif selected_application.target.area %}{{ selected_application.target.area }}, {{ selected_application.target.state }}, {{ selected_application.target.country }}{% elif selected_application.target.state %}{{ selected_application.target.state }}, {{ selected_application.target.country }}{% else %}Homepage Feature{% endif %}</dd></div>
+      <div><dt>Submitted</dt><dd>{{ selected_application.submitted_at|default:'Not available' }}</dd></div>
+      <div><dt>Last reviewed</dt><dd>{{ selected_application.reviewed_at|default:'Awaiting review' }}</dd></div>
+    </dl>
+    <div class="promotion-description-block"><span>Submitted description</span><p>{{ selected_application.promotional_description }}</p></div>
+    {% if selected_application.latest_decision %}
+      <div class="promotion-feedback" role="status"><strong>{{ selected_application.latest_decision.decision_label }}</strong><p>{{ selected_application.latest_decision.reason }}</p>{% if selected_application.status == 'CHANGES_REQUIRED' %}<small>Update the application below and resubmit it for review.</small>{% endif %}</div>
+    {% endif %}
+    {% if selected_application.status == 'APPROVED' %}<div class="promotion-form-actions"><a class="button button-primary" href="{% url 'promotion-checkout' pk=selected_application.id %}">Review approved offer <span aria-hidden="true">→</span></a><a class="button button-secondary" href="{% url 'my-promotions' %}">View campaign history</a></div>{% endif %}
+    {% if selected_application.evidence %}
+      <div class="promotion-evidence-block"><h3>Latest submitted work samples</h3><div class="promotion-evidence-grid">{% for sample in selected_application.evidence %}<figure><img src="{% url 'promotion-evidence-proxy' application_id=selected_application.id evidence_id=sample.id %}" alt="Private work sample from revision {{ sample.revision_number }}" loading="lazy"><figcaption>Revision {{ sample.revision_number }}</figcaption></figure>{% endfor %}</div></div>
+    {% endif %}
+    {% if selected_application.status == 'PENDING_REVIEW' or selected_application.status == 'CHANGES_REQUIRED' or selected_application.status == 'APPROVED' %}
+      <form method="post" class="promotion-withdraw-form">{% csrf_token %}<input type="hidden" name="application_id" value="{{ selected_application.id }}"><button class="button button-secondary" type="submit" name="action" value="withdraw">Withdraw this application</button></form>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if can_edit %}
+  <section class="promotion-form-panel panel" aria-labelledby="promotion-form-title">
+    <div class="promotion-section-heading"><div><span class="artisan-panel-kicker">{% if selected_application %}Requested changes{% else %}New request{% endif %}</span><h2 id="promotion-form-title">{% if selected_application %}Update and resubmit{% else %}Promotion application{% endif %}</h2></div><span class="promotion-step-mark" aria-hidden="true">07</span></div>
+    {% if not eligibility.eligible %}<div class="promotion-form-warning" role="status">You may prepare an application, but the API will not accept it until the eligibility requirements above are met.</div>{% endif %}
+    <form method="post" enctype="multipart/form-data" class="promotion-application-form" data-promotion-form>
+      {% csrf_token %}
+      {{ promotion_state_pairs|json_script:'promotion-state-pairs' }}
+      {% if selected_application %}<input type="hidden" name="application_id" value="{{ selected_application.id }}">{% endif %}
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+      <div class="promotion-product-field"><div class="form-field {% if form.promotion_type.errors %}has-error{% endif %}">{{ form.promotion_type.label_tag }}{{ form.promotion_type }}{% if form.promotion_type.errors %}<div class="field-error">{{ form.promotion_type.errors|striptags }}</div>{% endif %}</div><p>Each application covers exactly one product. You will submit another application if you want a different product or target.</p></div>
+      <div class="promotion-target-fields">
+        <div class="promotion-target-group" data-promotion-group="INSTITUTION"><div class="form-field {% if form.institution_id.errors %}has-error{% endif %}">{{ form.institution_id.label_tag }}{{ form.institution_id }}{% if form.institution_id.errors %}<div class="field-error">{{ form.institution_id.errors|striptags }}</div>{% endif %}</div><small>Only currently supported institution records are shown.</small></div>
+        <div class="promotion-target-group" data-promotion-group="AREA"><div class="form-field {% if form.area_location_id.errors %}has-error{% endif %}">{{ form.area_location_id.label_tag }}{{ form.area_location_id }}{% if form.area_location_id.errors %}<div class="field-error">{{ form.area_location_id.errors|striptags }}</div>{% endif %}</div><small>Choose an existing area or locality from the marketplace location catalogue.</small></div>
+        <div class="promotion-target-group promotion-state-fields" data-promotion-group="STATE"><div class="form-field {% if form.state_country.errors %}has-error{% endif %}">{{ form.state_country.label_tag }}{{ form.state_country }}{% if form.state_country.errors %}<div class="field-error">{{ form.state_country.errors|striptags }}</div>{% endif %}</div><div class="form-field {% if form.state_name.errors %}has-error{% endif %}">{{ form.state_name.label_tag }}{{ form.state_name }}{% if form.state_name.errors %}<div class="field-error">{{ form.state_name.errors|striptags }}</div>{% endif %}</div><small>Countries and states come from existing marketplace locations; the exact country/state pair is revalidated by the API.</small></div>
+        <div class="promotion-homepage-note" data-promotion-group="HOMEPAGE"><strong>Homepage Feature</strong><p>This product has no location target. It is reviewed separately from area, state and institution promotions.</p></div>
+      </div>
+      <div class="form-field {% if form.service_ids.errors %}has-error{% endif %}">{{ form.service_ids.label_tag }}{{ form.service_ids }}{% if form.service_ids.help_text %}<small class="help">{{ form.service_ids.help_text }}</small>{% endif %}{% if form.service_ids.errors %}<div class="field-error">{{ form.service_ids.errors|striptags }}</div>{% endif %}</div>
+      <div class="form-field {% if form.promotional_description.errors %}has-error{% endif %}">{{ form.promotional_description.label_tag }}{{ form.promotional_description }}{% if form.promotional_description.help_text %}<small class="help">{{ form.promotional_description.help_text }}</small>{% endif %}{% if form.promotional_description.errors %}<div class="field-error">{{ form.promotional_description.errors|striptags }}</div>{% endif %}</div>
+      <div class="form-field promotion-upload-field"><label for="id_evidence_images">Work samples (optional)</label><input id="id_evidence_images" type="file" name="evidence_images" accept="image/*" multiple><small class="help">Upload up to five images, 5 MB each. Evidence is private to you and authorized Customer Support reviewers. A complete profile and appropriate work evidence can be enough; social and portfolio links are not required.</small></div>
+      <div class="promotion-form-actions"><button class="button button-primary" type="submit" name="action" value="submit">{% if selected_application %}Resubmit for review{% else %}Submit application for review{% endif %}<span aria-hidden="true">→</span></button><a class="button button-secondary" href="{% url 'artisan-profile' %}">Cancel</a></div>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="promotion-history panel" aria-labelledby="promotion-history-title">
+    <div class="promotion-section-heading"><div><span class="artisan-panel-kicker">Your records</span><h2 id="promotion-history-title">Promotion applications</h2></div><span class="promotion-history-count">{{ applications|length }} record{{ applications|length|pluralize }}</span></div>
+    {% if applications %}<div class="promotion-application-list">{% for item in applications %}<article class="promotion-application-row{% if item.id == selected_application.id %} is-selected{% endif %}"><div><div class="promotion-row-title"><strong>{{ item.promotion_type_label }}</strong><span class="promotion-status-pill promotion-status--{{ item.status|lower }}">{{ item.status_label }}</span></div><p>{% if item.target.name %}{{ item.target.name }}{% if item.target.campus %} — {{ item.target.campus }}{% endif %}{% elif item.target.area %}{{ item.target.area }}, {{ item.target.state }}, {{ item.target.country }}{% elif item.target.state %}{{ item.target.state }}, {{ item.target.country }}{% else %}Homepage Feature{% endif %}</p><small>Submitted {{ item.submitted_at|default:'date unavailable' }} · Revision {{ item.latest_revision_number|default:'—' }}</small>{% if item.latest_decision %}<div class="promotion-row-feedback"><strong>{{ item.latest_decision.decision_label }}:</strong> {{ item.latest_decision.reason|truncatechars:190 }}</div>{% endif %}</div><div class="promotion-row-actions"><a class="button button-secondary promotion-row-link" href="{% url 'promotion-applications' %}?application={{ item.id }}">View application <span aria-hidden="true">→</span></a>{% if item.status == 'APPROVED' %}<a class="button button-primary promotion-row-link" href="{% url 'promotion-checkout' pk=item.id %}">Review offer</a>{% endif %}</div></article>{% endfor %}</div>{% else %}<div class="promotion-empty-state"><span aria-hidden="true">✦</span><strong>No applications yet</strong><p>Your submitted requests and Customer Support feedback will appear here.</p></div>{% endif %}
+  </section>
+
+  <p class="promotion-footer-note">Applications remain separate from paid campaigns and payment history. An approved record only permits the exact reviewed product and target to be offered; payment, queueing and campaign activation depend on the current offer and trusted provider verification.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

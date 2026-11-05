@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block head %}<link rel="stylesheet" href="{% asset 'css/institution-picker.css' %}"><link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% asset 'css/customer-profile-pickers.css' %}">{% endblock %}
+{% block title %}Artisan profile · Artisan Market{% endblock %}
+{% block content %}
+<section class="artisan-motion-page artisan-profile-page" data-artisan-page="profile" data-tour-target="account">
+  <header class="page-heading artisan-page-heading" data-artisan-reveal data-motion="left">
+    <div><div class="eyebrow">Artisan account</div><h1 data-text-motion>{{ profile.business_name|default:'Artisan profile' }}</h1><p>Review and update your public details, incoming requests, and notifications.</p></div>
+  </header>
+
+  <article class="artisan-profile-hero" data-artisan-reveal data-motion="scale">
+    <div class="artisan-profile-avatar" aria-hidden="true">
+      {% if profile.profile_photo %}<img src="{{ profile.profile_photo }}" alt="" data-profile-photo-image loading="lazy" referrerpolicy="no-referrer"><span class="artisan-profile-avatar-fallback" data-profile-photo-fallback hidden>{{ profile.business_name|default:'A'|slice:':1'|upper }}</span>{% else %}<span class="artisan-profile-avatar-fallback" data-profile-photo-fallback>{{ profile.business_name|default:'A'|slice:':1'|upper }}</span>{% endif %}
+    </div>
+    <div class="artisan-profile-hero-copy">
+      <span class="artisan-profile-label">Public profile</span>
+      <h2>{{ profile.business_name|default:'Artisan profile' }}</h2>
+      <p>Keep your profile information current for people viewing your artisan page.</p>
+    </div>
+    <div class="artisan-profile-hero-actions">
+      <a class="button button-secondary" href="{% url 'artisan-services' %}">Manage services</a>
+      <a class="button button-secondary" href="{% url 'verification' %}">Verification</a>
+    </div>
+    <span class="status-pill {{ profile.profile_status|status_class }} artisan-public-profile-status">{{ profile.profile_status|default:'Status unavailable'|title }}</span>
+  </article>
+
+  <section class="panel artisan-profile-health" aria-labelledby="artisan-profile-health-title" data-artisan-reveal data-motion="up">
+    <div class="artisan-profile-health-copy">
+      <span class="artisan-panel-kicker">Profile Health</span>
+      <h2 id="artisan-profile-health-title">{% if profile_health.complete %}Ready for profile actions{% else %}Complete your profile details{% endif %}</h2>
+      <p>Based on your personal name, valid phone number and location. This is separate from KYC or artisan verification.</p>
+      {% if profile_health.missing_labels %}
+        <ul class="artisan-profile-health-missing">{% for item in profile_health.missing_labels %}<li>{{ item }}</li>{% endfor %}</ul>
+      {% else %}
+        <p class="artisan-profile-health-complete">All six profile details needed for requests and messages are complete.</p>
+      {% endif %}
+    </div>
+    <div class="artisan-profile-health-meter">
+      <div class="artisan-profile-health-score"><strong>{{ profile_health.percent }}%</strong><span>{{ profile_health.completed }} of {{ profile_health.total }} complete</span></div>
+      <div class="artisan-profile-health-track"><progress max="100" value="{{ profile_health.percent }}" aria-label="Profile health"></progress></div>
+      <a class="button button-primary" href="#artisan-profile-form">{% if profile_health.complete %}Review profile{% else %}Complete missing details{% endif %}</a>
+    </div>
+  </section>
+
+  <section class="artisan-profile-grid">
+    <article id="artisan-profile-form" class="panel artisan-profile-form-panel" data-artisan-reveal data-motion="left">
+      <div class="panel-head"><div><span class="artisan-panel-kicker">Profile editor</span><h2>Profile details</h2></div><span class="artisan-panel-mark" aria-hidden="true">✦</span></div>
+      {% if profile_completion_required %}<div class="workflow-empty-catalog-note" role="status">Complete these profile fields before continuing: {{ missing_profile_fields|join:", " }}. This profile requirement is separate from artisan KYC verification.</div>{% endif %}
+      <form method="post" enctype="multipart/form-data" class="js-submit-form artisan-profile-form" data-artisan-form data-profile-pickers data-institutions-url="{% url 'institution-catalogue' %}" data-geography-url="{% asset 'data/world-geography.json' %}" data-catalogue-mode="frontend-text" data-today="{{ profile_picker_today }}" data-institution-label="{{ profile.nearest_institution_name }}">
+        {% if profile_completion_required and next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
+        {{ profile_picker_catalogue|json_script:'profile-geography-data' }}
+        {% include 'partials/form.html' %}
+        <button class="button button-primary artisan-form-submit" type="submit" data-artisan-action>Save profile</button>
+      </form>
+    </article>
+
+    <aside class="artisan-profile-metrics" aria-label="Artisan profile metrics">
+      <article class="panel profile-metric-card" data-artisan-reveal data-motion="right">
+        <span class="profile-metric-index">01</span><div><small>Average rating</small><strong>{{ profile.average_rating|default:'—' }}</strong></div>
+      </article>
+      <article class="panel profile-metric-card" data-artisan-reveal data-motion="right">
+        <span class="profile-metric-index">02</span><div><small>Completion rate</small><strong>{% if profile.completion_rate != None %}{{ profile.completion_rate|floatformat:1 }}%{% else %}—{% endif %}</strong></div>
+      </article>
+      <article class="panel profile-metric-card" data-artisan-reveal data-motion="right">
+        <span class="profile-metric-index">03</span><div><small>Cancellation rate</small><strong>{% if profile.cancellation_rate != None %}{{ profile.cancellation_rate|floatformat:1 }}%{% else %}—{% endif %}</strong></div>
+      </article>
+      <p class="artisan-profile-note" data-artisan-reveal data-motion="up">Profile metrics are supplied by the marketplace API.</p>
+    </aside>
+  </section>
+
+  <section class="panel artisan-profile-activity-section" aria-labelledby="artisan-profile-activity-title" data-artisan-reveal data-motion="up">
+    <header class="artisan-profile-activity-heading">
+      <div><span class="artisan-panel-kicker">Incoming activity</span><h2 id="artisan-profile-activity-title">Income, notifications &amp; matching requests</h2><p>Confirmed payouts, recent account updates and customer requests matched to your services.</p></div>
+      <span class="artisan-profile-activity-mark" aria-hidden="true">✦</span>
+    </header>
+
+    <div class="artisan-profile-activity-grid">
+      <article class="artisan-profile-activity-column artisan-income-preview" aria-labelledby="artisan-profile-income-title" data-income-preview>
+        <header class="artisan-profile-activity-column-head">
+          <div><h3 id="artisan-profile-income-title">Income</h3><span>Successful transfers to your payout account</span></div>
+          <span class="artisan-income-currency-mark" aria-hidden="true">₦</span>
+        </header>
+        {% if income_summary.available %}
+          <div class="artisan-income-monthly-total">
+            <span>Paid this month</span>
+            <strong>₦{{ income_summary.this_month_amount }}</strong>
+            <small>{{ income_summary.month_label }} · {{ income_summary.this_month_payout_count }} completed payout{{ income_summary.this_month_payout_count|pluralize }}</small>
+          </div>
+          <div class="artisan-income-lifetime-total">
+            <span>Lifetime paid out</span>
+            <strong>₦{{ income_summary.lifetime_amount }}</strong>
+            <small>{{ income_summary.lifetime_payout_count }} completed payout{{ income_summary.lifetime_payout_count|pluralize }}</small>
+          </div>
+        {% else %}
+          <div class="workspace-empty workspace-empty-compact artisan-profile-activity-empty"><span class="workspace-empty-icon" aria-hidden="true">₦</span><strong>Income summary unavailable</strong><p>Completed payout totals could not be loaded right now.</p></div>
+        {% endif %}
+
+        <div class="artisan-income-alerts">
+          <div class="artisan-income-alerts-heading"><strong>Recent payout updates</strong><span>Income notifications</span></div>
+          {% if payout_notifications %}
+            <ul class="artisan-income-alert-list">
+              {% for item in payout_notifications %}
+                <li class="artisan-income-alert-row">
+                  <span class="artisan-income-alert-mark" aria-hidden="true">↗</span>
+                  <div><strong>{{ item.title }}</strong><p>{{ item.message|truncatechars:94 }}</p><small><time datetime="{{ item.created_at }}">{{ item.created_at|slice:":10" }}</time>{% if item.safe_url %} · <a href="{{ item.safe_url }}">Details</a>{% endif %}</small></div>
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="artisan-income-no-alerts">Payout received, pending and failed updates will appear here.</p>
+          {% endif %}
+        </div>
+        <a class="artisan-profile-text-action" href="{% url 'payout-account' %}">Manage payout account <span aria-hidden="true">→</span></a>
+      </article>
+
+      <article class="artisan-profile-activity-column" aria-labelledby="artisan-profile-notifications-title">
+        <header class="artisan-profile-activity-column-head">
+          <div><h3 id="artisan-profile-notifications-title">Notifications</h3><span>{{ notification_total }} recent update{{ notification_total|pluralize }}</span></div>
+          <button class="artisan-profile-icon-button" type="button" data-notification-dialog-open aria-haspopup="dialog" aria-controls="artisan-notification-dialog" aria-expanded="false" aria-label="Open notification preview">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg>
+            {% if unread_notification_count %}<span class="artisan-profile-icon-badge" aria-label="{{ unread_notification_count }} unread">{{ unread_notification_count }}</span>{% endif %}
+          </button>
+        </header>
+        {% if notification_previews %}
+          <ul class="workspace-notification-list artisan-profile-notification-previews">
+            {% for item in notification_previews %}
+              <li class="workspace-notification-row{% if not item.read_at %} is-unread{% endif %}">
+                <span class="workspace-notification-mark" aria-hidden="true">{% if not item.read_at %}•{% else %}✓{% endif %}</span>
+                <div class="workspace-notification-copy"><strong>{{ item.title }}</strong><p>{{ item.message|truncatechars:110 }}</p><small><time datetime="{{ item.created_at }}">{{ item.created_at|slice:":10" }}</time></small>{% if item.safe_url %}<a href="{{ item.safe_url }}">{{ item.safe_action_label|default:'Open update' }} <span aria-hidden="true">→</span></a>{% endif %}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="workspace-empty workspace-empty-compact artisan-profile-activity-empty"><span class="workspace-empty-icon" aria-hidden="true">◌</span><strong>No recent account notifications</strong><p>Updates about requests and bookings will appear here.</p></div>
+        {% endif %}
+        <button class="artisan-profile-text-action" type="button" data-notification-dialog-open aria-haspopup="dialog" aria-controls="artisan-notification-dialog" aria-expanded="false">Open notifications <span aria-hidden="true">↗</span></button>
+      </article>
+
+      <article class="artisan-profile-activity-column" aria-labelledby="artisan-profile-requests-title">
+        <header class="artisan-profile-activity-column-head">
+          <div><h3 id="artisan-profile-requests-title">Matching requests</h3><span>{{ request_total }} request{{ request_total|pluralize }} matched to your services</span></div>
+          <a class="artisan-profile-icon-button" href="{% url 'artisan-requests' %}" aria-label="Open matching requests">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4.5h10a2 2 0 0 1 2 2v13H5v-13a2 2 0 0 1 2-2ZM8.5 9h7M8.5 13h7M8.5 17h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.7"/></svg>
+            {% if request_total %}<span class="artisan-profile-icon-badge artisan-profile-icon-badge-neutral">{{ request_total }}</span>{% endif %}
+          </a>
+        </header>
+        {% if requests %}
+          <div class="artisan-profile-request-previews">
+            {% for item in requests %}
+              <article class="artisan-profile-request-preview">
+                <div class="artisan-profile-request-preview-top"><span>{{ item.category_name|default:'Service request' }}</span><span class="workflow-urgency-label">{{ item.urgency|default:'Urgency not set'|title }}</span></div>
+                <h4>{{ item.service_name|default:'Service request' }}</h4>
+                <p>{{ item.description|truncatechars:100 }}</p>
+                <dl><div><dt>Request location</dt><dd>{{ item.location.area|default:'Area not provided' }}{% if item.location.state %}, {{ item.location.state }}{% endif %}{% if item.location.country %}, {{ item.location.country }}{% endif %}</dd></div><div><dt>Preferred</dt><dd>{{ item.preferred_date|default:'Date not set' }}</dd></div></dl>
+              </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="workspace-empty workspace-empty-compact artisan-profile-activity-empty"><span class="workspace-empty-icon" aria-hidden="true">⌕</span><strong>No matching requests yet</strong><p>New requests matching your active services will appear here.</p></div>
+        {% endif %}
+        <a class="artisan-profile-text-action" href="{% url 'artisan-requests' %}">View all matching requests <span aria-hidden="true">→</span></a>
+      </article>
+    </div>
+  </section>
+
+  <section class="panel artisan-promotion-entry-card" aria-labelledby="artisan-promotion-entry-title" data-artisan-reveal data-motion="up">
+    <div class="artisan-promotion-entry-copy"><span class="artisan-panel-kicker">Grow your reach</span><h2 id="artisan-promotion-entry-title">Promotion Centre</h2><p>Apply for a reviewed target-specific promotion, then use My Promotions to follow verified payments, queue position, schedules, campaign status and available performance data.</p></div>
+    <div class="artisan-promotion-entry-actions"><a class="button button-primary" href="{% url 'promotion-applications' %}">Apply for Promotion <span aria-hidden="true">→</span></a><a class="button button-secondary" href="{% url 'my-promotions' %}">My Promotions <span aria-hidden="true">→</span></a></div>
+  </section>
+
+  <dialog class="customer-notification-dialog artisan-notification-dialog" id="artisan-notification-dialog" aria-labelledby="artisan-notification-title" data-notification-dialog>
+    <header class="customer-notification-dialog-head">
+      <div><span class="artisan-panel-kicker">Your account activity</span><h2 id="artisan-notification-title">Notifications</h2><p>{% if unread_notification_count %}{{ unread_notification_count }} unread update{{ unread_notification_count|pluralize }}{% else %}Your latest marketplace updates{% endif %}</p></div>
+      <button class="customer-notification-dialog-close" type="button" data-notification-dialog-close aria-label="Close notifications"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg></button>
+    </header>
+    <div class="customer-notification-dialog-body">
+      {% if notifications %}
+        <ul class="workspace-notification-list customer-profile-dialog-list">
+          {% for item in notifications %}
+            <li class="workspace-notification-row{% if not item.read_at %} is-unread{% endif %}"><span class="workspace-notification-mark" aria-hidden="true">{% if not item.read_at %}•{% else %}✓{% endif %}</span><div class="workspace-notification-copy"><strong>{{ item.title }}</strong><p>{{ item.message|truncatechars:180 }}</p><small><time datetime="{{ item.created_at }}">{{ item.created_at|slice:":10" }}</time></small>{% if item.safe_url %}<a href="{{ item.safe_url }}">{{ item.safe_action_label|default:'Open update' }} <span aria-hidden="true">→</span></a>{% endif %}</div></li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="workspace-empty workspace-empty-compact customer-profile-dialog-empty"><span class="workspace-empty-icon" aria-hidden="true">◌</span><strong>No recent notifications</strong><p>Updates about requests and bookings will appear here.</p></div>
+      {% endif %}
+    </div>
+    <footer class="customer-notification-dialog-foot"><a href="{% url 'notifications-page' %}">View all notifications <span aria-hidden="true">→</span></a><button type="button" data-notification-dialog-close>Done</button></footer>
+  </dialog>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% asset 'js/customer-profile-pickers.js' %}"></script><script src="{% static 'js/pages/artisan-ui.js' %}"></script><script src="{% static 'js/pages/profile-activity.js' %}"></script>{% endblock %}

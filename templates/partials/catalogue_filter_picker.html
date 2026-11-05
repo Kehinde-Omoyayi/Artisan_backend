@@ -1,0 +1,16 @@
+<div class="match-pick" data-match-pick="{{ name }}"{% if calendar %} data-calendar-picker{% endif %}>
+  <input type="hidden" name="{{ name }}" value="{{ value|default:'' }}">
+  <button type="button" class="match-pick-toggle" aria-expanded="false" aria-controls="match-{{ name }}">
+    <span class="match-pick-icon" aria-hidden="true">{% if calendar %}▦{% else %}⌕{% endif %}</span>
+    <span class="match-pick-label">{{ label }}</span>
+    <span class="match-pick-value">{{ display|default:value|default:placeholder }}</span>
+    <svg class="match-pick-chevron" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg>
+  </button>
+  <div class="match-pick-panel" id="match-{{ name }}" hidden>
+    {% if not calendar %}<input type="search" class="match-pick-search" aria-label="Search {{ label|lower }}" placeholder="Search {{ label|lower }}…" autocomplete="off">{% endif %}
+    <div class="match-pick-options" role="group" aria-label="{{ label }} options"></div>
+    <p class="match-pick-message" role="status" aria-live="polite" hidden></p>
+    <button type="button" class="match-pick-more" hidden>Load more institutions</button>
+    <button type="button" class="match-pick-clear">{% if calendar %}Clear date{% else %}Any {{ label|lower }}{% endif %}</button>
+  </div>
+</div>

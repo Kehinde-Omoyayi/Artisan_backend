@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q, Subquery
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import (
     OpenApiExample,
     OpenApiParameter,
@@ -10,6 +11,7 @@ from drf_spectacular.utils import (
     inline_serializer,
 )
 from rest_framework import generics, serializers, status
+from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -859,6 +861,160 @@ class ConversationOfferDeclineView(APIView):
                 metadata={"conversation_id": str(conversation_id)},
             )
         return Response(data)
+
+
+class ConversationUnreadCountView(APIView):
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "conversation_read"
+
+    @extend_schema(
+        tags=["Conversations"],
+        responses={
+            200: OpenApiResponse(
+                description="Unread message count for the authenticated user, separate from workflow notifications."
+            )
+        },
+    )
+    def get(self, request):
+        from .services import unread_message_total
+
+        return Response({"unread_count": unread_message_total(user=request.user)})
+
+
+class ConversationOfferRenotifyView(APIView):
+    """Retry the delivery of an offer notification.
+
+    A saved offer is never lost because an alert failed; this endpoint exists so
+    the sender can retry only the delivery step.
+    """
+
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "conversation_offer"
+
+    @extend_schema(tags=["Conversations"], request=None, responses={200: OfferSerializer})
+    def post(self, request, conversation_id, offer_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        try:
+            offer = conversation.offers.select_related(
+                "conversation__customer",
+                "conversation__artisan__user",
+                "conversation__service_request__category",
+                "created_by",
+            ).prefetch_related("materials").get(pk=offer_id)
+        except Offer.DoesNotExist as exc:
+            raise NotFound("Offer not found.") from exc
+        if offer.created_by_id != request.user.id:
+            raise PermissionDenied("Only the sender can retry this notification.")
+        from notifications.events import notify_offer_received
+
+        notify_offer_received(offer, counter=bool(offer.parent_offer_id))
+        return Response(OfferSerializer(offer).data)
+
+
+class ConversationOfferResendView(APIView):
+    """Re-send the terms of an earlier agreement as a fresh, acceptable quote.
+
+    Used after a booking is cancelled: the artisan can push the same itemised
+    agreement back to the customer without retyping it, or edit it first through
+    the normal quote form. The request is reopened by the cancellation itself, so
+    the customer can accept the new quote and a fresh booking is created.
+    """
+
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "conversation_offer"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            201: OfferSerializer,
+            400: OpenApiResponse(description="The agreement cannot be resent."),
+            403: OpenApiResponse(description="Only the sender can resend this agreement."),
+        },
+    )
+    def post(self, request, conversation_id, offer_id):
+        from datetime import timedelta
+
+        from conversations.serializers import OfferCreateSerializer
+
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        try:
+            source = conversation.offers.prefetch_related("materials").get(pk=offer_id)
+        except Offer.DoesNotExist as exc:
+            raise NotFound("Offer not found.") from exc
+        if source.created_by_id != request.user.id:
+            raise PermissionDenied("Only the sender can resend this agreement.")
+        if conversation.offers.filter(
+            status=Offer.Status.PROPOSED, expires_at__gt=timezone.now()
+        ).exists():
+            raise ValidationError(
+                "There is already an open quote here. Wait for the customer to respond to it."
+            )
+
+        scheduled_start = request.data.get("scheduled_start") or source.scheduled_start
+        try:
+            scheduled_start = parse_datetime(str(scheduled_start))
+        except (TypeError, ValueError):
+            scheduled_start = None
+        if scheduled_start is None:
+            scheduled_start = source.scheduled_start
+        if timezone.is_naive(scheduled_start):
+            scheduled_start = timezone.make_aware(scheduled_start)
+        now = timezone.now()
+        # A cancelled agreement usually carries a start date that has already
+        # passed; roll it forward in whole days so the schedule keeps its shape.
+        while scheduled_start <= now:
+            scheduled_start = scheduled_start + timedelta(days=1)
+
+        payload = {
+            "labour_amount": source.labour_amount,
+            "materials_amount": source.materials_amount,
+            "materials_included": source.materials_included,
+            "transport_amount": source.transport_amount,
+            "additional_amount": source.additional_amount,
+            "additional_charge_details": source.additional_charge_details,
+            "scheduled_start": scheduled_start,
+            "duration_value": source.duration_value,
+            "duration_unit": source.duration_unit,
+        }
+        rows = [
+            {
+                "name": item.name,
+                "unit": item.unit,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+            }
+            for item in source.materials.all().order_by("position", "created_at")
+        ]
+        if rows:
+            payload["materials"] = rows
+        serializer = OfferCreateSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        offer = create_offer(
+            conversation=conversation,
+            user=request.user,
+            payload=serializer.validated_data,
+            idempotency_key=key,
+        )
+        return Response(OfferSerializer(offer).data, status=status.HTTP_201_CREATED)
 
 
 class ConversationReadView(APIView):

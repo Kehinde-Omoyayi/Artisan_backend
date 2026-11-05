@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block title %}Activate artisan · Artisan Market{% endblock %}
+{% block content %}
+<section class="artisan-motion-page activation-page" data-artisan-page="activation">
+  <header class="page-heading artisan-page-heading" data-artisan-reveal data-motion="left">
+    <div>
+      <div class="eyebrow">Artisan administration</div>
+      <h1 data-text-motion>Update artisan activation</h1>
+      <p>Choose an activation status. The marketplace API remains responsible for permissions and the status change.</p>
+    </div>
+    <span class="activation-mark" aria-hidden="true">A</span>
+  </header>
+
+  <article class="activation-panel" data-artisan-reveal data-motion="scale">
+    <div class="activation-symbol" aria-hidden="true">
+      <svg viewBox="0 0 48 48" focusable="false"><path d="M24 5 42 13v11c0 10-7 17-18 21C13 41 6 34 6 24V13l18-8Z" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16 24 5 5 11-12" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"/></svg>
+    </div>
+    <div class="activation-copy">
+      <span class="activation-kicker">Status change</span>
+      <h2>Review before applying</h2>
+      <p>Activating or deactivating an artisan profile is an administrative action. Confirm the intended change below.</p>
+    </div>
+    <div class="activation-actions" data-artisan-reveal data-motion="up">
+      <form method="post" class="js-confirm-form activation-action-form" data-confirm="Activate this artisan profile?">
+        {% csrf_token %}
+        <input type="hidden" name="activate" value="1">
+        <button class="button button-primary activation-button" type="submit" data-artisan-action>Activate artisan</button>
+      </form>
+      <form method="post" class="js-confirm-form activation-action-form" data-confirm="Deactivate this artisan profile?">
+        {% csrf_token %}
+        <input type="hidden" name="activate" value="0">
+        <button class="button button-danger activation-button" type="submit" data-artisan-action>Deactivate artisan</button>
+      </form>
+      <a class="activation-back-link" href="{% url 'home' %}">Return to Manager Overview</a>
+    </div>
+  </article>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

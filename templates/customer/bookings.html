@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}My bookings · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% static 'css/bookings.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page workflow-page booking-workflow-page booking-list-page customer-bookings-page" data-artisan-page="customer-bookings">
+  <header class="page-heading artisan-page-heading workflow-heading" data-artisan-reveal data-motion="left">
+    <div class="workflow-heading-copy">
+      <span class="workflow-kicker"><span class="workflow-kicker-mark" aria-hidden="true">✦</span> Your account</span>
+      <h1 data-text-motion>Your bookings.</h1>
+      <p>Every booking you have agreed, with its price, schedule, status and exactly what you can do next.</p>
+    </div>
+    <div class="workflow-heading-side" aria-label="{{ bookings|length }} booking{{ bookings|length|pluralize }}">
+      <div class="workflow-heading-count"><strong>{{ bookings|length }}</strong><span>booking{{ bookings|length|pluralize }}</span></div>
+    </div>
+  </header>
+
+  <section class="panel workflow-panel workflow-list-panel" aria-labelledby="customer-booking-list-title" data-artisan-reveal data-motion="up">
+    <div class="workflow-panel-head workflow-list-head">
+      <div><span class="artisan-panel-kicker">Agreed work</span><h2 id="customer-booking-list-title">Your bookings</h2></div>
+      <span class="workflow-count-badge" aria-label="{{ bookings|length }} booking{{ bookings|length|pluralize }}">{{ bookings|length }}</span>
+    </div>
+    <div class="workflow-list-items">
+      {% for item in bookings %}
+      <article class="workflow-list-card booking-list-card" data-artisan-reveal data-motion="up">
+        <span class="workflow-list-index" aria-hidden="true">{{ forloop.counter|stringformat:'02d' }}</span>
+        <span class="workflow-list-main">
+          <span class="workflow-status-line">
+            <span class="status-pill {{ item.status|status_class }}"><span class="workflow-status-dot" aria-hidden="true"></span>{{ item.status|default:'Status unavailable'|title }}</span>
+            <span class="workflow-list-reference">{% if item.service_name %}{{ item.service_name }}{% else %}Service booking{% endif %}</span>
+          </span>
+          <strong>{% if item.artisan_name %}Booking with {{ item.artisan_name }}{% elif item.service_name %}{{ item.service_name }}{% else %}Service booking{% endif %}</strong>
+          <span class="workflow-list-meta">{{ item.scheduled_time_start|human_datetime }} <span aria-hidden="true">→</span> {{ item.scheduled_time_end|human_datetime }}{% if item.duration_label %} · {{ item.duration_label }}{% endif %}</span>
+        </span>
+        <span class="workflow-list-price">{{ item.price_agreed|ngn }}<small>agreed price</small></span>
+        <span class="booking-card-actions">
+          <a class="button button-secondary button-small" href="{% url 'booking-detail' pk=item.id %}">View details</a>
+          {% if item.primary_action and item.primary_action.url %}
+          <a class="button button-primary button-small" href="{{ item.primary_action.url }}">{{ item.primary_action.label }}</a>
+          {% endif %}
+          {% if item.can_cancel %}
+          <a class="button button-secondary button-small" href="{% url 'booking-cancel' pk=item.id %}" data-booking-cancel>Cancel</a>
+          {% endif %}
+          {% for action in item.actions %}{% if action.code == 'OPEN_CONVERSATION' and action.url %}
+          <a class="button button-secondary button-small" href="{{ action.url }}">Message artisan</a>
+          {% endif %}{% endfor %}
+        </span>
+      </article>
+      {% empty %}
+      <div class="workflow-empty" data-artisan-reveal data-motion="scale">
+        <span class="workflow-empty-symbol" aria-hidden="true">◌</span>
+        <strong>No bookings yet</strong>
+        <p>When you accept an artisan's itemized offer in a conversation, the booking appears here with its price and schedule.</p>
+        <a class="workflow-empty-link" href="{% url 'conversation-inbox' %}">Open messages <span aria-hidden="true">→</span></a>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

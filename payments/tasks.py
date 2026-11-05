@@ -572,7 +572,12 @@ def initialize_prepared_payment(self, payment_id):
         if payment.status != EscrowPayment.Status.PAYMENT_PENDING:
             return {"status": "not_pending"}
         if payment.provider_transaction_id:
-            return {"status": "already_initialized"}
+            from .services import checkout_link_is_current, rotate_checkout_reference
+
+            if checkout_link_is_current(payment):
+                return {"status": "already_initialized"}
+            with transaction.atomic():
+                payment = rotate_checkout_reference(payment, reason="stale_checkout_link")
         try:
             payment, result = _initialize_prepared_payment_external(payment)
         except FlutterwaveUnknownError:

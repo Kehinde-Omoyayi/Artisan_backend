@@ -1,0 +1,238 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Manager overview · Artisan Market{% endblock %}
+{% block body_class %}landing-page authenticated-home-page {% if manager_values_revealed %}manager-values-revealed{% else %}manager-values-masked{% endif %}{% endblock %}
+{% block main_class %}landing-main authenticated-home-main{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/landing.css' %}">
+<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">
+<link rel="stylesheet" href="{% static 'css/manager-dashboard.css' %}">
+<link rel="stylesheet" href="{% static 'css/authenticated-home.css' %}">
+{% endblock %}
+{% block content %}
+<section class="manager-dashboard artisan-motion-page" data-artisan-page="manager-dashboard" data-tour-target="manager">
+  {% include 'partials/authenticated_home_hero.html' %}
+  {% include 'partials/support_operation_shortcut.html' %}
+
+  <section class="manager-snapshot-controls" aria-label="Snapshot schedule and data privacy controls">
+    {% if manager_values_revealed %}
+    <div class="manager-snapshot-settings">
+      <div><span class="manager-eyebrow">SCHEDULED DATA SNAPSHOT</span><h2>Snapshot frequency</h2><p>Worker runs use {{ manager_snapshot_schedule.timezone|default:'UTC' }}. The latest saved snapshot is separate from this live schedule state.</p></div>
+      <form method="post" action="{% url 'frontend-manager-snapshot-schedule' %}" class="manager-snapshot-form">
+        {% csrf_token %}
+        <label for="manager-snapshot-frequency">Run every</label>
+        <select id="manager-snapshot-frequency" name="frequency">
+          <option value="HOURLY" {% if manager_snapshot_schedule.frequency == 'HOURLY' %}selected{% endif %}>Hourly</option>
+          <option value="DAILY" {% if manager_snapshot_schedule.frequency == 'DAILY' %}selected{% endif %}>Daily</option>
+          <option value="EVERY_THREE_DAYS" {% if manager_snapshot_schedule.frequency == 'EVERY_THREE_DAYS' %}selected{% endif %}>Every three days</option>
+          <option value="WEEKLY" {% if manager_snapshot_schedule.frequency == 'WEEKLY' %}selected{% endif %}>Weekly</option>
+          <option value="MONTHLY" {% if manager_snapshot_schedule.frequency == 'MONTHLY' %}selected{% endif %}>Monthly</option>
+        </select>
+        <label for="manager-snapshot-reason">Change reason (optional)</label>
+        <input id="manager-snapshot-reason" type="text" name="reason" maxlength="1000" placeholder="Why is this schedule changing?">
+        <button class="manager-action manager-action--outline" type="submit">Save frequency</button>
+      </form>
+      <div class="manager-snapshot-meta"><span><small>Next run</small><strong>{{ manager_snapshot_schedule.next_run_at|default:'Waiting for scheduler' }}</strong></span><span><small>Last success</small><strong>{{ manager_snapshot_schedule.last_success_at|default:'Not run yet' }}</strong></span><span><small>Latest snapshot</small><strong>{{ manager_analytics.snapshot.status|default:'—'|humanize_code }}</strong></span></div>
+      {% if manager_snapshot_schedule.last_error %}<p class="manager-snapshot-error" role="status"><strong>Scheduler diagnostic:</strong> {{ manager_snapshot_schedule.last_error }}</p>{% endif %}
+      {% if manager_snapshot_schedule.history %}
+      <details class="manager-snapshot-history"><summary>Recent schedule changes <span>({{ manager_snapshot_schedule.history|length }})</span></summary>
+        <div>{% for event in manager_snapshot_schedule.history %}<article><strong>{{ event.actor_name }}</strong><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'j M Y, g:i a' }}</time><small>{{ event.before.frequency|default:'—'|humanize_code }} → {{ event.after.frequency|default:'—'|humanize_code }} · {{ event.reason }}</small></article>{% endfor %}</div>
+      </details>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="manager-privacy-controls">
+      <div><span class="manager-eyebrow">PRIVACY BY DEFAULT</span><p data-manager-privacy-status role="status" aria-live="polite">{% if manager_values_revealed %}Sensitive values are visible for this authorized request. Hiding or reloading returns to the protected overview.{% else %}Analytics remain unloaded until you request them. This action is recorded and requires manager authorization.{% endif %}</p></div>
+      {% if manager_values_revealed %}
+      <form method="post" action="{% url 'frontend-manager-values-reveal' %}">
+        {% csrf_token %}<input type="hidden" name="scope" value="hide"><input type="hidden" name="next" value="{{ reveal_return_path }}">
+        <button class="manager-action manager-action--outline" type="submit" data-manager-privacy-hide>Hide values</button>
+      </form>
+      {% else %}
+      <form method="post" action="{% url 'frontend-manager-values-reveal' %}">
+        {% csrf_token %}<input type="hidden" name="scope" value="manager"><input type="hidden" name="next" value="{{ reveal_return_path }}">
+        <button class="manager-action manager-action--outline" type="submit">Reveal analytics</button>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if not manager_values_revealed %}
+  <section class="manager-load-state" data-artisan-reveal aria-labelledby="manager-load-title">
+    <span class="manager-load-mark" aria-hidden="true">•••</span>
+    <div><h2 id="manager-load-title">Platform analytics are protected by default</h2><p>No analytics have been loaded into this page. The figures below stay blank until you load this one-use, manager-authorized view. Loading it is recorded against your account.</p></div>
+    <form method="post" action="{% url 'frontend-manager-values-reveal' %}" class="manager-load-action">
+      {% csrf_token %}
+      <input type="hidden" name="scope" value="manager"><input type="hidden" name="next" value="{{ reveal_return_path }}">
+      <button class="manager-action manager-action--solid" type="submit">Load analytics</button>
+    </form>
+  </section>
+  {% elif not manager_analytics_ready %}
+  <section class="manager-load-state" data-artisan-reveal aria-labelledby="manager-load-title-error">
+    <span class="manager-load-mark" aria-hidden="true">!</span>
+    <div><h2 id="manager-load-title-error">Platform analytics are temporarily unavailable</h2><p>The authorized request could not load its aggregate snapshot. No payment-provider payloads or personal financial details are displayed here.</p></div>
+    <a class="manager-action manager-action--outline" href="{% url 'dashboard' %}">Try again <span aria-hidden="true">↻</span></a>
+  </section>
+  {% else %}
+  {% with kpis=manager_analytics.kpis %}
+  <section class="manager-kpi-grid" aria-label="Marketplace and financial headline metrics">
+    <article class="manager-kpi-card manager-kpi-card--cyan" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">⌕</span><span class="manager-kpi-label">Service requests · 30d</span><strong>{{ kpis.service_requests_30d|manager_mask }}</strong><small>{{ kpis.emergency_requests_30d|manager_mask }} emergency · {{ kpis.service_requests_total|manager_mask }} all-time</small></article>
+    <article class="manager-kpi-card manager-kpi-card--violet" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">▦</span><span class="manager-kpi-label">Bookings · 30d</span><strong>{{ kpis.bookings_30d|manager_mask }}</strong><small>{{ kpis.bookings_active|manager_mask }} currently active · {{ kpis.bookings_total|manager_mask }} all-time</small></article>
+    <article class="manager-kpi-card manager-kpi-card--blue" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">₦</span><span class="manager-kpi-label">Service GMV · 30d</span><strong>{{ kpis.paid_volume_30d_kobo|ngn_kobo|manager_mask }}</strong><small>{{ kpis.paid_payments_30d|manager_mask }} held payments · service value</small></article>
+    <article class="manager-kpi-card manager-kpi-card--green" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">✦</span><span class="manager-kpi-label">Platform fees captured · 30d</span><strong>{{ kpis.platform_fees_30d_kobo|ngn_kobo|manager_mask }}</strong><small>Commission + customer fees on escrow holds</small></article>
+    <article class="manager-kpi-card manager-kpi-card--orange" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">↗</span><span class="manager-kpi-label">Payouts completed · 30d</span><strong>{{ kpis.payouts_30d_kobo|ngn_kobo|manager_mask }}</strong><small>{{ kpis.payouts_pending_count|manager_mask }} payout{{ kpis.payouts_pending_count|pluralize }} in flight</small></article>
+    <article class="manager-kpi-card manager-kpi-card--rose" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">↩</span><span class="manager-kpi-label">Refunds paid · 30d</span><strong>{{ kpis.refunds_30d_kobo|ngn_kobo|manager_mask }}</strong><small>{{ kpis.refunds_pending_count|manager_mask }} pending · {{ kpis.refunds_unknown_count|manager_mask }} need reconciliation</small></article>
+    <article class="manager-kpi-card manager-kpi-card--slate" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">◎</span><span class="manager-kpi-label">Customers</span><strong>{{ kpis.customers_total|manager_mask }}</strong><small>{{ kpis.customers_active|manager_mask }} active · {{ kpis.customers_new_30d|manager_mask }} new in 30d</small></article>
+    <article class="manager-kpi-card manager-kpi-card--indigo" data-artisan-reveal data-motion="scale"><span class="manager-kpi-icon" aria-hidden="true">⚒</span><span class="manager-kpi-label">Active artisans</span><strong>{{ kpis.artisans_active|manager_mask }}</strong><small>{{ kpis.artisans_new_30d|manager_mask }} new · {{ kpis.artisans_total|manager_mask }} registered · {{ kpis.artisans_pending_verification|manager_mask }} verification reviews</small></article>
+  </section>
+
+  <section class="manager-quick-metrics" aria-label="Live marketplace health">
+    <div class="manager-quick-metric"><span class="manager-quick-icon manager-quick-icon--teal" aria-hidden="true">⌂</span><span><small>Active services · {{ kpis.categories_total|manager_mask }} categories</small><strong>{{ kpis.services_active|manager_mask }}</strong></span></div>
+    <div class="manager-quick-metric"><span class="manager-quick-icon manager-quick-icon--blue" aria-hidden="true">◉</span><span><small>Open support cases</small><strong>{{ kpis.support_cases_open|add:kpis.support_cases_review|manager_mask }}</strong></span></div>
+    <div class="manager-quick-metric"><span class="manager-quick-icon manager-quick-icon--amber" aria-hidden="true">◈</span><span><small>In active escrow</small><strong>{{ kpis.active_escrow_kobo|ngn_kobo|manager_mask }}</strong></span></div>
+    <div class="manager-quick-metric"><span class="manager-quick-icon manager-quick-icon--violet" aria-hidden="true">✉</span><span><small>Messages · 30d</small><strong>{{ kpis.messages_30d|manager_mask }}</strong></span></div>
+    <div class="manager-quick-metric"><span class="manager-quick-icon manager-quick-icon--rose" aria-hidden="true">⚑</span><span><small>Open disputes</small><strong>{{ kpis.support_disputes_open|manager_mask }}</strong></span></div>
+  </section>
+
+  {% if manager_analytics.promotions %}
+  <section class="manager-promotion-overview" aria-labelledby="manager-promotions-heading">
+    <header class="manager-promotion-heading">
+      <div><span class="manager-eyebrow">AUTHORIZED PROMOTION MANAGEMENT</span><h2 id="manager-promotions-heading">Promotions &amp; placements</h2><p>Application review, paid campaign operations, target capacity and first-party performance.</p></div>
+      <div class="manager-promotion-actions">
+        {% if support_capabilities.can_review_promotions %}<a class="manager-action manager-action--outline" href="{% url 'support-promotion-applications' %}">Review applications</a>{% endif %}
+        <a class="manager-action manager-action--outline" href="{% url 'support-promotion-campaign-management' %}">Campaign settings</a>
+      </div>
+    </header>
+    <div class="manager-promotion-kpis">
+      <article><span>Institution</span><strong>{{ manager_analytics.promotions.active_geographic_by_type.INSTITUTION|manager_mask }}</strong></article>
+      <article><span>Area / locality</span><strong>{{ manager_analytics.promotions.active_geographic_by_type.AREA|manager_mask }}</strong></article>
+      <article><span>State</span><strong>{{ manager_analytics.promotions.active_geographic_by_type.STATE|manager_mask }}</strong></article>
+      <article><span>Homepage placements</span><strong>{{ manager_analytics.promotions.active_homepage_placements|manager_mask }}</strong></article>
+      <article><span>Paid campaigns awaiting placement</span><strong>{{ manager_analytics.promotions.pending_paid_campaigns.paid_waiting_for_placement|manager_mask }}</strong></article>
+      <article><span>Awaiting payment</span><strong>{{ manager_analytics.promotions.pending_paid_campaigns.awaiting_payment|manager_mask }}</strong></article>
+      <article><span>Payment verification review</span><strong>{{ manager_analytics.promotions.pending_paid_campaigns.payment_review|manager_mask }}</strong></article>
+      <article><span>Applications · Pending Review</span><strong>{{ manager_analytics.promotions.review_statistics.pending_review|manager_mask }}</strong></article>
+      <article><span>Applications · Changes Required</span><strong>{{ manager_analytics.promotions.review_statistics.changes_required|manager_mask }}</strong></article>
+      <article><span>Expiring in 7 days</span><strong>{{ manager_analytics.promotions.upcoming_expirations_7d|manager_mask }}</strong></article>
+    </div>
+    <div class="manager-promotion-panels">
+      <section class="manager-promotion-subpanel" aria-labelledby="manager-promotion-performance-heading">
+        <h3 id="manager-promotion-performance-heading">Performance · last 30 days</h3>
+        <div class="manager-promotion-performance"><span><small>Impressions</small><strong>{{ manager_analytics.promotions.performance.last_30_days.impressions|manager_mask }}</strong></span><span><small>Profile visits</small><strong>{{ manager_analytics.promotions.performance.last_30_days.profile_visits|manager_mask }}</strong></span><span><small>Useful rate</small><strong>{{ manager_analytics.promotions.performance.last_30_days.useful_rate_percent|default_if_none:'—'|manager_mask }}{% if manager_analytics.promotions.performance.last_30_days.useful_rate_percent != None %}%{% endif %}</strong></span></div>
+        <h3>Review outcomes</h3>
+        <div class="manager-promotion-review-counts"><span>Approved <strong>{{ manager_analytics.promotions.review_statistics.approved|manager_mask }}</strong></span><span>Rejected <strong>{{ manager_analytics.promotions.review_statistics.rejected|manager_mask }}</strong></span><span>Decisions · 30d <strong>{{ manager_analytics.promotions.review_statistics.decisions_last_30_days|manager_mask }}</strong></span></div>
+        <h3>Upcoming expirations</h3>
+        <div class="manager-promotion-expirations">{% for item in manager_analytics.promotions.upcoming_expirations %}<div><span>{{ item.promotion_type|humanize_code }} · {{ item.target_label }}</span><small>{{ item.expires_at|date:'j M Y, g:i a' }}</small></div>{% empty %}<p>No active placement expires within seven days.</p>{% endfor %}</div>
+      </section>
+      <section class="manager-promotion-subpanel" aria-labelledby="manager-promotion-inventory-heading">
+        <h3 id="manager-promotion-inventory-heading">Target inventory &amp; capacity</h3>
+        <div class="manager-promotion-inventory">{% for item in manager_analytics.promotions.inventory %}<div><span><b>{{ item.promotion_type|humanize_code }}</b> · {{ item.target_label }}</span><small>Capacity {{ item.capacity|manager_mask }} · active {{ item.active_count|manager_mask }} · remaining {{ item.remaining_capacity|manager_mask }} · scheduled {{ item.scheduled_count|manager_mask }} · queued {{ item.queued_count|manager_mask }}</small></div>{% empty %}<p>No target inventories have been created.</p>{% endfor %}</div>
+        <h3>Configured plans</h3>
+        <div class="manager-promotion-plans">{% for item in manager_analytics.promotions.plans %}<div><span><b>{{ item.name }}</b> · {{ item.promotion_type|humanize_code }}{% if not item.is_enabled %} · Disabled{% endif %}</span><small>{{ item.currency }} {{ item.price_kobo|ngn_kobo|manager_mask }} · {{ item.duration_days|manager_mask }} days · v{{ item.version }}</small></div>{% empty %}<p>No promotion plans have been configured yet.</p>{% endfor %}</div>
+      </section>
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="manager-layout manager-layout--feature">
+    <section class="manager-panel manager-trend-panel" aria-labelledby="manager-trend-heading" data-artisan-reveal data-motion="up">
+      <div class="manager-panel-heading"><div><span class="manager-eyebrow manager-eyebrow--light">MARKETPLACE MOMENTUM</span><h2 id="manager-trend-heading">Daily activity</h2><p>Requests, bookings, and captured payments across the last 14 days.</p></div><span class="manager-range-chip">14 days</span></div>
+      <div class="manager-chart" role="img" aria-label="Fourteen-day daily activity chart. Requests, bookings, and payments are shown as separate bars.">
+        {% for point in manager_analytics.activity_trend %}
+        <div class="manager-chart-column" title="{{ point.date }} · {{ point.requests }} requests · {{ point.bookings }} bookings · {{ point.payments }} payments">
+          <div class="manager-chart-bars"><span class="manager-chart-bar manager-chart-bar--request manager-chart-level-{{ point.requests_level }}" aria-hidden="true"></span><span class="manager-chart-bar manager-chart-bar--booking manager-chart-level-{{ point.bookings_level }}" aria-hidden="true"></span><span class="manager-chart-bar manager-chart-bar--payment manager-chart-level-{{ point.payments_level }}" aria-hidden="true"></span></div>
+          <small>{{ point.weekday }}</small>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="manager-chart-legend"><span><i class="manager-legend-dot manager-legend-dot--request"></i>Requests</span><span><i class="manager-legend-dot manager-legend-dot--booking"></i>Bookings</span><span><i class="manager-legend-dot manager-legend-dot--payment"></i>Payments held</span></div>
+    </section>
+
+    <section class="manager-panel manager-funnel-panel" aria-labelledby="manager-funnel-heading" data-artisan-reveal data-motion="right">
+      <div class="manager-panel-heading"><div><span class="manager-eyebrow manager-eyebrow--light">CONVERSION & QUALITY</span><h2 id="manager-funnel-heading">Marketplace funnel</h2><p>Lifetime completion, cancellation and dispute rates; rolling demand conversion.</p></div></div>
+      <div class="manager-funnel-stack">
+        <div class="manager-funnel-row"><span class="manager-funnel-step">01</span><span class="manager-funnel-copy"><strong>Requests → booked</strong><small>{{ kpis.service_requests_30d|manager_mask }} requests in the last 30 days</small></span><strong class="manager-funnel-value">{{ kpis.booking_conversion_rate_30d|manager_mask }}%</strong></div>
+        <div class="manager-funnel-track"><progress class="manager-funnel-fill manager-funnel-fill--cyan" max="100" value="{{ kpis.booking_conversion_rate_30d }}" aria-label="Request to booking conversion"></progress></div>
+        <div class="manager-funnel-row"><span class="manager-funnel-step">02</span><span class="manager-funnel-copy"><strong>Bookings completed</strong><small>{{ kpis.bookings_completed|manager_mask }} of {{ kpis.bookings_total|manager_mask }} total bookings</small></span><strong class="manager-funnel-value">{{ kpis.booking_completion_rate|manager_mask }}%</strong></div>
+        <div class="manager-funnel-track"><progress class="manager-funnel-fill manager-funnel-fill--green" max="100" value="{{ kpis.booking_completion_rate }}" aria-label="Booking completion rate"></progress></div>
+        <div class="manager-funnel-mini-grid"><div><span>Cancelled</span><strong>{{ kpis.booking_cancellation_rate|manager_mask }}%</strong></div><div><span>Disputed bookings</span><strong>{{ kpis.booking_dispute_rate|manager_mask }}%</strong></div><div><span>Offer acceptance · 30d</span><strong>{{ kpis.offer_acceptance_rate_30d|manager_mask }}%</strong></div></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="manager-layout manager-layout--finance">
+    <section class="manager-panel manager-finance-panel" aria-labelledby="manager-finance-heading" data-artisan-reveal data-motion="left">
+      <div class="manager-panel-heading"><div><span class="manager-eyebrow manager-eyebrow--light">FULL AGGREGATE FINANCIALS</span><h2 id="manager-finance-heading">Money across the marketplace</h2><p>Service GMV, customer collections, platform ledger credits, payouts, refunds, and funds still in flight.</p></div><span class="manager-finance-mark" aria-hidden="true">₦</span></div>
+      <div class="manager-finance-table-wrap"><table class="manager-finance-table"><thead><tr><th scope="col">Measure</th><th scope="col">Last 30 days</th><th scope="col">Month to date</th><th scope="col">Lifetime</th></tr></thead><tbody>
+        <tr><th scope="row">Service GMV <small>Service value on held payments</small></th><td>{{ kpis.paid_volume_30d_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.paid_volume_month_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.paid_volume_lifetime_kobo|ngn_kobo|manager_mask }}</td></tr>
+        <tr><th scope="row">Customer collections <small>Includes customer fees</small></th><td>{{ kpis.customer_collections_30d_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.customer_collections_month_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.customer_collections_lifetime_kobo|ngn_kobo|manager_mask }}</td></tr>
+        <tr><th scope="row">Platform fees captured <small>Commission + customer fee ledger credits</small></th><td>{{ kpis.platform_fees_30d_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.platform_fees_month_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.platform_fees_lifetime_kobo|ngn_kobo|manager_mask }}</td></tr>
+        <tr><th scope="row">Artisan payouts completed</th><td>{{ kpis.payouts_30d_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.payouts_month_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.payouts_lifetime_kobo|ngn_kobo|manager_mask }}</td></tr>
+        <tr><th scope="row">Customer refunds completed</th><td>{{ kpis.refunds_30d_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.refunds_month_kobo|ngn_kobo|manager_mask }}</td><td>{{ kpis.refunds_lifetime_kobo|ngn_kobo|manager_mask }}</td></tr>
+      </tbody></table></div>
+      <div class="manager-finance-foot"><span><i class="manager-live-dot manager-live-dot--green"></i> {{ kpis.paid_payments_total|manager_mask }} held payments total</span><span>{{ kpis.payments_pending_count|manager_mask }} pending · {{ kpis.payments_failed_count|manager_mask }} failed</span></div>
+      <p class="manager-financial-note">{{ manager_analytics.financial_note }}</p>
+    </section>
+
+    <section class="manager-panel manager-operations-panel" aria-labelledby="manager-operations-heading" data-artisan-reveal data-motion="right">
+      <div class="manager-panel-heading"><div><span class="manager-eyebrow manager-eyebrow--light">TRUST & OPERATIONS</span><h2 id="manager-operations-heading">Queues that need attention</h2><p>Current work requiring a manager or support-team follow-up.</p></div></div>
+      <div class="manager-operations-list">
+        <a class="manager-operation-row" href="{% url 'support-cases' %}"><span class="manager-operation-icon manager-operation-icon--rose" aria-hidden="true">!</span><span><strong>Urgent support cases</strong><small>{{ kpis.support_cases_urgent|manager_mask }} open or under review</small></span><b>{{ kpis.support_cases_urgent|manager_mask }}</b></a>
+        <a class="manager-operation-row" href="{% url 'support-refunds' %}"><span class="manager-operation-icon manager-operation-icon--amber" aria-hidden="true">↩</span><span><strong>Refunds in pipeline</strong><small>{{ kpis.refunds_pending_count|manager_mask }} pending · {{ kpis.refunds_unknown_count|manager_mask }} unknown · {{ kpis.refunds_failed_count|manager_mask }} failed</small></span><b>{{ kpis.refunds_pending_kobo|ngn_kobo|manager_mask }}</b></a>
+        <div class="manager-operation-row"><span class="manager-operation-icon manager-operation-icon--violet" aria-hidden="true">✓</span><span><strong>Artisan verifications</strong><small>{{ kpis.artisans_pending_verification|manager_mask }} pending · {{ kpis.artisans_verified|manager_mask }} verified · {{ kpis.artisans_unverified|manager_mask }} unverified</small></span><b>{{ kpis.artisans_pending_verification|manager_mask }}</b></div>
+        <div class="manager-operation-row"><span class="manager-operation-icon manager-operation-icon--rose" aria-hidden="true">⚑</span><span><strong>Risk & security alerts</strong><small>{{ kpis.risk_customers_flagged|manager_mask }} customer risk flags · {{ kpis.user_security_alerts|manager_mask }} account alerts</small></span><b>{{ kpis.risk_customers_flagged|add:kpis.user_security_alerts|manager_mask }}</b></div>
+        <div class="manager-operation-row"><span class="manager-operation-icon manager-operation-icon--blue" aria-hidden="true">↗</span><span><strong>Payouts in flight</strong><small>{{ kpis.payouts_pending_count|manager_mask }} pending or submitted</small></span><b>{{ kpis.payouts_pending_kobo|ngn_kobo|manager_mask }}</b></div>
+        <div class="manager-operation-row"><span class="manager-operation-icon manager-operation-icon--teal" aria-hidden="true">⌁</span><span><strong>Cancellation reviews</strong><small>Risk events marked for review</small></span><b>{{ kpis.cancellation_reviews_pending|manager_mask }}</b></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="manager-layout manager-layout--status">
+    <section class="manager-panel" aria-labelledby="manager-booking-status-heading" data-artisan-reveal data-motion="up">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">FULFILMENT</span><h2 id="manager-booking-status-heading">Booking status mix</h2></div><span class="manager-total-chip">{{ kpis.bookings_total|manager_mask }} total</span></div>
+      <div class="manager-meter-list">{% for item in manager_analytics.booking_status %}<div class="manager-meter-row"><div><span>{{ item.label }}</span><strong>{{ item.count|manager_mask }}</strong></div><progress class="manager-meter manager-meter--{{ item.status|lower }}" max="100" value="{{ item.percent }}" aria-label="{{ item.label }}: {{ item.count }} bookings">{{ item.percent|manager_mask }}%</progress></div>{% endfor %}</div>
+    </section>
+    <section class="manager-panel" aria-labelledby="manager-payment-status-heading" data-artisan-reveal data-motion="up">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">PAYMENT LIFECYCLE</span><h2 id="manager-payment-status-heading">Payment status mix</h2></div><span class="manager-total-chip">{{ kpis.payments_total_count|manager_mask }} total</span></div>
+      <div class="manager-meter-list">{% for item in manager_analytics.payment_status %}<div class="manager-meter-row"><div><span>{{ item.label }}</span><strong>{{ item.count|manager_mask }}</strong></div><progress class="manager-meter manager-meter--payment manager-meter--{{ item.status|lower }}" max="100" value="{{ item.percent }}" aria-label="{{ item.label }}: {{ item.count }} payments">{{ item.percent|manager_mask }}%</progress></div>{% endfor %}</div>
+      <div class="manager-panel-footline"><span>{{ kpis.payments_pending_count|manager_mask }} pending</span><span>{{ kpis.payments_failed_count|manager_mask }} failed</span></div>
+    </section>
+    <section class="manager-panel" aria-labelledby="manager-case-status-heading" data-artisan-reveal data-motion="up">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">CUSTOMER SUPPORT</span><h2 id="manager-case-status-heading">Case queue mix</h2></div><a class="manager-inline-link" href="{% url 'support-cases' %}">Open queue ↗</a></div>
+      <div class="manager-meter-list">{% for item in manager_analytics.support_case_status %}<div class="manager-meter-row"><div><span>{{ item.label }}</span><strong>{{ item.count|manager_mask }}</strong></div><progress class="manager-meter manager-meter--case" max="100" value="{{ item.percent }}" aria-label="{{ item.label }}: {{ item.count }} support cases">{{ item.percent|manager_mask }}%</progress></div>{% endfor %}</div>
+      <div class="manager-panel-footline"><span>{{ kpis.support_disputes_total|manager_mask }} dispute cases total</span><span>{{ kpis.support_disputes_open|manager_mask }} active</span></div>
+    </section>
+    <section class="manager-panel" aria-labelledby="manager-refund-status-heading" data-artisan-reveal data-motion="up">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">FINANCIAL CONTROL</span><h2 id="manager-refund-status-heading">Refund workflow</h2></div><a class="manager-inline-link" href="{% url 'support-refunds' %}">Refund desk ↗</a></div>
+      <div class="manager-meter-list">{% for item in manager_analytics.refund_status %}<div class="manager-meter-row"><div><span>{{ item.label }}</span><strong>{{ item.count|manager_mask }}</strong></div><progress class="manager-meter manager-meter--refund" max="100" value="{{ item.percent }}" aria-label="{{ item.label }}: {{ item.count }} refunds">{{ item.percent|manager_mask }}%</progress></div>{% endfor %}</div>
+    </section>
+  </div>
+
+  <div class="manager-layout manager-layout--two">
+    <section class="manager-panel manager-category-panel" aria-labelledby="manager-category-heading" data-artisan-reveal data-motion="left">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">DEMAND INTELLIGENCE · 30D</span><h2 id="manager-category-heading">Most requested categories</h2></div><span class="manager-range-chip">{{ kpis.service_requests_30d|manager_mask }} requests</span></div>
+      <div class="manager-ranking-list">{% for item in manager_analytics.top_categories %}<div class="manager-ranking-row"><span class="manager-ranking-number">{{ forloop.counter|stringformat:'02d' }}</span><span class="manager-ranking-copy"><strong>{{ item.name }}</strong><small>{{ item.requests|manager_mask }} request{{ item.requests|pluralize }} · {{ item.share_percent|manager_mask }}% of total</small></span><span class="manager-ranking-track"><progress max="100" value="{{ item.share_percent }}" aria-label="{{ item.name }} share of requests">{{ item.share_percent }}%</progress></span></div>{% empty %}<p class="manager-empty-note">No service requests in the current 30-day window.</p>{% endfor %}</div>
+    </section>
+    <section class="manager-panel manager-region-panel" aria-labelledby="manager-region-heading" data-artisan-reveal data-motion="right">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">GEOGRAPHIC COVERAGE · 30D</span><h2 id="manager-region-heading">Demand by state</h2></div><span class="manager-range-chip">{{ manager_analytics.timezone }}</span></div>
+      <div class="manager-region-list">{% for item in manager_analytics.top_regions %}<div class="manager-region-row"><span class="manager-region-pin" aria-hidden="true">⌖</span><strong>{{ item.name }}</strong><span>{{ item.requests|manager_mask }} requests</span><b>{{ item.share_percent|manager_mask }}%</b></div>{% empty %}<p class="manager-empty-note">Location demand will appear when new requests arrive.</p>{% endfor %}</div>
+    </section>
+  </div>
+
+  <div class="manager-layout manager-layout--activity">
+    <section class="manager-panel manager-recent-panel" aria-labelledby="manager-recent-heading" data-artisan-reveal data-motion="left">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">LATEST SUPPORT ACTIVITY</span><h2 id="manager-recent-heading">Recent cases</h2></div><a class="manager-inline-link" href="{% url 'support-cases' %}">Case queue ↗</a></div>
+      {% if manager_analytics.recent_cases %}<div class="manager-recent-list">{% for item in manager_analytics.recent_cases %}<a class="manager-recent-row" href="{% url 'support-case-detail' pk=item.id %}"><span class="manager-case-mark manager-case-mark--{{ item.priority|lower }}" aria-hidden="true">{% if item.case_type == 'DISPUTE' %}⚖{% else %}◎{% endif %}</span><span class="manager-recent-copy"><strong>{{ item.subject }}</strong><small>{{ item.reference }} · {{ item.case_type|humanize_code }} · {{ item.updated_at|date:'j M, g:i a' }}</small></span><span class="status-pill {{ item.status|status_class }}">{{ item.status|humanize_code }}</span><span class="manager-recent-arrow" aria-hidden="true">↗</span></a>{% endfor %}</div>{% else %}<p class="manager-empty-note">No support cases have been opened.</p>{% endif %}
+    </section>
+    <section class="manager-panel manager-recent-panel" aria-labelledby="manager-activity-heading" data-artisan-reveal data-motion="right">
+      <div class="manager-panel-heading manager-panel-heading--compact"><div><span class="manager-eyebrow manager-eyebrow--light">MARKETPLACE ACTIVITY</span><h2 id="manager-activity-heading">Latest requests</h2></div><span class="manager-range-chip">{{ kpis.service_requests_total|manager_mask }} all-time</span></div>
+      {% if manager_analytics.recent_requests %}<div class="manager-recent-list">{% for item in manager_analytics.recent_requests %}<div class="manager-recent-row manager-recent-row--static"><span class="manager-case-mark manager-case-mark--request" aria-hidden="true">⌂</span><span class="manager-recent-copy"><strong>{{ item.category }} · {{ item.service }}</strong><small>Request #{{ item.id }} · {{ item.urgency|humanize_code }} · {{ item.created_at|date:'j M, g:i a' }}</small></span><span class="manager-urgency manager-urgency--{{ item.urgency|lower }}">{{ item.urgency|humanize_code }}</span></div>{% endfor %}</div>{% else %}<p class="manager-empty-note">No service requests have been recorded.</p>{% endif %}
+    </section>
+  </div>
+
+  <footer class="manager-dashboard-footnote"><span class="manager-footnote-icon" aria-hidden="true">i</span><p>Restricted to platform superusers. Dashboard figures are whole-site aggregates; payment-provider payloads, secrets, and participant contact details are never returned by the manager analytics endpoint.</p><span class="manager-footnote-stamp">Snapshot · {{ manager_analytics.generated_at|date:'j M Y' }}</span></footer>
+  {% endwith %}
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script><script src="{% static 'js/pages/manager-privacy.js' %}"></script>{% endblock %}

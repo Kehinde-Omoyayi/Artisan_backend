@@ -1,0 +1,1 @@
+document.addEventListener('DOMContentLoaded', () => { document.querySelectorAll('input[name=scheduled_time_start],input[name=scheduled_time_end]').forEach(el=>el.min=new Date().toISOString().slice(0,16)); });

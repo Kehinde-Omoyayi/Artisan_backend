@@ -1,0 +1,26 @@
+{% extends 'console/base_console.html' %}
+{% block title %}Confirm it is you · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block console-block--narrow">
+  <h2>Confirm your identity to continue</h2>
+  <p class="console-muted">
+    You are about to perform an action in the <strong>{{ scope_label }}</strong> scope.
+    Your password and a second factor are required, and the grant can be used once.
+    {% if not totp_enrolled %}An authenticator app is not enrolled on this account; request an email code below.{% endif %}
+  </p>
+  <form method="post" action="{% url 'console-step-up' %}?scope={{ scope }}&next={{ next_url|urlencode }}" class="console-form">
+    {% csrf_token %}
+    <input type="hidden" name="scope" value="{{ scope }}">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <label class="console-field"><span>Password</span><input type="password" name="password" autocomplete="current-password" required></label>
+    <label class="console-field"><span>Authenticator or emailed code</span><input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8"></label>
+    <button class="console-button" type="submit" name="action" value="verify">Verify and continue</button>
+  </form>
+  <form method="post" action="{% url 'console-step-up' %}?scope={{ scope }}&next={{ next_url|urlencode }}" class="inline-form">
+    {% csrf_token %}
+    <input type="hidden" name="scope" value="{{ scope }}">
+    <input type="hidden" name="next" value="{{ next_url }}">
+    <button class="console-button console-button--quiet" type="submit" name="action" value="request_code">Email me a code</button>
+  </form>
+</section>
+{% endblock %}

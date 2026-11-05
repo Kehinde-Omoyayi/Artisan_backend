@@ -5,6 +5,14 @@ import requests
 from django.conf import settings
 from django.utils import timezone
 
+# Flutterwave's hosted page falls back to every method enabled on the account
+# (PayPal included) unless the payload names the ones allowed. Escrow here is
+# collected only by card or bank transfer, so both initialize calls send this.
+# The separator is a comma AND a space: that is the form their documentation
+# specifies ("card, account, mpesa"), and the string is parsed, not read loosely.
+PAYMENT_OPTIONS = "card, banktransfer"
+
+
 class FlutterwaveError(Exception):
     pass
 
@@ -65,12 +73,17 @@ class FlutterwaveClient:
             raise FlutterwaveError(payload.get("message", "Flutterwave request failed."))
         return payload
 
-    def initialize_payment(self, *, reference, amount_ngn, customer, booking_id, addon_order_id=None):
+    def initialize_payment(self, *, reference, amount_ngn, customer, booking_id, addon_order_id=None, booking_label=None):
         is_addon = addon_order_id is not None
+        label = (booking_label or f"booking {booking_id}").strip()
         payload = {
             "tx_ref": reference,
             "amount": _naira(amount_ngn),
             "currency": "NGN",
+            # Naira only, and stated explicitly: Flutterwave otherwise infers
+            # the country from the payer's IP and can present the wrong rails.
+            "country": "NG",
+            "payment_options": PAYMENT_OPTIONS,
             "redirect_url": settings.FLW_REDIRECT_URL,
             "customer": {
                 "email": customer.email,
@@ -83,7 +96,7 @@ class FlutterwaveClient:
             },
             "customizations": {
                 "title": settings.FLW_PAYMENT_TITLE,
-                "description": (f"Payment for additional order {addon_order_id} on booking {booking_id}" if is_addon else f"Payment for booking {booking_id}"),
+                "description": (f"Payment for additional order {addon_order_id} on {label}" if is_addon else f"Payment for {label}"),
             },
         }
         return self._request("POST", "/payments", json=payload)
@@ -94,6 +107,10 @@ class FlutterwaveClient:
             "tx_ref": reference,
             "amount": _naira(amount_ngn),
             "currency": "NGN",
+            # Naira only, and stated explicitly: Flutterwave otherwise infers
+            # the country from the payer's IP and can present the wrong rails.
+            "country": "NG",
+            "payment_options": PAYMENT_OPTIONS,
             "redirect_url": settings.FLW_REDIRECT_URL,
             "customer": {
                 "email": customer.email,
@@ -112,6 +129,32 @@ class FlutterwaveClient:
             },
         }
         return self._request("POST", "/payments", json=payload)
+
+    def create_bank_transfer_charge(self, *, reference, amount_ngn, customer, booking_id, booking_label=None):
+        """Mint a dedicated virtual account the payer transfers into.
+
+        This is the screen the payer sees inside our own chat: account number,
+        bank, exact amount and an expiry. No hosted page is opened, and no card
+        details are ever collected here.
+        """
+        label = (booking_label or f"booking {booking_id}").strip()
+        payload = {
+            "tx_ref": reference,
+            "amount": _naira(amount_ngn),
+            "currency": "NGN",
+            "country": "NG",
+            "email": customer.email,
+            "fullname": customer.get_full_name() or customer.email,
+            "narration": label[:100],
+            "meta": {"booking_id": str(booking_id), "payment_reference": reference},
+        }
+        return self._request("POST", "/charges?type=bank_transfer", json=payload)
+
+    def verify_transaction_by_reference(self, reference):
+        """Confirm by our own reference, before the provider sends a transaction id."""
+        return self._request(
+            "GET", "/transactions/verify_by_reference", params={"tx_ref": str(reference)}
+        )
 
     def verify_transaction(self, transaction_id):
         return self._request("GET", f"/transactions/{_provider_id(transaction_id)}/verify")

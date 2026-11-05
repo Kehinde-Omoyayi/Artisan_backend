@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Support operations · Artisan Market{% endblock %}
+{% block body_class %}{% if is_landing_page %}landing-page authenticated-home-page{% endif %}{% endblock %}
+{% block main_class %}{% if is_landing_page %}landing-main authenticated-home-main{% else %}page-shell{% endif %}{% endblock %}
+{% block head %}
+{% if is_landing_page %}<link rel="stylesheet" href="{% static 'css/landing.css' %}">{% endif %}
+<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">
+<link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">
+{% if is_landing_page %}<link rel="stylesheet" href="{% static 'css/authenticated-home.css' %}">{% endif %}
+{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page" data-artisan-page="support-dashboard" data-tour-target="support">
+  {% if is_landing_page %}
+  {% include 'partials/authenticated_home_hero.html' %}
+{% else %}
+  <header class="support-workspace-hero" data-artisan-reveal data-motion="left">
+    <div class="support-workspace-hero-copy">
+      <span class="support-eyebrow">ARTISAN MARKET · OPERATIONS</span>
+      <h1>Support operations</h1>
+      <p>One workspace for the case queue, public customer conversations, and controlled refund processing.</p>
+    </div>
+    <nav class="support-quick-links" aria-label="Support workspace shortcuts">
+      {% if support_capabilities.is_superuser %}<a class="button button-secondary" href="{% url 'dashboard' %}">Manager overview</a>{% endif %}
+      <a class="button button-primary" href="{% url 'support-cases' %}"><span>Open case queue</span><span aria-hidden="true">→</span></a>
+      {% if support_capabilities.can_review_promotions %}<a class="button button-secondary" href="{% url 'support-promotion-applications' %}">Promotion review{% if promotion_application_count %} · {{ promotion_application_count }} pending{% endif %}</a>{% endif %}
+      {% if support_capabilities.can_review_promotions or support_capabilities.is_superuser %}<a class="button button-secondary" href="{% url 'support-promotion-campaign-management' %}">Promotion campaigns &amp; settings</a>{% endif %}
+      {% if support_capabilities.can_view_refunds %}<a class="button button-secondary" href="{% url 'support-refunds' %}">Refund operations</a>{% endif %}
+      {% if support_capabilities.can_manage_staff %}<a class="button button-secondary" href="{% url 'support-staff' %}">Support team</a>{% endif %}
+      <a class="button button-secondary" href="{% url 'staff-password-change' %}">Change password</a>
+      <a class="button button-secondary" href="{% url 'staff-security-questions' %}">Security questions</a>
+    </nav>
+  </header>
+{% endif %}
+  {% include 'partials/support_operation_shortcut.html' %}
+
+  {% if not support_dashboard_ready %}
+  <section class="support-access-notice" role="status">
+    <span class="support-notice-mark" aria-hidden="true">i</span>
+    <div><h2>Support access is not assigned</h2><p>This account is signed in, but it does not currently have a support role. A support administrator can add the appropriate role; all access remains enforced by the API.</p></div>
+  </section>
+  {% else %}
+  <section class="support-insight-grid" aria-label="Live support queue metrics">
+    <article class="support-insight-card support-insight-card--primary" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Open cases</span>
+      <strong>{{ open_case_count }}</strong>
+      <span class="support-insight-foot">Waiting for an agent or first response</span>
+    </article>
+    <article class="support-insight-card" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Under review</span>
+      <strong>{{ review_case_count }}</strong>
+      <span class="support-insight-foot">Assigned and actively being worked</span>
+    </article>
+    <article class="support-insight-card support-insight-card--alert" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Urgent cases</span>
+      <strong>{{ urgent_case_count }}</strong>
+      <span class="support-insight-foot">Priority cases needing attention</span>
+    </article>
+    <article class="support-insight-card" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Dispute cases</span>
+      <strong>{{ dispute_case_count }}</strong>
+      <span class="support-insight-foot">Across all case statuses</span>
+    </article>
+  </section>
+
+  {% if support_capabilities.can_review_promotions %}
+  <section class="support-dashboard-columns support-promotion-dashboard" aria-label="Promotion application review">
+    <article class="support-panel" data-artisan-reveal data-motion="up" aria-labelledby="promotion-review-heading">
+      <div class="support-panel-heading"><div><span class="support-eyebrow">PROMOTION APPLICATION REVIEW</span><h2 id="promotion-review-heading">Pending promotion applications</h2></div><span class="support-total-badge">{{ promotion_application_count }} pending</span></div>
+      {% if promotion_applications %}<div class="support-promotion-list">{% for item in promotion_applications %}<a class="support-promotion-row" href="{% url 'support-promotion-application-detail' pk=item.id %}"><span><strong>{{ item.promotion_type_label }}</strong><small>{% if item.target.name %}{{ item.target.name }}{% if item.target.campus %} — {{ item.target.campus }}{% endif %}{% elif item.target.area %}{{ item.target.area }}, {{ item.target.state }}, {{ item.target.country }}{% elif item.target.state %}{{ item.target.state }}, {{ item.target.country }}{% else %}Homepage Feature{% endif %}</small><small>{{ item.business_name|default:item.artisan_name }} · submitted {{ item.submitted_at|default:'date unavailable' }}</small></span><span class="support-promotion-arrow" aria-hidden="true">→</span></a>{% endfor %}</div>{% else %}<div class="support-empty support-empty--compact"><strong>No pending promotion applications</strong><p>New artisan applications will appear here for authorized review.</p></div>{% endif %}
+      <a class="support-panel-link" href="{% url 'support-promotion-applications' %}">Open promotion review queue <span aria-hidden="true">→</span></a>
+    </article>
+  </section>
+  {% endif %}
+
+  <section class="support-insight-grid support-insight-grid--refunds" aria-label="Refund workflow metrics">
+    <article class="support-insight-card" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Refund requests</span>
+      <strong>{{ requested_refund_count }}</strong>
+      <span class="support-insight-foot">Awaiting independent approval</span>
+    </article>
+    <article class="support-insight-card" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Approved to execute</span>
+      <strong>{{ approved_refund_count }}</strong>
+      <span class="support-insight-foot">Finance action still required</span>
+    </article>
+    <article class="support-insight-card" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Processing</span>
+      <strong>{{ processing_refund_count }}</strong>
+      <span class="support-insight-foot">Provider submission in progress</span>
+    </article>
+    <article class="support-insight-card support-insight-card--alert" data-artisan-reveal data-motion="scale">
+      <span class="support-insight-label">Outcome unknown</span>
+      <strong>{{ processing_unknown_refund_count }}</strong>
+      <span class="support-insight-foot">Reconcile before any resubmission</span>
+    </article>
+  </section>
+
+  <div class="support-dashboard-columns">
+    <section class="support-panel" data-artisan-reveal data-motion="up" aria-labelledby="case-insight-heading">
+      <div class="support-panel-heading">
+        <div><span class="support-eyebrow">QUEUE HEALTH</span><h2 id="case-insight-heading">Case status mix</h2></div>
+        <span class="support-total-badge">{{ support_case_total }} total</span>
+      </div>
+      <div class="support-meter-list">
+        {% for metric in case_status_metrics %}
+        <div class="support-meter-row">
+          <div class="support-meter-label"><span>{{ metric.label }}</span><strong>{{ metric.count }}</strong></div>
+          <progress class="support-meter" max="100" value="{{ metric.percent }}" aria-label="{{ metric.label }}: {{ metric.count }} cases">{{ metric.percent }}%</progress>
+        </div>
+        {% endfor %}
+      </div>
+      <a class="support-panel-link" href="{% url 'support-cases' %}">Review the full case queue <span aria-hidden="true">→</span></a>
+    </section>
+
+    {% if support_capabilities.can_view_refunds %}
+    <section class="support-panel" data-artisan-reveal data-motion="up" aria-labelledby="refund-insight-heading">
+      <div class="support-panel-heading">
+        <div><span class="support-eyebrow">FINANCIAL CONTROL</span><h2 id="refund-insight-heading">Refund pipeline</h2></div>
+        <span class="support-total-badge">{{ support_refund_total }} total</span>
+      </div>
+      <div class="support-meter-list">
+        {% for metric in refund_status_metrics %}
+        <div class="support-meter-row">
+          <div class="support-meter-label"><span>{{ metric.label }}</span><strong>{{ metric.count }}</strong></div>
+          <progress class="support-meter support-meter--refund" max="100" value="{{ metric.percent }}" aria-label="{{ metric.label }}: {{ metric.count }} refunds">{{ metric.percent }}%</progress>
+        </div>
+        {% endfor %}
+      </div>
+      <a class="support-panel-link" href="{% url 'support-refunds' %}">Open refund operations <span aria-hidden="true">→</span></a>
+    </section>
+    {% endif %}
+  </div>
+
+  <div class="support-dashboard-columns support-dashboard-columns--wide">
+    <section class="support-panel support-panel--table" data-artisan-reveal data-motion="up" aria-labelledby="recent-cases-heading">
+      <div class="support-panel-heading">
+        <div><span class="support-eyebrow">LATEST ACTIVITY</span><h2 id="recent-cases-heading">Recent cases</h2></div>
+        <a class="support-text-link" href="{% url 'support-cases' %}">View all</a>
+      </div>
+      {% if support_cases %}
+      <div class="support-table-wrap">
+        <table class="support-table">
+          <thead><tr><th scope="col">Case</th><th scope="col">Owner</th><th scope="col">Priority</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Open case</span></th></tr></thead>
+          <tbody>
+          {% for item in support_cases %}
+            <tr>
+              <td><a class="support-table-primary" href="{% url 'support-case-detail' pk=item.id %}">{{ item.subject }}</a><span class="support-table-sub">{{ item.reference }} · {{ item.case_type|title }}</span></td>
+              <td>{{ item.opened_by_name|default:'Case participant' }}</td>
+              <td><span class="support-priority support-priority--{{ item.priority|lower }}">{{ item.priority|title }}</span></td>
+              <td><span class="status-pill {{ item.status|status_class }}">{% if item.status == 'UNDER_REVIEW' %}Under review{% else %}{{ item.status|title }}{% endif %}</span></td>
+              <td><a class="support-row-arrow" href="{% url 'support-case-detail' pk=item.id %}" aria-label="Open {{ item.reference }}">↗</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}<div class="support-empty"><strong>No cases in the queue yet</strong><p>New customer requests will appear here as soon as they are opened.</p></div>{% endif %}
+    </section>
+
+    {% if support_capabilities.can_view_refunds %}
+    <section class="support-panel" data-artisan-reveal data-motion="up" aria-labelledby="recent-refunds-heading">
+      <div class="support-panel-heading">
+        <div><span class="support-eyebrow">REVIEW & RECONCILE</span><h2 id="recent-refunds-heading">Refund attention</h2></div>
+        <a class="support-text-link" href="{% url 'support-refunds' %}">Queue</a>
+      </div>
+      <div class="support-refund-mini-list">
+        {% for item in support_refunds %}
+        <a class="support-refund-mini" href="{% url 'support-refund-detail' refund_id=item.id %}">
+          <span class="support-refund-mini-icon" aria-hidden="true">₦</span>
+          <span class="support-refund-mini-copy"><strong>{{ item.reference }}</strong><small>Case {{ item.case }} · {{ item.action_type|humanize_code }}</small></span>
+          <span class="support-refund-mini-end"><strong>{{ item.amount|ngn }}</strong><small class="status-pill {{ item.status|status_class }}">{{ item.status|humanize_code }}</small></span>
+        </a>
+        {% empty %}
+        <div class="support-empty support-empty--compact"><strong>No refund records</strong><p>Refund requests raised from eligible cases will show here.</p></div>
+        {% endfor %}
+      </div>
+      {% if support_refund_total %}<a class="support-panel-link" href="{% url 'support-refunds' %}">View all {{ support_refund_total }} refund records <span aria-hidden="true">→</span></a>{% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  <footer class="support-dashboard-footnote"><span class="support-footnote-icon" aria-hidden="true">✓</span><p>Queue totals are fetched from the support API. Refund approval, execution, and reconciliation remain separated by role and enforced server-side.</p></footer>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/pages/artisan-ui.js' %}"></script>
+{% endblock %}

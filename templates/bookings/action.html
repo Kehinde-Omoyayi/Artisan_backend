@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}{{ title }} · Artisan Market{% endblock %}
+{% block content %}
+<section class="page-heading">
+  <div>
+    <div class="eyebrow">Booking</div>
+    <h1>{{ title }}</h1>
+    <p>This action is submitted to the booking API. Its permissions and state transition rules are enforced server-side, so a stale page can never force an invalid change.</p>
+  </div>
+</section>
+<section class="content-grid one">
+  <article class="panel form-panel">
+    {% if cancel_notice %}
+    <div class="inline-alert" role="status">
+      <div><strong>No money has moved.</strong><span>{{ cancel_notice }} Any payment link for this booking stops working immediately.</span></div>
+    </div>
+    {% endif %}
+    <form method="post" {% if confirm_message %}data-confirm="{{ confirm_message }}" class="js-submit-form js-confirm-form"{% else %}class="js-submit-form"{% endif %}>
+      {% csrf_token %}
+      {% include 'partials/form.html' %}
+      <div class="actions">
+        <button class="button button-primary" type="submit">{{ submit_label|default:'Continue' }}</button>
+        <a class="button button-secondary" href="{% if pk %}{% url 'booking-detail' pk=pk %}{% else %}/bookings/{% endif %}">Keep the booking</a>
+      </div>
+    </form>
+  </article>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

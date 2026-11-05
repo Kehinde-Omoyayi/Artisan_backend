@@ -1,0 +1,23 @@
+<form class="artisan-request-filter-form matched-glass-filters match-search-card" method="get" action="{% url 'artisan-requests' %}" aria-label="Search and filter matching service requests" data-matched-filters>
+  <input type="hidden" name="filters_applied" value="1">
+  <label class="match-search-label" for="matched-request-search">Search requests, services or locations</label>
+  <div class="match-search-input"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input id="matched-request-search" type="search" name="q" value="{{ filters.q }}" placeholder="e.g. plumbing, tailoring, Ikeja" autocomplete="off"></div>
+  <div class="match-search-actions">
+    <button class="button button-primary match-search-submit" type="submit">Search</button>
+    <details class="match-filter-disclosure">
+      <summary><svg class="match-filter-mark" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M6 9h8M8.5 13h3"/></svg><span>Filter</span><svg class="match-filter-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+      <div class="match-filter-expanded">
+        <header class="matched-filter-heading"><div><span class="artisan-panel-kicker">Refine your matches</span><h3>Your choice</h3></div><a href="{% url 'artisan-requests' %}?clear=1">Clear all</a></header>
+        <div class="match-filter-pickers">
+          {% include 'partials/catalogue_filter_picker.html' with name='service_name' label='Service' value=filters.service_name placeholder='Any service' %}
+          {% include 'partials/catalogue_filter_picker.html' with name='location_country' label='Country' value=filters.location_country placeholder='Any country' %}
+          {% include 'partials/catalogue_filter_picker.html' with name='location_area' label='Area or locality' value=filters.location_area placeholder='Any area' %}
+          {% include 'partials/catalogue_filter_picker.html' with name='urgency' label='Urgency' value=filters.urgency placeholder='Any urgency' %}
+        </div>
+        <div class="match-filter-footer"><span>Use Search above to apply your choices.</span><a href="{% url 'artisan-requests' %}">Restore Nigeria default</a></div>
+      </div>
+    </details>
+  </div>
+  <p class="match-search-help">Search and filters only narrow requests that match your eligible services. Requests do not expire after 48 hours.</p>
+</form>
+{{ filter_catalogue|json_script:'matched-filter-catalogue' }}

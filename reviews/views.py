@@ -2,7 +2,7 @@ from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated
 
-from .serializers import ReviewSerializer
+from .serializers import PlatformFeedbackSerializer, ReviewSerializer
 from core.idempotency import idempotent_action
 
 class ReviewCreateView(generics.CreateAPIView):
@@ -30,5 +30,20 @@ class ReviewCreateView(generics.CreateAPIView):
         ],
     )
     @idempotent_action("review.create", resource_type="Review")
+    def post(self, request, *args, **kwargs):
+        return super().post(request, *args, **kwargs)
+
+
+class PlatformFeedbackCreateView(generics.CreateAPIView):
+    """A note about the platform itself. Private, internal, never shown publicly."""
+
+    serializer_class = PlatformFeedbackSerializer
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        description="Records one improvement note from a signed-in user.",
+        request=PlatformFeedbackSerializer,
+        responses={201: PlatformFeedbackSerializer, 400: OpenApiResponse(description="Empty note.")},
+    )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)

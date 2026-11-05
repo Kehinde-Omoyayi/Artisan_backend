@@ -1,0 +1,43 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Audit trail · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Recorded actions</h2>
+  <form class="console-filters" method="get" action="{% url 'console-audit' %}">
+    <label class="console-field"><span>Action</span>
+      <select name="action">
+        <option value="">All actions</option>
+        {% for item in filters %}
+          <option value="{{ item.action }}"{% if audit_action == item.action %} selected{% endif %}>{{ item.action }} ({{ item.count }})</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="console-field"><span>Page size</span><input type="number" name="size" value="{{ payload.size }}" min="10" max="200"></label>
+    <button class="console-button console-button--quiet" type="submit">Filter</button>
+  </form>
+  <p class="console-muted">{{ payload.total }} entries · page {{ payload.page }} of {% widthratio payload.total payload.size 1 %}</p>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead><tr><th>When</th><th>Action</th><th>Resource</th><th>Actor</th><th>Metadata keys</th><th>Request</th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td>{{ row.created_at|human_datetime }}</td><td>{{ row.action }}</td>
+          <td>{{ row.resource_type }} {{ row.resource_id|default:'' }}</td>
+          <td>{{ row.actor|default:'system' }}</td>
+          <td>{{ row.metadata_keys|join:", " }}</td>
+          <td>{{ row.ip_hash_prefix }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">No audit entries match this filter.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <nav class="console-pager">
+    {% if payload.page > 1 %}<a class="console-link" href="?page={{ payload.page|add:'-1' }}&size={{ payload.size }}{% if audit_action %}&action={{ audit_action }}{% endif %}">Previous</a>{% endif %}
+    <a class="console-link" href="?page={{ payload.page|add:'1' }}&size={{ payload.size }}{% if audit_action %}&action={{ audit_action }}{% endif %}">Next</a>
+  </nav>
+</section>
+{% endblock %}

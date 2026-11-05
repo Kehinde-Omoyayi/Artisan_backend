@@ -1,0 +1,67 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Jobs and snapshots · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Workers</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.queue.queued }}</span><small>Queued</small></div>
+    <div class="stat"><span>{{ payload.queue.running }}</span><small>Running</small></div>
+    <div class="stat"><span>{{ payload.queue.succeeded_24h }}</span><small>Succeeded (24h)</small></div>
+    <div class="stat"><span>{{ payload.queue.failed_24h }}</span><small>Failed (24h)</small></div>
+    <div class="stat"><span>{% if payload.queue.oldest_queued_seconds is not None %}{{ payload.queue.oldest_queued_seconds }}s{% else %}—{% endif %}</span><small>Oldest queued</small></div>
+  </div>
+</section>
+
+<section class="console-block">
+  <h2>Operational snapshots</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ snapshots.interval_label }}</span><small>Capture interval</small></div>
+    <div class="stat"><span>{{ snapshots.slots_last_hour }}/{{ snapshots.expected_slots_last_hour }}</span><small>Slots last hour</small></div>
+    <div class="stat"><span>{{ snapshots.missing_slots_last_hour }}</span><small>Missing slots</small></div>
+    <div class="stat"><span>{{ snapshots.metrics_tracked }}</span><small>Metrics tracked</small></div>
+    <div class="stat"><span>{{ snapshots.behind_by_intervals }}</span><small>Intervals behind</small></div>
+  </div>
+  <p class="console-muted">{{ snapshots.note }}</p>
+  <form method="post" action="{% url 'console-snapshot-interval' %}" class="inline-form">
+    {% csrf_token %}
+    <select name="interval" aria-label="Snapshot interval">
+      {% for option in snapshots.supported_intervals %}
+        <option value="{{ option.seconds }}"{% if option.seconds == snapshots.interval_seconds %} selected{% endif %}>{{ option.label }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" name="reason" placeholder="Reason for the change" maxlength="300">
+    <button class="console-button" type="submit">Update interval</button>
+  </form>
+  <form method="post" action="{% url 'console-snapshot-capture' %}" class="inline-form">
+    {% csrf_token %}
+    <button class="console-button console-button--quiet" type="submit">Capture a snapshot now</button>
+  </form>
+</section>
+
+<section class="console-block">
+  <h2>Recent jobs</h2>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead><tr><th>Kind</th><th>Status</th><th>Progress</th><th>Attempts</th><th>Queue</th><th>Created</th><th>Finished</th><th></th></tr></thead>
+      <tbody>
+      {% for job in jobs %}
+        <tr>
+          <td>{{ job.kind }}</td><td><span class="tag">{{ job.status }}</span></td><td title="{{ job.progress }}{% if job.total %} of {{ job.total }}{% endif %}">{% if job.percent is not None %}{{ job.percent }}%{% elif job.progress %}{{ job.progress }}{% else %}—{% endif %}</td>
+          <td>{{ job.attempts }}</td><td>{{ job.queue }}</td>
+          <td>{{ job.created_at|human_datetime }}</td><td>{% if job.finished_at %}{{ job.finished_at|human_datetime }}{% else %}—{% endif %}</td>
+          <td>
+            {% if job.status == 'QUEUED' or job.status == 'RUNNING' %}
+              <form method="post" action="{% url 'console-job-cancel' job.id %}">{% csrf_token %}
+                <button class="console-button console-button--danger" type="submit">Cancel</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="8">No background jobs have run yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

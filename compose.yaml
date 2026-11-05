@@ -1,0 +1,19 @@
+services:
+  frontend:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      frontend_SESSION_DB: /var/lib/artisan-market/frontend_sessions.sqlite3
+      ARTISAN_API_BASE_URL: ${DOCKER_ARTISAN_API_BASE_URL:-http://host.docker.internal:8000/api/v1}
+      ARTISAN_API_ROOT_URL: ${DOCKER_ARTISAN_API_ROOT_URL:-http://host.docker.internal:8000}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${frontend_PORT:-8001}:8000"
+    volumes:
+      - frontend_sessions:/var/lib/artisan-market
+
+volumes:
+  frontend_sessions:

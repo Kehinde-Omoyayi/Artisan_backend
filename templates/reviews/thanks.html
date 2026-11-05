@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block title %}Thank you · Artisan Market{% endblock %}
+{% block content %}
+<section class="review-shell">
+  <div class="review-card review-card-done">
+    <header class="review-head">
+      <span class="review-eyebrow">Your service</span>
+      <span class="review-state">Completed</span>
+    </header>
+
+    <span class="review-done-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></svg>
+    </span>
+
+    <h1 class="review-title">Thanks for your review!</h1>
+    <p class="review-sub">It is on the artisan's record now. Nothing else is needed from you.</p>
+
+    <a class="review-done-button" href="{% if next_url %}{{ next_url }}{% else %}{% url 'bookings' %}{% endif %}">
+      <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m4 12.5 5 5L20 6.5"/></svg>
+      Done
+    </a>
+  </div>
+</section>
+
+<div class="review-pop" data-improve-pop role="dialog" aria-modal="true" aria-labelledby="improve-pop-title" aria-hidden="true">
+  <div class="review-pop-scrim" data-improve-cancel></div>
+  <form method="post" action="{% url 'review-improvement' %}" class="review-pop-card" data-improve-card>
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url|default:'' }}">
+    <p class="review-pop-eyebrow">About us, not the artisan</p>
+    <h2 class="review-pop-title" id="improve-pop-title">One thing we could do better?</h2>
+    <label class="review-pop-field">
+      <span class="review-sr">Your note</span>
+      <textarea name="note" rows="3" maxlength="2000" placeholder="Something felt slow, unclear, or missing…" data-improve-input></textarea>
+    </label>
+    <div class="review-pop-actions">
+      <button class="button button-primary review-pop-send" type="submit">Send note</button>
+      <button class="review-pop-cancel" type="button" data-improve-cancel>Cancel</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const pop = document.querySelector("[data-improve-pop]");
+  if (!pop) return;
+  const input = pop.querySelector("[data-improve-input]");
+  const OPEN_CLASS = "is-open";
+  const open = () => {
+    pop.classList.add(OPEN_CLASS);
+    pop.setAttribute("aria-hidden", "false");
+    document.body.classList.add("review-pop-open");
+    window.setTimeout(() => { if (input) input.focus({ preventScroll: true }); }, 220);
+  };
+  const close = () => {
+    pop.classList.remove(OPEN_CLASS);
+    pop.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("review-pop-open");
+  };
+  pop.querySelectorAll("[data-improve-cancel]").forEach((el) => el.addEventListener("click", close));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") close();
+  });
+  window.setTimeout(open, 520);
+})();
+</script>
+{% endblock %}

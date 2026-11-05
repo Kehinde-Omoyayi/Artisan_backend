@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Booking activity · Artisan Market{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">
+{% if payment.status|upper == 'PAYMENT_PENDING' %}<meta http-equiv="refresh" content="15">{% endif %}
+<style>
+  .activity-page { max-width: 900px; margin: 0 auto; padding: 24px 16px 64px; }
+  .activity-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; }
+  .activity-head h1 { margin: 4px 0 6px; font-size: clamp(22px, 4vw, 30px); }
+  .activity-next { margin: 0; max-width: 56ch; color: #4a3a2e; line-height: 1.55; }
+  .activity-links { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .activity-panel { background: #fffdfa; border: 1px solid #e8dccd; border-radius: 16px; padding: 18px 18px 16px; margin-bottom: 16px; }
+  .activity-panel h2 { margin: 0 0 4px; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; color: #7a5a44; }
+  .activity-panel p.lead { margin: 0 0 14px; color: #6b594b; font-size: 13px; }
+  .activity-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 0; }
+  .activity-facts > div { background: #fbf7f1; border: 1px solid #efe4d7; border-radius: 12px; padding: 10px 12px; }
+  .activity-facts dt { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #8b7768; margin-bottom: 3px; }
+  .activity-facts dd { margin: 0; font-size: 14px; color: #3d2f26; word-break: break-word; }
+  .activity-checkout { margin-top: 14px; padding: 14px; border-radius: 12px; border: 1px dashed #dcc9b6; background: #fdf9f3; }
+  .activity-checkout strong { display: block; margin-bottom: 4px; }
+  .activity-checkout p { margin: 0 0 10px; font-size: 13px; color: #6b594b; }
+  .activity-checkout.is-live { border-style: solid; border-color: #b9cbb0; background: #f5faf2; }
+  .activity-checkout.is-warn { border-color: #e0c9a8; background: #fdf6ea; }
+  .activity-trail { list-style: none; margin: 0; padding: 0; }
+  .activity-trail li { position: relative; padding: 0 0 14px 20px; border-left: 2px solid #ece0d2; }
+  .activity-trail li:last-child { border-left-color: transparent; padding-bottom: 0; }
+  .activity-trail li::before { content: ""; position: absolute; left: -6px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: #c98b5e; }
+  .activity-trail time { display: block; font-size: 11px; color: #8b7768; }
+  .activity-trail strong { display: block; font-size: 14px; color: #3d2f26; margin: 2px 0; }
+  .activity-trail p { margin: 0; font-size: 12.5px; color: #6b594b; }
+  .activity-empty { color: #7a6857; font-size: 13px; }
+  .activity-muted { font-size: 12px; color: #8b7768; margin-top: 10px; }
+  @media (prefers-color-scheme: dark) {
+    .activity-panel { background: #1f1a16; border-color: #3a3029; }
+    .activity-facts > div { background: #262019; border-color: #3a3029; }
+    .activity-facts dd, .activity-trail strong { color: #f3e9df; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<section class="activity-page" data-artisan-page="booking-activity">
+  <header class="activity-head">
+    <div>
+      <span class="eyebrow">Booking activity</span>
+      <h1>What is going on</h1>
+      <p class="activity-next">{{ next_step }}</p>
+      <div class="activity-links">
+        {% if conversation_id %}<a class="button button-secondary button-small" href="{% url 'conversation-detail' conversation_id=conversation_id %}">Back to the chat</a>{% endif %}
+        <a class="button button-secondary button-small" href="{% url 'booking-detail' pk=booking.id %}">Booking overview</a>
+        <a class="button button-secondary button-small" href="?">Refresh now</a>
+      </div>
+    </div>
+    <span class="status-pill {{ booking.status|status_class }}">{{ booking.status|default:'Status unavailable'|title }}</span>
+  </header>
+
+  <section class="activity-panel" aria-labelledby="activity-facts-title">
+    <h2 id="activity-facts-title">Where this stands</h2>
+    <p class="lead">Every value below is read from this booking's own records.</p>
+    <dl class="activity-facts">
+      <div><dt>Booking</dt><dd>{{ booking.id }}</dd></div>
+      <div><dt>Status</dt><dd>{{ booking.status|default:'Unknown'|title }}</dd></div>
+      <div><dt>Agreed price</dt><dd>{{ booking.price_agreed|ngn }}</dd></div>
+      <div><dt>Starts</dt><dd>{{ booking.scheduled_time_start|human_datetime|default:'Not set' }}</dd></div>
+      <div><dt>Ends</dt><dd>{{ booking.scheduled_time_end|human_datetime|default:'Not set' }}</dd></div>
+      <div><dt>Artisan</dt><dd>{{ booking.artisan_name|default:'Not recorded' }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="activity-panel" aria-labelledby="activity-payment-title">
+    <h2 id="activity-payment-title">Escrow payment</h2>
+    {% if payment %}
+      <p class="lead">Money moves only through the provider; the platform confirms it on the server before the status changes here.</p>
+      <dl class="activity-facts">
+        <div><dt>Payment status</dt><dd>{{ payment.status|default:'Unknown'|cut:'_'|title }}</dd></div>
+        <div><dt>Amount</dt><dd>₦{{ payment.total_amount|floatformat:2|default:'Not recorded' }}</dd></div>
+        <div><dt>Reference</dt><dd>{{ payment.reference|default:'Not recorded' }}</dd></div>
+        <div><dt>Provider status</dt><dd>{{ payment.provider_status|default:'Not reported yet' }}</dd></div>
+        <div><dt>Checkout link</dt><dd>{{ checkout.state|default:'Not created'|cut:'_'|title }}</dd></div>
+        <div><dt>Link minted</dt><dd>{{ checkout.minted_at|human_datetime|default:'—' }}</dd></div>
+        <div><dt>Methods requested</dt><dd>{% if checkout.methods %}{{ checkout.methods }}{% else %}Not recorded{% endif %}</dd></div>
+        {% if payment.failure_reason %}<div><dt>Why it stopped</dt><dd>{{ payment.failure_reason }}</dd></div>{% endif %}
+      </dl>
+
+      {% if checkout_url %}
+        <div class="activity-checkout is-live">
+          <strong>The secure checkout is open</strong>
+          <p>Card or bank transfer only. The provider link expires on its own countdown; if it lapses this page creates a new one.</p>
+          <a class="button button-primary button-small" href="{{ checkout_url }}" data-payment-checkout>Open secure checkout</a>
+        </div>
+      {% elif payment.status|upper == 'PAYMENT_PENDING' %}
+        <div class="activity-checkout is-warn">
+          <strong>No usable checkout link right now</strong>
+          <p>
+            {% if checkout.state == 'EXPIRED' %}The last provider link passed its countdown.
+            {% elif checkout.state == 'OLD_METHODS' %}The last link was created before checkout was limited to card and bank transfer.
+            {% else %}The provider has not returned a link for this payment yet.{% endif %}
+            Nothing has been charged. A new link is requested automatically; you can also ask now.
+          </p>
+          <form method="post" action="{% url 'payment-initialize' booking_id=booking.id %}">
+            {% csrf_token %}
+            <button class="button button-primary button-small" type="submit" data-artisan-action>Create a payment link</button>
+          </form>
+        </div>
+      {% else %}
+        <div class="activity-checkout">
+          <strong>No checkout is needed in this state</strong>
+          <p>This payment is {{ payment.status|default:'unknown'|cut:'_'|lower }}; the provider is not awaiting anything from you.</p>
+        </div>
+      {% endif %}
+      <p class="activity-muted">{% if payment.status|upper == 'PAYMENT_PENDING' %}This page refreshes itself every 15 seconds while the payment is pending.{% endif %}</p>
+    {% else %}
+      <p class="activity-empty">No escrow payment exists for this booking{% if conversation_id %}, and the chat has not opened one{% endif %}. A payment row appears only after the offer is accepted and the booking is created.</p>
+    {% endif %}
+  </section>
+
+  <section class="activity-panel" aria-labelledby="activity-trail-title">
+    <h2 id="activity-trail-title">Activity</h2>
+    <p class="lead">Booking status changes and the chat's own system events, oldest first.</p>
+    {% if booking_history %}
+      <ol class="activity-trail">
+        {% for item in booking_history %}
+        <li>
+          <time datetime="{{ item.at }}">{{ item.at|human_datetime }}</time>
+          <strong>{{ item.title }}</strong>
+          {% if item.detail %}<p>{{ item.detail }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="activity-empty">No recorded events were returned for this booking yet.</p>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

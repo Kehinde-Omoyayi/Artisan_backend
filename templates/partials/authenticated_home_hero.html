@@ -1,0 +1,74 @@
+{% load static site_tags %}
+<section class="authenticated-home-hero" aria-label="Your Artisan Market home" data-tour-target="discovery">
+  <div class="landing-wrap authenticated-home-hero__inner">
+    <div class="authenticated-home-hero__copy">
+      {% if platform_manager %}
+        <p class="landing-eyebrow">Artisan Market · Platform control room</p>
+        <span class="manager-access-pill auth-home-access-pill"><span aria-hidden="true">◆</span> Superuser only</span>
+        <h1>Manager overview</h1>
+        <p>A whole-site view of marketplace activity, trust operations, and aggregate financial performance.</p>
+        <div class="authenticated-home-hero__meta">
+          <span class="manager-live-indicator"><span aria-hidden="true"></span> Aggregate analytics</span>
+          <span>Rolling 30 days · 14-day activity trend</span>
+          <span class="auth-home-snapshot"><small>Data snapshot</small><strong>{% if manager_analytics.generated_at %}{{ manager_analytics.generated_at|date:'j M Y, g:i a' }}{% else %}Waiting for analytics{% endif %}</strong></span>
+        </div>
+        <div class="authenticated-home-hero__actions">
+          <a class="landing-button landing-button--primary" href="{% url 'support-operations' %}">Open support desk <span aria-hidden="true">↗</span></a>
+          <a class="landing-button landing-button--quiet" href="{% url 'support-cases' %}">Review cases <span aria-hidden="true">↗</span></a>
+        </div>
+      {% elif role == 'staff' %}
+        <p class="landing-eyebrow">Artisan Market · Operations</p>
+        <h1>Support operations</h1>
+        <p>One workspace for the case queue, customer conversations, and controlled refund processing.</p>
+        <div class="authenticated-home-hero__actions">
+          {% if support_capabilities.is_superuser %}<a class="landing-button landing-button--quiet" href="{% url 'dashboard' %}">Manager overview <span aria-hidden="true">↗</span></a>{% endif %}
+          <a class="landing-button landing-button--primary" href="{% url 'support-cases' %}">Open case queue <span aria-hidden="true">↗</span></a>
+          {% if support_capabilities.can_view_refunds %}<a class="landing-button landing-button--quiet" href="{% url 'support-refunds' %}">Refund operations <span aria-hidden="true">↗</span></a>{% endif %}
+          {% if support_capabilities.can_manage_staff %}<a class="landing-button landing-button--quiet" href="{% url 'support-staff' %}">Support team <span aria-hidden="true">↗</span></a>{% endif %}
+        </div>
+      {% elif role == 'customer' %}
+        <p class="landing-eyebrow">Customer profile</p>
+        <div class="authenticated-home-hero__customer">
+          <span class="authenticated-home-hero__avatar" aria-hidden="true">{{ profile.first_name|default:'C'|slice:':1'|upper }}</span>
+          <div>
+            <h1>{% if profile.first_name or profile.last_name %}Welcome back, {{ profile.first_name }}{% if profile.last_name %} {{ profile.last_name }}{% endif %}.{% else %}Your customer profile.{% endif %}</h1>
+            <p>{{ profile.email|default:'Your account details, requests, and notifications in one place.' }}</p>
+          </div>
+        </div>
+        <div class="authenticated-home-hero__actions" data-tour-target="profiles-services">
+          <a class="landing-button landing-button--primary" href="{% url 'artisans' %}">Find artisans <span aria-hidden="true">↗</span></a>
+          <a class="landing-button landing-button--quiet" href="{% url 'service-requests' %}">View service requests <span aria-hidden="true">↗</span></a>
+        </div>
+      {% else %}
+        <p class="landing-eyebrow">Your marketplace</p>
+        <h1>Welcome back, {{ profile.business_name|default:user_info.first_name|default:'Artisan' }}.</h1>
+        <p>Keep an eye on matched requests, booking activity, and messages from your marketplace.</p>
+        <span class="status-pill {{ role|default:'staff'|status_class }} auth-home-role-pill">{{ role|title }}</span>
+        {% if role == 'artisan' %}
+          <div class="authenticated-home-hero__actions">
+            <a class="landing-button landing-button--primary" href="{% url 'artisan-requests' %}">View matching requests <span aria-hidden="true">↗</span></a>
+            <a class="landing-button landing-button--quiet" href="{% url 'notifications-page' %}">Open notifications <span aria-hidden="true">↗</span></a>
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <div class="authenticated-home-hero__visual" data-hero>
+      <div class="landing-hero__image-shell authenticated-home-hero__image-shell">
+        <img class="landing-hero__image" data-hero-image src="{% static initial_hero.image_640 %}" srcset="{% static initial_hero.image_640 %} 640w, {% static initial_hero.image_1440 %} 1440w" sizes="(max-width: 760px) 92vw, (max-width: 1200px) 42vw, 470px" alt="" fetchpriority="high" decoding="async">
+        <span class="landing-hero__image-label">Illustrative stock photography</span>
+      </div>
+      <div class="authenticated-home-carousel-copy">
+        <span class="landing-hero__caption-mark" aria-hidden="true">✳</span>
+        <div><strong data-hero-title aria-live="off">{{ initial_hero.title }}</strong><p data-hero-description aria-live="off">{{ initial_hero.description }}</p></div>
+      </div>
+      
+      <p class="landing-visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-hero-announcement></p>
+      <div class="landing-slide-source" hidden data-slide-source>
+        {% for slide in hero_slides %}
+          <span data-carousel-slide data-name="{{ slide.name }}" data-title="{{ slide.title }}" data-description="{{ slide.description }}" data-image-640="{% static slide.image_640 %}" data-image-1440="{% static slide.image_1440 %}"></span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>

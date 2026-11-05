@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}{{ case.reference }} · Support · Artisan Market{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">
+<link rel="stylesheet" href="{% static 'css/support-case.css' %}">
+<link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">
+{% endblock %}
+{% block content %}
+<section class="artisan-motion-page support-case-page" data-artisan-page="support-case">
+  <header class="support-case-hero" data-artisan-reveal data-motion="left">
+    <a class="support-back-link" href="{% url 'support-cases' %}"><span aria-hidden="true">←</span> Support cases</a>
+    <div class="support-hero-row">
+      <div class="support-hero-copy">
+        <span class="support-eyebrow">{% if case.case_type == 'DISPUTE' %}BOOKING DISPUTE{% else %}CUSTOMER SUPPORT{% endif %} · {{ case.reference }}</span>
+        <h1>{{ case.subject }}</h1>
+        <p>Keep your case details and messages with customer support in one place.</p>
+      </div>
+      <span class="status-pill {{ case.status|status_class }} support-status-pill">{% if case.status == 'UNDER_REVIEW' %}Under review{% else %}{{ case.status|title }}{% endif %}</span>
+    </div>
+  </header>
+
+  <div class="support-case-layout">
+    <div class="support-case-main">
+      <section class="support-issue-card" aria-labelledby="issue-heading" data-artisan-reveal data-motion="up">
+        <div class="support-card-heading">
+          <div><span class="support-eyebrow">CASE SUMMARY</span><h2 id="issue-heading">What needs support</h2></div>
+          <span class="support-case-type">{{ case.case_type|title }}</span>
+        </div>
+        <p class="support-issue-description">{{ case.description|linebreaksbr }}</p>
+        <dl class="support-case-facts">
+          <div><dt>Priority</dt><dd>{{ case.priority|title }}</dd></div>
+          <div><dt>Opened</dt><dd><time datetime="{{ case.created_at|date:'c' }}">{{ case.created_at|date:'j M Y, g:i a' }}</time></dd></div>
+          <div><dt>Opened by</dt><dd>{{ case.opened_by_name|default:'Case participant' }}</dd></div>
+          <div><dt>Assigned to</dt><dd>{{ case.assigned_to_name|default:'Customer support queue' }}</dd></div>
+        </dl>
+        {% if case.conversation_id %}
+        <a class="support-booking-link" href="{% url 'conversation-detail' conversation_id=case.conversation_id %}">Open the related conversation and request summary <span aria-hidden="true">↗</span></a>
+        {% endif %}
+        {% if case.booking %}
+        <a class="support-booking-link" href="{% url 'booking-detail' pk=case.booking %}">View related booking <span aria-hidden="true">↗</span></a>
+        {% elif case.promotion_campaign %}
+        <p class="support-booking-link">Linked promotion campaign · {{ case.promotion_campaign }}</p>
+        {% if support_mode %}<a class="support-booking-link" href="{% url 'support-promotion-campaign-management' %}">Open promotion campaign operations <span aria-hidden="true">↗</span></a>{% endif %}
+        {% endif %}
+      </section>
+
+      <section class="support-thread-card" aria-labelledby="support-thread-heading" data-artisan-reveal data-motion="up">
+        <div class="support-card-heading support-thread-heading">
+          <div><span class="support-eyebrow">CASE {{ case.reference }}</span><h2 id="support-thread-heading">Messages with customer support</h2></div>
+          <span class="support-thread-count">{{ case_events|length }} update{{ case_events|length|pluralize }}</span>
+        </div>
+        <p class="support-thread-intro">Your original report and public replies are shown below. Private staff notes are not included.</p>
+
+        <div class="support-thread-list" aria-live="polite" aria-relevant="additions text">
+          {% for event in case_events %}
+            {% if event.action == 'CASE_MESSAGE_SENT' %}
+            <article class="support-message{% if event.metadata.sender_role == 'SUPPORT' %} support-message--staff{% else %} support-message--participant{% endif %}" {% if forloop.last %}id="latest-message"{% endif %} data-artisan-reveal>
+              <div class="support-message-meta">
+                <strong>{% if event.metadata.sender_role == 'SUPPORT' %}Customer support{% else %}{{ event.performed_by_name|default:'Case participant' }}{% endif %}</strong>
+<time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'j M Y, g:i a' }}</time>
+              </div>
+              <p>{{ event.note|linebreaksbr }}</p>
+            </article>
+            {% else %}
+            <article class="support-timeline-event" {% if forloop.last %}id="latest-message"{% endif %} data-artisan-reveal>
+              <span class="support-timeline-mark" aria-hidden="true">{% if event.action == 'CASE_CREATED' %}＋{% elif event.action == 'CASE_RESOLVED' or event.action == 'CASE_CLOSED' %}✓{% else %}·{% endif %}</span>
+              <div>
+                <strong>{% if event.action == 'CASE_CREATED' %}Case submitted to customer support{% elif event.action == 'CASE_ASSIGNED' or event.action == 'CASE_CLAIMED' %}Customer support is reviewing your case{% elif event.action == 'CASE_RESOLVED' %}Case marked as resolved{% elif event.action == 'CASE_CLOSED' %}Case closed{% else %}{{ event.action|humanize_code }}{% endif %}</strong>
+                <small>{{ event.performed_by_name|default:'Customer support' }} · <time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'j M Y, g:i a' }}</time></small>
+                {% if event.action != 'CASE_CREATED' and event.note %}<p>{{ event.note|linebreaksbr }}</p>{% endif %}
+              </div>
+            </article>
+            {% endif %}
+          {% empty %}
+            <div class="support-thread-empty"><span aria-hidden="true">✦</span><strong>Your case is in the support queue</strong><p>Messages and updates from customer support will appear here.</p></div>
+          {% endfor %}
+        </div>
+
+        {% if case.can_message %}
+        <section class="support-composer" aria-labelledby="support-composer-heading" id="message-composer" data-artisan-reveal>
+          <div class="support-composer-intro">
+            <span class="support-composer-icon" aria-hidden="true">✉</span>
+            <div><h3 id="support-composer-heading">{% if case.can_manage %}Reply to the case{% else %}Send a message to customer support{% endif %}</h3><p>{% if case.can_manage %}Your reply will be added to the public case thread and sent to the participants.{% else %}Add relevant details or ask a question. Your message will be attached to this case and sent to the support team.{% endif %}</p></div>
+          </div>
+          <form method="post" class="support-message-form" data-support-message-form>
+            {% csrf_token %}
+            <input type="hidden" name="idempotency_key" value="{{ message_key }}">
+            <label for="id_message">Your message</label>
+            {{ message_form.message }}
+            {% if message_form.message.errors %}<ul class="support-field-errors" role="alert">{% for error in message_form.message.errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
+            <div class="support-composer-footer">
+              <small id="case-message-help">Do not include passwords, card details, or one-time codes.</small>
+              <span id="case-message-count" aria-live="polite">0 / 5,000</span>
+            </div>
+            <div class="support-submit-row"><span class="support-submit-status" id="support-submit-status" role="status" aria-live="polite"></span><button class="button button-primary" type="submit" data-artisan-action><span>Send message</span><span aria-hidden="true">→</span></button></div>
+          </form>
+        </section>
+        {% else %}
+        <div class="support-case-locked" role="status" data-artisan-reveal>
+          <strong>This case is {% if case.status == 'RESOLVED' %}resolved{% else %}closed{% endif %}.</strong>
+          <p>It can no longer receive messages. If you still need help, open a new support case.</p>
+          <a class="button button-secondary" href="{% url 'support-cases' %}">Open another support case</a>
+        </div>
+        {% endif %}
+      </section>
+
+      {% if support_mode and staff_notes %}
+      <section class="support-staff-notes-card" aria-labelledby="private-notes-heading" data-artisan-reveal>
+        <div class="support-card-heading"><div><span class="support-eyebrow">STAFF ONLY</span><h2 id="private-notes-heading">Internal notes</h2></div><span class="support-note-lock" aria-label="Private to support staff">🔒</span></div>
+        <p class="support-staff-notes-intro">These notes are not sent to customers and are excluded from the public message thread.</p>
+        <div class="support-staff-notes-list">
+          {% for event in staff_notes %}
+          <article class="support-staff-note"><div><strong>{{ event.performed_by_name|default:'Support teammate' }}</strong><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'j M Y, g:i a' }}</time></div><p>{{ event.note|linebreaksbr }}</p></article>
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+    </div>
+
+    <aside class="support-case-sidebar" aria-label="Case information and actions">
+      <section class="support-side-card" data-artisan-reveal data-motion="right">
+        <span class="support-eyebrow">CASE STATUS</span>
+        <strong class="support-side-status">{% if case.status == 'UNDER_REVIEW' %}Under review{% else %}{{ case.status|title }}{% endif %}</strong>
+        <p>{% if case.status == 'OPEN' %}Your case has been received and is waiting for the support team.{% elif case.status == 'UNDER_REVIEW' %}A support agent is reviewing the case and its history.{% elif case.status == 'RESOLVED' %}Customer support has recorded a resolution.{% else %}This case is closed.{% endif %}</p>
+        {% if case.can_message %}<div class="support-response-note"><span aria-hidden="true">●</span> You can continue the conversation here.</div>{% endif %}
+      </section>
+
+      <section class="support-side-card" data-artisan-reveal data-motion="right">
+        <span class="support-eyebrow">CASE DETAILS</span>
+        <dl class="support-side-facts">
+          <div><dt>Reference</dt><dd>{{ case.reference }}</dd></div>
+          <div><dt>Type</dt><dd>{{ case.case_type|title }}</dd></div>
+          <div><dt>Priority</dt><dd>{{ case.priority|title }}</dd></div>
+          <div><dt>Assigned to</dt><dd>{{ case.assigned_to_name|default:'Not assigned yet' }}</dd></div>
+        </dl>
+      </section>
+
+      {% if support_mode %}
+      <section class="support-side-card support-staff-actions" data-artisan-reveal data-motion="right">
+        <span class="support-eyebrow">STAFF TOOLS</span>
+        <h2>Manage case</h2>
+        <nav aria-label="Support staff case actions">
+          <a href="{% url 'support-case-events' pk=case.id %}">View audit trail</a>
+          {% if support_capabilities.can_add_private_notes %}<a href="{% url 'support-case-note' pk=case.id %}">Add private note</a>{% endif %}
+          {% if support_capabilities.can_claim_cases and case.status == 'OPEN' %}<a href="{% url 'support-case-claim' pk=case.id %}">Claim case</a>{% endif %}
+          {% if support_capabilities.can_assign_cases %}<a href="{% url 'support-case-assign' pk=case.id %}">Assign case</a>{% endif %}
+          {% if support_capabilities.can_resolve_cases and case.status != 'CLOSED' and case.status != 'RESOLVED' %}<a href="{% url 'support-case-resolve' pk=case.id %}">Resolve case</a>{% endif %}
+          {% if support_capabilities.can_close_cases and case.status == 'RESOLVED' %}<a href="{% url 'support-case-close' pk=case.id %}">Close resolved case</a>{% endif %}
+          {% if can_start_refund %}<a class="support-action-highlight" href="{% url 'support-refund-request' pk=case.id %}">Start refund workflow <span aria-hidden="true">→</span></a>{% endif %}
+        </nav>
+      </section>
+      {% endif %}
+
+      <section class="support-side-card support-safety-card" data-artisan-reveal data-motion="right">
+        <span class="support-safety-mark" aria-hidden="true">✓</span>
+        <strong>Keep it secure</strong>
+        <p>Customer support will never ask you to share your password, payment PIN, or one-time code in a message.</p>
+      </section>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="{% static 'js/pages/artisan-ui.js' %}"></script>
+{% endblock %}

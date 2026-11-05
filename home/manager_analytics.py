@@ -605,7 +605,9 @@ def build_manager_overview(*, now=None):
     recent_requests = [
         {
             "id": item.id,
-            "category": item.category.name,
+            # A chat-first request carries neither a category nor a service; the
+            # overview must still render instead of raising on the first row.
+            "category": item.category.name if item.category_id else "Uncategorised",
             "service": item.service.name if item.service_id else "General request",
             "urgency": item.urgency,
             "created_at": item.created_at,
@@ -616,7 +618,11 @@ def build_manager_overview(*, now=None):
         {
             "id": str(item.id),
             "status": item.status,
-            "service": item.request.service.name if item.request.service_id else item.request.category.name,
+            "service": (
+                item.request.service.name
+                if item.request.service_id
+                else (item.request.category.name if item.request.category_id else "General request")
+            ),
             "price_agreed": str(item.price_agreed),
             "created_at": item.created_at,
         }

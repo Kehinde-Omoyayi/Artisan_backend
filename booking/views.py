@@ -26,7 +26,11 @@ from home.models import ArtisanProfile, CustomerProfile
 from services.models import ServiceRequest
 from payments.models import EscrowPayment
 from payments.tasks import release_artisan_payout
-from payments.services import mark_payment_release_pending
+from payments.services import (
+    COMMITTED_PAYMENT_STATUSES,
+    mark_payment_release_pending,
+    void_booking_payment_link,
+)
 from notifications.events import *
 from support.services import create_support_case
 from support.models import SupportCase
@@ -38,6 +42,7 @@ from risk.services import record_customer_cancellation
 
 from .models import (
     Booking,
+    booking_display_name,
     BookingAdditionalOrder,
     BookingStatusHistory,
     duration_timedelta,
@@ -85,7 +90,10 @@ class BookingListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         queryset = (
             Booking.objects.select_related(
-                "request__conversation", "customer__user", "artisan__user"
+                "request__conversation",
+                "request__category",
+                "customer__user",
+                "artisan__user",
             )
             .filter(Q(customer__user_id=user.id) | Q(artisan__user_id=user.id))
             .order_by("-updated_at")
@@ -446,7 +454,7 @@ class BookingCancelView(APIView):
 
     @extend_schema(
         tags=["Bookings"],
-        description="Allows the customer to cancel a requested or accepted booking. The customer cancellation reason is classified into a severity score, contributing to a rolling 90-day risk score capped at 5. Reaching 5/5 automatically suspends the account and may place high-confidence observed IPs into a temporary authentication and booking network restriction.",
+        description="Allows the customer to cancel a requested or accepted booking, including one whose payment link was generated or opened but never paid. An unpaid link is voided; held escrow money must use the payment/dispute process. The customer cancellation reason is classified into a severity score, contributing to a rolling 90-day risk score capped at 5. Reaching 5/5 automatically suspends the account and may place high-confidence observed IPs into a temporary authentication and booking network restriction.",
         request=BookingCancellationSerializer,
         responses={
             200: BookingSerializer,
@@ -493,17 +501,36 @@ class BookingCancelView(APIView):
                 .first()
             )
 
-            if payment and payment.status not in {
-                EscrowPayment.Status.FAILED,
-                EscrowPayment.Status.REFUNDED,
-            }:
+            # An unpaid payment link — created, opened or failed — never blocks a
+            # cancellation: no money has moved, so there is nothing to refund.
+            # Only money that is actually held in escrow keeps the booking out of
+            # the customer's reach, because that path needs the refund/dispute
+            # workflow instead of a silent cancellation.
+            if payment and payment.status in COMMITTED_PAYMENT_STATUSES:
                 raise BookingConflict(
-                    "This booking has an associated payment and must use the payment/dispute process."
+                    "This booking already has money held in escrow, so it must use the payment/dispute process."
+                )
+
+            cancelled_payment = None
+            if payment is not None:
+                cancelled_payment = void_booking_payment_link(
+                    payment=payment,
+                    reason=f"The {booking_display_name(booking)} booking was cancelled by the customer before payment was confirmed.",
                 )
 
             booking.status = Booking.Status.CANCELLED
             booking.finalized_at = timezone.now()
             booking.save(update_fields=["status", "finalized_at", "updated_at"])
+
+            # Hand the request back to the customer/artisan pair: with the
+            # booking cancelled there is nothing active, so the same request can
+            # be re-agreed (the artisan resends the agreement, the customer
+            # accepts it again) instead of being stranded in ATTENDED.
+            from services.models import ServiceRequest
+
+            ServiceRequest.objects.filter(
+                pk=booking.request_id, status=ServiceRequest.Status.ATTENDED
+            ).update(status=ServiceRequest.Status.OPEN, updated_at=timezone.now())
 
             BookingStatusHistory.objects.create(
                 booking=booking,
@@ -524,6 +551,16 @@ class BookingCancelView(APIView):
         notify_booking_cancelled(booking)
         record_booking_event(booking=booking, event_code="BOOKING_CANCELLED")
         response = BookingSerializer(booking).data
+        response["payment"] = {
+            "status": cancelled_payment.status if cancelled_payment else "NONE",
+            "link_voided": bool(cancelled_payment and cancelled_payment.link_voided_at),
+            "money_taken_from_customer": False,
+            "message": (
+                "No payment was taken from your account. The payment link is no longer valid."
+                if cancelled_payment
+                else "No payment was taken from your account."
+            ),
+        }
         response["cancellation_risk"] = {
             "score": profile.cancellation_points,
             "max_score": 5,

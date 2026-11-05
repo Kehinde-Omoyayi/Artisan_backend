@@ -1,0 +1,47 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Request and booking funnel · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Stages</h2>
+  <table class="console-table">
+    <thead><tr><th>Stage</th><th>Count</th><th>From previous</th><th>From start</th><th>Drop-off</th></tr></thead>
+    <tbody>
+    {% for stage in payload.stages %}
+      <tr>
+        <td>{{ stage.label }}</td><td>{{ stage.count }}</td>
+        <td>{{ stage.conversion_from_previous }}%</td><td>{{ stage.conversion_from_start }}%</td>
+        <td>{{ stage.drop_off }} ({{ stage.drop_off_percent }}%)</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">No funnel data in this range.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="console-muted">{{ payload.method }}</p>
+</section>
+<section class="console-block">
+  <h2>Where requests and bookings are stuck</h2>
+  <div class="attention-grid">
+    {% for key, value in payload.operational_kpis.items %}
+      {% if key != 'computed_at' %}
+        <article class="attention">
+          <p class="attention__value">{{ value }}</p>
+          <p class="attention__label">{{ key|humanize_code }}</p>
+        </article>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <p class="console-muted">Computed at {{ payload.operational_kpis.computed_at|human_datetime }}.</p>
+</section>
+<section class="console-block">
+  <h2>Time from request to booking</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.timings.request_to_booking_hours.average }}</span><small>Average hours</small></div>
+    <div class="stat"><span>{{ payload.timings.request_to_booking_hours.median }}</span><small>Median hours</small></div>
+    <div class="stat"><span>{{ payload.timings.request_to_booking_hours.p90 }}</span><small>90th percentile</small></div>
+    <div class="stat"><span>{{ payload.timings.request_to_booking_hours.sample }}</span><small>Sample</small></div>
+  </div>
+  <p class="console-muted">{{ payload.timings.request_to_booking_hours.definition }}</p>
+</section>
+{% endblock %}

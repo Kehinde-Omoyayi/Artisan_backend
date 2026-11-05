@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block title %}My Promotions · Artisan Market{% endblock %}
+{% block content %}
+<section class="artisan-motion-page promotion-page" data-artisan-page="my-promotions">
+  <header class="page-heading artisan-page-heading promotion-page-heading" data-artisan-reveal data-motion="left">
+    <div><div class="eyebrow">Artisan account · Promotion Centre</div><h1 data-text-motion>My Promotions</h1><p>Campaign, payment, schedule, queue and performance histories are shown separately from application review.</p></div>
+    <div class="promotion-page-heading-actions"><a class="button button-primary" href="{% url 'promotion-applications' %}">Apply for Promotion</a><a class="button button-secondary" href="{% url 'artisan-profile' %}">Back to profile</a></div>
+  </header>
+
+  <section class="promotion-scope-notice" role="note">
+    <span class="promotion-scope-icon" aria-hidden="true">i</span>
+    <div><strong>Payment status comes from trusted verification</strong><p>Returning from Flutterwave, refreshing this page or seeing a successful browser message does not prove payment. Campaigns are scheduled only after the server verifies the provider transaction. Refresh to view the latest server-side status.</p></div>
+  </section>
+
+  <section class="promotion-campaign-history panel" aria-labelledby="my-campaigns-title">
+    <div class="promotion-section-heading"><div><span class="artisan-panel-kicker">Paid placements and schedule</span><h2 id="my-campaigns-title">Campaign history</h2></div><span class="promotion-history-count">{{ campaigns|length }} campaign{{ campaigns|length|pluralize }}</span></div>
+    {% if campaigns %}
+      <div class="promotion-campaign-list">
+      {% for campaign in campaigns %}
+        <article class="promotion-campaign-card{% if highlighted_payment and campaign.latest_payment.id == highlighted_payment %} is-highlighted{% endif %}">
+          <header class="promotion-campaign-card-heading"><div><span class="artisan-panel-kicker">{{ campaign.promotion_type_label }}</span><h3>{{ campaign.plan_name_snapshot }}</h3><p>{{ campaign.target_label|default:'Approved target' }}</p><a class="promotion-campaign-support-link" href="{% url 'support-cases' %}?promotion_campaign={{ campaign.id }}">Get support about this campaign</a></div><span class="promotion-status-pill promotion-status--{{ campaign.status|lower }}">{{ campaign.status_label|default:campaign.status }}</span></header>
+          <dl class="promotion-summary-grid">
+            <div><dt>Approved target</dt><dd>{{ campaign.target_label|default:'Target on approved application' }}</dd></div>
+            <div><dt>Price snapshot</dt><dd>{{ campaign.currency }} {{ campaign.price }} · {{ campaign.duration_days }} day{{ campaign.duration_days|pluralize }}</dd></div>
+            <div><dt>Verified payment time</dt><dd>{% if campaign.payment_verified_at %}<time>{{ campaign.payment_verified_at }}</time>{% else %}Not verified{% endif %}</dd></div>
+            <div><dt>Queue position</dt><dd>{% if campaign.queue_position %}{{ campaign.queue_position }}{% elif campaign.status == 'ACTIVE' %}In progress{% elif campaign.status == 'SCHEDULED' %}Scheduled{% elif campaign.status == 'PENDING_PAYMENT' %}Not queued — payment required{% else %}—{% endif %}</dd></div>
+            <div><dt>Estimated / scheduled start</dt><dd>{% if campaign.scheduled_start_at %}<time>{{ campaign.scheduled_start_at }}</time>{% elif campaign.estimated_start_at %}<time>{{ campaign.estimated_start_at }}</time>{% elif campaign.started_at %}<time>{{ campaign.started_at }}</time>{% elif campaign.payment_verified_at %}Awaiting schedule calculation{% else %}Not scheduled{% endif %}</dd></div>
+            <div><dt>Campaign expiry</dt><dd>{% if campaign.expires_at %}<time>{{ campaign.expires_at }}</time>{% else %}Not started{% endif %}</dd></div>
+          </dl>
+          {% if campaign.paused_at %}<p class="promotion-privacy-note">Paused {{ campaign.paused_at }}. Remaining duration is preserved while the campaign is paused.</p>{% endif %}
+          {% if campaign.last_action_reason %}<div class="promotion-row-feedback"><strong>Latest management note:</strong> {{ campaign.last_action_reason }}</div>{% endif %}
+
+          <section class="promotion-performance" aria-label="Campaign performance">
+            <h4>Performance</h4>
+            <dl class="promotion-performance-grid"><div><dt>Impressions shown</dt><dd>{% if campaign.performance_data_available %}{{ campaign.impressions }}{% else %}Not available{% endif %}</dd></div><div><dt>Attributed profile visits</dt><dd>{% if campaign.performance_data_available %}{{ campaign.profile_visits }}{% else %}Not available{% endif %}</dd></div><div><dt>Useful rate</dt><dd>{% if campaign.profile_visit_rate_percent != None %}{{ campaign.profile_visit_rate_percent }}%{% else %}Not available yet{% endif %}</dd></div></dl><p class="promotion-privacy-note">Counts use deduplicated first-party events collected after a sponsored card is actually displayed or its profile is opened from that placement.</p>
+          </section>
+
+          <details class="promotion-history-details" open>
+            <summary>Payment history <span>{{ campaign.payment_history|length }} record{{ campaign.payment_history|length|pluralize }}</span></summary>
+            {% if campaign.payment_history %}<div class="promotion-payment-list">{% for payment in campaign.payment_history %}
+              <article class="promotion-payment-row{% if payment.id == highlighted_payment %} is-highlighted{% endif %}">
+                <div class="promotion-payment-main"><div class="promotion-row-title"><strong>{{ payment.currency }} {{ payment.amount }}</strong><span class="promotion-status-pill promotion-status--{{ payment.status|lower }}">{{ payment.status_label|default:payment.status }}</span></div><p>Reference {{ payment.reference }}</p><small>Created {{ payment.created_at }}{% if payment.verified_at %} · Verified {{ payment.verified_at }}{% endif %}{% if payment.expires_at %} · Payment link expires {{ payment.expires_at }}{% endif %}</small>{% if payment.failure_reason %}<div class="promotion-row-feedback">{{ payment.failure_reason }}</div>{% endif %}</div>
+                <div class="promotion-payment-actions">{% if payment.status == 'INITIALIZED' and payment.authorization_url %}<a class="button button-primary promotion-row-link" href="{% url 'promotion-payment-redirect' pk=payment.id %}">Continue to Flutterwave</a>{% elif payment.status == 'INITIALIZATION_PENDING' %}<span class="promotion-inline-note">Preparing secure payment link… Refresh shortly.</span>{% elif payment.status == 'VERIFYING' %}<span class="promotion-inline-note">Payment is being verified. Do not pay again.</span>{% elif payment.status == 'REVIEW_REQUIRED' %}<span class="promotion-inline-note">Support is reviewing this payment. Do not retry it.</span>{% elif payment.status == 'VERIFIED' %}<span class="promotion-inline-note is-positive">Verified by the server</span>{% endif %}</div>
+              </article>
+            {% endfor %}</div>{% else %}<p class="promotion-inline-note">No payment attempts are recorded for this campaign yet.</p>{% endif %}
+          </details>
+
+          {% if campaign.actions %}<details class="promotion-history-details"><summary>Campaign status history <span>{{ campaign.actions|length }} event{{ campaign.actions|length|pluralize }}</span></summary><ol class="promotion-action-history">{% for action in campaign.actions %}<li><div><strong>{{ action.action|title|cut:'_' }}</strong> · {{ action.created_at }}</div>{% if action.status_before or action.status_after %}<small>{{ action.status_before|default:'—' }} → {{ action.status_after|default:'—' }}</small>{% endif %}{% if action.reason %}<p>{{ action.reason }}</p>{% endif %}</li>{% endfor %}</ol></details>{% endif %}
+        </article>
+      {% endfor %}
+      </div>
+    {% else %}
+      <div class="promotion-empty-state"><span aria-hidden="true">✦</span><strong>No campaigns yet</strong><p>Paid campaign records, payment attempts, schedules and performance will appear here after an approved offer is accepted.</p><a class="button button-primary" href="{% url 'promotion-applications' %}">View applications</a></div>
+    {% endif %}
+  </section>
+
+  <section class="promotion-application-history panel" aria-labelledby="my-applications-title">
+    <div class="promotion-section-heading"><div><span class="artisan-panel-kicker">Customer Support review</span><h2 id="my-applications-title">Application history</h2></div><span class="promotion-history-count">{{ applications|length }} application{{ applications|length|pluralize }}</span></div>
+    {% if applications %}<div class="promotion-application-list">{% for item in applications %}<article class="promotion-application-row"><div><div class="promotion-row-title"><strong>{{ item.promotion_type_label }}</strong><span class="promotion-status-pill promotion-status--{{ item.status|lower }}">{{ item.status_label }}</span></div><p>{% if item.target.name %}{{ item.target.name }}{% if item.target.campus %} — {{ item.target.campus }}{% endif %}{% elif item.target.area %}{{ item.target.area }}, {{ item.target.state }}, {{ item.target.country }}{% elif item.target.state %}{{ item.target.state }}, {{ item.target.country }}{% else %}Homepage Feature{% endif %}</p><small>Submitted {{ item.submitted_at|default:'date unavailable' }} · Revision {{ item.latest_revision_number|default:'—' }}</small>{% if item.latest_decision %}<div class="promotion-row-feedback"><strong>{{ item.latest_decision.decision_label }}:</strong> {{ item.latest_decision.reason|truncatechars:190 }}</div>{% endif %}</div><div class="promotion-row-actions"><a class="button button-secondary promotion-row-link" href="{% url 'promotion-applications' %}?application={{ item.id }}">View application</a>{% if item.status == 'APPROVED' %}<a class="button button-primary promotion-row-link" href="{% url 'promotion-checkout' pk=item.id %}">Review offer</a>{% endif %}</div></article>{% endfor %}</div>{% else %}<div class="promotion-empty-state"><span aria-hidden="true">✦</span><strong>No applications yet</strong><p>Your separate application and review history will appear here.</p><a class="button button-primary" href="{% url 'promotion-applications' %}">Apply for Promotion</a></div>{% endif %}
+  </section>
+  <p class="promotion-footer-note">Campaigns are activated, paused, scheduled and expired by server-side lifecycle processing. A public placement is visible only while its verified campaign is active and the artisan remains eligible for public promotion.</p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

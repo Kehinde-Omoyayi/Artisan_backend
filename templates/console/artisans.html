@@ -1,0 +1,46 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Artisan intelligence · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Supply</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.totals.artisans }}</span><small>Artisans</small></div>
+    <div class="stat"><span>{{ payload.totals.verified }}</span><small>Verified</small></div>
+    <div class="stat"><span>{{ payload.totals.active }}</span><small>Active</small></div>
+    <div class="stat"><span>{{ payload.totals.inactive }}</span><small>Inactive</small></div>
+  </div>
+  {% include 'console/partials/metrics.html' with metrics=payload.totals %}
+</section>
+<section class="console-block">
+  <h2>Response speed</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.response.average_hours }}</span><small>Average hours</small></div>
+    <div class="stat"><span>{{ payload.response.median_hours }}</span><small>Median hours</small></div>
+    <div class="stat"><span>{{ payload.response.p90_hours }}</span><small>90th percentile</small></div>
+    <div class="stat"><span>{{ payload.response.sample }}</span><small>Sample</small></div>
+  </div>
+  <p class="console-muted">{{ payload.response.definition }}</p>
+</section>
+<section class="console-block">
+  <h2>Leaderboard</h2>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead><tr><th>Artisan</th><th>Bookings</th><th>Completed</th><th>Cancelled</th><th>Disputed</th>
+        <th>Completion</th><th>Cancellation</th><th>Disputes</th><th>Customers</th><th>Earnings</th></tr></thead>
+      <tbody>
+      {% for row in payload.leaderboard %}
+        <tr>
+          <td>{{ row.name }}</td><td>{{ row.bookings }}</td><td>{{ row.completed }}</td><td>{{ row.cancelled }}</td>
+          <td>{{ row.disputed }}</td><td>{{ row.completion_rate }}%</td><td>{{ row.cancellation_rate }}%</td>
+          <td>{{ row.dispute_rate }}%</td><td>{{ row.unique_customers }}</td><td>{{ row.earnings_kobo|ngn_kobo }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10">No artisan activity in this range.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="console-muted">{{ payload.ranking_method }}</p>
+</section>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% load site_tags %}
+{% comment %}
+Explorer result. Rows are {'group': ..., 'value': ...}; only ``if`` and
+``firstof`` touch optional keys, because a missing key inside a filter argument
+raises instead of rendering blank.
+{% endcomment %}
+<div class="report-result">
+  <p class="console-muted">
+    {{ result.rows|length }} rows ·
+    chart hint: {% firstof result.chart "table" %} ·
+    unit {% firstof result.unit "number" %} ·
+    {% if result.served_from_cache %}served from cache{% else %}computed now{% endif %}
+  </p>
+  <table class="console-table">
+    <thead>
+      <tr><th>{% firstof result.dimension_label "Group" %}</th><th>{% firstof result.measure_label "Value" %}</th></tr>
+    </thead>
+    <tbody>
+    {% for row in result.rows %}
+      <tr><td>{% firstof row.group row.label %}</td><td>{{ row.value }}</td></tr>
+    {% empty %}
+      <tr><td colspan="2">The query returned no rows for this range.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>

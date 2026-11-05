@@ -1,0 +1,22 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Geographic intelligence · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Activity by state</h2>
+  <table class="console-table">
+    <thead><tr><th>State</th><th>Artisans</th><th>Requests</th><th>Customers</th><th>Bookings</th><th>Value</th><th>Request → booking</th></tr></thead>
+    <tbody>
+    {% for row in payload.states %}
+      <tr>
+        <td>{{ row.state }}</td><td>{{ row.artisans }}</td><td>{{ row.requests }}</td><td>{{ row.customers }}</td>
+        <td>{{ row.bookings }}</td><td>{{ row.value|ngn }}</td><td>{{ row.conversion }}%</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="7">No location data in this range.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="console-muted">{{ payload.definition }}</p>
+</section>
+{% endblock %}

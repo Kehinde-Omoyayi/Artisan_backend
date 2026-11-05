@@ -1,0 +1,29 @@
+{% load site_tags %}
+{% comment %}
+Renders a dictionary of metric objects returned by the manager API. Each card
+keeps the API's own label, value, unit, comparison and definition, so a reader
+can see how the number was produced without leaving the page.
+{% endcomment %}
+<div class="kpi-grid">
+  {% for key, item in metrics.items %}
+    <article class="kpi">
+      <p class="kpi__label">{{ item.label|default:key }}</p>
+      <p class="kpi__value">
+        {% if item.unit == 'kobo' %}{{ item.value|ngn_kobo }}
+        {% elif item.unit == 'percent' %}{{ item.value }}%
+        {% else %}{{ item.value }}{% endif %}
+      </p>
+      {% if item.change_percent is not None %}
+        <p class="kpi__delta {% if item.change_percent < 0 %}is-negative{% else %}is-positive{% endif %}">
+          {{ item.change_percent|delta_label }} vs previous period
+        </p>
+      {% endif %}
+      {% if item.numerator is not None %}
+        <p class="kpi__math">{{ item.numerator }} / {{ item.denominator }}</p>
+      {% endif %}
+      <p class="kpi__definition">{{ item.definition }}</p>
+    </article>
+  {% empty %}
+    <p class="console-empty">The API returned no metrics for this selection.</p>
+  {% endfor %}
+</div>

@@ -103,13 +103,6 @@ def booking_guidance(*, conversation, user, booking=None, offer=None, payment=No
                     'Check scope, labour, materials, transport, extra charges, total, schedule, exclusions, payment and workmanship terms. Ask questions or request a revision before accepting.',
                     ['Use the formal Accept/Decline/Revision controls, not a message saying “agreed”.', 'Accepting a quote creates the next booking/payment step; it is not payment confirmation.'],
                     'REVIEW_OFFER','Find quote controls')
-    if conversation.request_submitted and not _description_confirmed(conversation):
-        return show('CLARIFY_DESCRIPTION',
-                    'Confirm the clarified work description' if artisan else 'Wait for the artisan to confirm the description',
-                    'Before a formal quote, the artisan must confirm that the chat clarification and request details describe the work well enough to price it. Quote controls stay locked until that explicit confirmation.' if artisan else 'Clarify the job with the artisan here. The artisan must mark the description as done before any formal quote can be sent.',
-                    ['Read the request summary and chat history, then use Description done when the work is clear.' if artisan else 'Answer the artisan’s questions so the description can be confirmed.', 'Description confirmation is recorded and versioned; no quote or payment happens before it.'],
-                    'CONFIRM_DESCRIPTION' if artisan and 'CONFIRM_DESCRIPTION' in available else None,
-                    'Confirm the description' if artisan and 'CONFIRM_DESCRIPTION' in available else None)
     return show('PREPARE_QUOTE' if artisan else 'WAITING_FOR_QUOTE',
                 'Prepare a clear formal quote' if artisan else 'Clarify the job while waiting for a quote',
                 'Review the submitted request, confirm coverage/availability and prepare the complete formal quote. A chat estimate is not an accepted booking.' if artisan else 'The request is submitted. Answer questions here and wait for the artisan’s formal quote; do not pay an informal chat estimate.',

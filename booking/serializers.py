@@ -16,16 +16,51 @@ class BookingSerializer(serializers.ModelSerializer):
     conversation_id = serializers.SerializerMethodField()
     viewer_role = serializers.SerializerMethodField()
     duration_label = serializers.SerializerMethodField()
+    available_actions = serializers.SerializerMethodField()
+    service_name = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    artisan_name = serializers.SerializerMethodField()
 
     def get_duration_label(self, obj) -> str:
         from .models import duration_label
 
         return duration_label(obj.service_duration_value, obj.service_duration_unit)
 
+    def get_service_name(self, obj) -> str:
+        category = getattr(obj.request, "category", None)
+        return getattr(category, "name", "") or ""
+
+    def get_customer_name(self, obj) -> str:
+        user = getattr(obj.customer, "user", None)
+        if user is None:
+            return ""
+        return (f"{user.first_name} {user.last_name}".strip()) or user.email
+
+    def get_artisan_name(self, obj) -> str:
+        profile = obj.artisan
+        business = getattr(profile, "business_name", "") or ""
+        user = getattr(profile, "user", None)
+        personal = f"{user.first_name} {user.last_name}".strip() if user else ""
+        return business or personal
+
+    def get_available_actions(self, obj):
+        """Server-derived action list for the requesting viewer.
+
+        The interface renders buttons from this list only, so an action that the
+        API would reject is never offered in the first place.
+        """
+        from .actions import available_actions
+
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return []
+        obj._conversation_id = self.get_conversation_id(obj)
+        return available_actions(obj, request.user)
+
     class Meta:
         model = Booking
-        fields = ["id", "request_id", "customer_id", "artisan_id", "conversation_id", "viewer_role", "scheduled_time_start", "scheduled_time_end", "price_agreed", "status", "source", "service_duration_value", "service_duration_unit", "duration_label", "actual_started_at", "countdown_ends_at", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
-        read_only_fields = ["id", "customer_id", "conversation_id", "viewer_role", "status", "source", "service_duration_value", "service_duration_unit", "duration_label", "actual_started_at", "countdown_ends_at", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
+        fields = ["id", "request_id", "customer_id", "artisan_id", "conversation_id", "viewer_role", "scheduled_time_start", "scheduled_time_end", "price_agreed", "status", "source", "service_duration_value", "service_duration_unit", "duration_label", "available_actions", "service_name", "customer_name", "artisan_name", "actual_started_at", "countdown_ends_at", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
+        read_only_fields = ["id", "customer_id", "conversation_id", "viewer_role", "status", "source", "service_duration_value", "service_duration_unit", "duration_label", "available_actions", "service_name", "customer_name", "artisan_name", "actual_started_at", "countdown_ends_at", "artisan_completed_at", "customer_completed_at", "payout_eligible_at", "finalized_at", "created_at", "updated_at"]
 
     def get_conversation_id(self, obj) -> str | None:
         if obj.request.requester_id != obj.customer.user_id:

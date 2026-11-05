@@ -1,0 +1,228 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Artisan Market · Find an artisan for the work ahead{% endblock %}
+{% block base_fonts %}{% endblock %}
+{% block body_class %}landing-page{% endblock %}
+{% block main_class %}landing-main{% endblock %}
+{% block head %}
+  <link rel="preload" href="{% static 'fonts/DMSerifDisplay-Regular.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{% static 'fonts/DMSans-Latin-Variable.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static 'css/landing.css' %}">
+{% endblock %}
+
+{% block content %}
+<div hidden aria-hidden="true">{% csrf_token %}</div>
+<div id="landing-hero" class="landing-hero" data-hero data-tour-target="discovery">
+  <div class="landing-wrap landing-hero__inner">
+    <div class="landing-hero__copy">
+      <p class="landing-eyebrow"><span class="landing-eyebrow__dot" aria-hidden="true"></span> A considered way to find artisan work</p>
+      <h1 class="landing-hero__title" data-hero-title aria-live="off">{{ initial_hero.title }}</h1>
+      <p class="landing-hero__description" data-hero-description aria-live="off">{{ initial_hero.description }}</p>
+      <div class="landing-hero__actions" data-tour-target="profiles-services">
+        <a class="landing-button landing-button--primary" href="{% url 'artisans' %}">Browse artisans <span aria-hidden="true">↗</span></a>
+      </div>
+      <p class="landing-hero__note">Browse public artisan profiles and services without signing in. Sign in when you are ready to message or request work.</p>
+
+      
+      <p class="landing-visually-hidden" role="status" aria-live="polite" aria-atomic="true" data-hero-announcement></p>
+    </div>
+
+    <div class="landing-hero__art">
+      <div class="landing-hero__image-shell">
+        <img class="landing-hero__image" data-hero-image src="{% static initial_hero.image_640 %}" srcset="{% static initial_hero.image_640 %} 640w, {% static initial_hero.image_1440 %} 1440w" sizes="(max-width: 760px) 92vw, (max-width: 1200px) 48vw, 560px" alt="" fetchpriority="high" decoding="async">
+        <span class="landing-hero__image-label">Illustrative stock photography</span>
+      </div>
+      <div class="landing-hero__caption">
+        <span class="landing-hero__caption-mark" aria-hidden="true">✳</span>
+        <span>Illustrative photography; it does not show live listings, marketplace artisans or service availability.</span>
+      </div>
+      <div class="landing-hero__annotation" aria-hidden="true">
+        <span class="landing-hero__annotation-line"></span>
+        <span>Made clearer, together.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="landing-slide-source" hidden data-slide-source>
+    {% for slide in hero_slides %}
+      <span data-carousel-slide data-name="{{ slide.name }}" data-title="{{ slide.title }}" data-description="{{ slide.description }}" data-image-640="{% static slide.image_640 %}" data-image-1440="{% static slide.image_1440 %}"></span>
+    {% endfor %}
+  </div>
+</div>
+
+<section id="categories" class="landing-section landing-categories" aria-labelledby="categories-title" data-tour-target="discovery">
+  <div class="landing-wrap">
+    <div class="landing-section__heading landing-section__heading--split">
+      <div data-reveal data-gather>
+        <p class="landing-eyebrow">Homepage visual themes</p>
+        <h2 id="categories-title">Craft, in focus.</h2>
+      </div>
+      <p class="landing-section__intro" data-reveal data-gather>These editorial themes are built into the homepage, not pulled from the service catalogue. They are visual examples, not a promise that a service is currently listed.</p>
+    </div>
+
+    <div class="landing-category-grid landing-theme-grid">
+      {% for theme in visual_themes %}
+        <article class="landing-category-card landing-theme-card" data-reveal data-gather>
+          <div class="landing-theme-card__image-wrap" aria-hidden="true">
+            <img class="landing-theme-card__image" src="{% static theme.image_640 %}" srcset="{% static theme.image_640 %} 640w, {% static theme.image_1440 %} 1440w" sizes="(max-width: 760px) 46vw, 290px" alt="" loading="lazy" decoding="async">
+            <span class="landing-theme-card__badge">Illustrative</span>
+          </div>
+          <div class="landing-theme-card__details">
+            <span class="landing-category-card__number">{{ forloop.counter|stringformat:'02d' }}</span>
+            <h3 class="landing-category-card__name">{{ theme.name }}</h3>
+            <span class="landing-theme-card__caption">Visual theme · not a live listing</span>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+
+{% if market_picks %}
+<section id="artisan-market-picks" class="landing-section landing-market-picks" aria-labelledby="artisan-market-picks-title">
+  <div class="landing-wrap">
+    <div class="landing-section__heading landing-section__heading--split">
+      <div><p class="landing-eyebrow">Editorial · Platform-selected</p><h2 id="artisan-market-picks-title">Artisan Market Picks.</h2></div>
+      <p class="landing-section__intro">A separate editorial selection based on current profile eligibility and service evidence. These picks are not paid geography placements.</p>
+    </div>
+    <div class="landing-promotions-grid landing-market-picks-grid">
+      {% for artisan in market_picks %}
+      <article class="landing-promotion-card landing-market-pick-card" data-reveal>
+        <div class="landing-promotion-card__top">
+          {% if artisan.profile_photo_url %}<img src="{{ artisan.profile_photo_url }}" alt="" loading="lazy" decoding="async">{% else %}<span class="landing-promotion-card__avatar" aria-hidden="true">{{ artisan.business_name|default:artisan.name|slice:':1'|upper }}</span>{% endif %}
+          <span class="landing-market-pick-badge">Market Pick</span>
+        </div>
+        <div class="landing-promotion-card__copy">
+          <p class="landing-promotion-card__business">{{ artisan.business_name|default:artisan.name }}</p>
+          <h3>{{ artisan.name|default:artisan.business_name }}</h3>
+          {% if artisan.average_rating %}<p class="landing-promotion-card__rating">★ {{ artisan.average_rating }}{% if artisan.review_count %} · {{ artisan.review_count }} review{{ artisan.review_count|pluralize }}{% endif %}</p>{% endif %}
+          <p class="landing-promotion-card__description">{{ artisan.description|truncatechars:180 }}</p>
+          {% if artisan.main_service %}<p class="landing-promotion-card__services">{{ artisan.main_service }}{% if artisan.services.1 %} · {{ artisan.services.1.service_name }}{% endif %}</p>{% endif %}
+          <a class="landing-promotion-card__link" href="{{ artisan.artisan_url }}">View public profile <span aria-hidden="true">↗</span></a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+{% if homepage_promotions %}
+<section id="featured-artisans" class="landing-section landing-promotions" aria-labelledby="landing-promotions-title">
+  <div class="landing-wrap">
+    <div class="landing-section__heading landing-section__heading--split">
+      <div><p class="landing-eyebrow">Sponsored · Homepage Feature</p><h2 id="landing-promotions-title">Artisans in the spotlight.</h2></div>
+      <p class="landing-section__intro">These paid placements are shown separately from editorial themes. Only active, identity-verified artisans with currently public profiles are eligible to appear.</p>
+    </div>
+    <div class="landing-promotions-grid">
+      {% for artisan in homepage_promotions %}
+      <article class="landing-promotion-card landing-sponsored-card" data-reveal data-promotion-impression-token="{{ artisan.impression_token }}" data-promotion-campaign-id="{{ artisan.campaign_id }}" data-promotion-artisan-id="{{ artisan.artisan_id }}">
+        <div class="landing-promotion-card__top">
+          {% if artisan.profile_photo_url %}<img src="{{ artisan.profile_photo_url }}" alt="" loading="lazy" decoding="async">{% else %}<span class="landing-promotion-card__avatar" aria-hidden="true">{{ artisan.business_name|default:artisan.name|slice:':1'|upper }}</span>{% endif %}
+          <span class="landing-promotion-card__badge">Sponsored</span>
+        </div>
+        <div class="landing-promotion-card__copy">
+          <p class="landing-promotion-card__business">{{ artisan.business_name|default:artisan.name }}</p>
+          <h3>{{ artisan.name|default:artisan.business_name }}</h3>
+          {% if artisan.average_rating %}<p class="landing-promotion-card__rating">★ {{ artisan.average_rating }}{% if artisan.review_count %} · {{ artisan.review_count }} review{{ artisan.review_count|pluralize }}{% endif %}</p>{% endif %}
+          <p class="landing-promotion-card__description">{{ artisan.description|truncatechars:180 }}</p>
+          {% if artisan.services %}<p class="landing-promotion-card__services">{{ artisan.services.0.service_name }}{% if artisan.services.1 %} · {{ artisan.services.1.service_name }}{% endif %}</p>{% endif %}
+          <a class="landing-promotion-card__link" href="{{ artisan.artisan_url }}">View public profile <span aria-hidden="true">↗</span></a>
+          <a class="landing-promotion-card__report" href="{% url 'support-cases' %}?promotion_campaign={{ artisan.campaign_id }}">Report this sponsored placement</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endif %}
+
+<section id="how-it-works" class="landing-section landing-process" aria-labelledby="process-title" data-reveal data-tour-target="transactions">
+  <div class="landing-wrap">
+    <div class="landing-section__heading landing-section__heading--split">
+      <div>
+        <p class="landing-eyebrow">A clearer way through the details</p>
+        <h2 id="process-title">Good work starts with a good conversation.</h2>
+      </div>
+      <p class="landing-section__intro">The platform keeps the conversation, offer, booking and payment steps connected.</p>
+    </div>
+
+    <div class="landing-process-grid">
+      <article class="landing-process-card" data-reveal>
+        <div class="landing-process-card__top"><span>01</span><svg viewBox="0 0 40 40" aria-hidden="true" focusable="false"><circle cx="17" cy="17" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m23 23 8 8M11 17h12M17 11v12" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/></svg></div>
+        <h3>Find a place to begin</h3>
+        <p><a class="landing-inline-link" href="{% url 'artisans' %}">Browse artisans</a> and active service listings without an account. Sign-in is required only for private conversations and service requests.</p>
+      </article>
+      <article class="landing-process-card" data-reveal>
+        <div class="landing-process-card__top"><span>02</span><svg viewBox="0 0 40 40" aria-hidden="true" focusable="false"><path d="M8 10.5h24v16H19l-7 5v-5H8z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/><path d="M13 16h14M13 21h9" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/></svg></div>
+        <h3>Talk through the work</h3>
+        <p>Discuss scope and timing in conversation. The artisan can send an offer; the customer can review, accept, decline or counter it.</p>
+      </article>
+      <article class="landing-process-card" data-reveal>
+        <div class="landing-process-card__top"><span>03</span><svg viewBox="0 0 40 40" aria-hidden="true" focusable="false"><path d="M10 8.5h20v23H10z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M14 15h12M14 20h12M14 25h7M25 25l2.3 2.3L32 22.5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg></div>
+        <h3>Agree before payment</h3>
+        <p>Accepting an offer creates the booking and makes the payment step available. The artisan may start once the payment is verified and held.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="landing-section landing-conversation" aria-labelledby="conversation-title" data-reveal>
+  <div class="landing-wrap landing-conversation__grid">
+    <figure class="landing-conversation__photo">
+      <img src="{% static 'images/landing/trade-carpentry-1440.webp' %}" srcset="{% static 'images/landing/trade-carpentry-640.webp' %} 640w, {% static 'images/landing/trade-carpentry-1440.webp' %} 1440w" sizes="(max-width: 760px) 92vw, 540px" alt="" loading="lazy" decoding="async">
+      <figcaption>Illustrative stock photography, not a provider profile.</figcaption>
+    </figure>
+    <div class="landing-conversation__copy" data-reveal>
+      <p class="landing-eyebrow">Details, kept together</p>
+      <h2 id="conversation-title">Make the scope clear before the work begins.</h2>
+      <p>Use the conversation to explain what needs doing and ask questions. An offer can set out labour, materials, scope and timing so both sides can review the same details before a booking is accepted.</p>
+      <a class="landing-text-link" href="{% url 'register' %}">Start with an account <span aria-hidden="true">↗</span></a>
+    </div>
+  </div>
+</section>
+
+<section id="payments" class="landing-section landing-payment" aria-labelledby="payment-title" data-payment-section data-tour-target="payment-agreement" data-reveal>
+  <div class="landing-wrap landing-payment__grid">
+    <div class="landing-payment__copy">
+      <p class="landing-eyebrow">Payment follows agreement</p>
+      <h2 id="payment-title">Pay after an offer is accepted.</h2>
+      <p class="landing-payment__lead">The payment step follows an accepted offer and booking—not the first conversation.</p>
+      <ol class="landing-payment__steps">
+        <li><span>01</span><p>After payment, the provider verifies the transaction. A verified payment is held while the booking is underway.</p></li>
+        <li><span>02</span><p>The artisan can start after the payment is held, then submit the work for completion review.</p></li>
+        <li><span>03</span><p>The customer confirms completion separately. Confirmation starts payout-release processing; eligible disputes can pause the relevant funds.</p></li>
+      </ol>
+      <a class="landing-button landing-button--light" href="{% url 'register' %}">Get started <span aria-hidden="true">↗</span></a>
+    </div>
+
+    <div class="landing-payment__visual" aria-hidden="true">
+      <div class="landing-payment-seal" data-payment-seal>
+        <svg class="landing-payment-seal__ring" viewBox="0 0 220 220" focusable="false">
+          <defs><path id="landing-payment-ring-path" d="M110 110m-82 0a82 82 0 1 1 164 0a82 82 0 1 1-164 0"/></defs>
+          <text><textPath href="#landing-payment-ring-path">AGREE FIRST · PAY AFTER ACCEPTANCE · VERIFIED PAYMENT HELD · </textPath></text>
+        </svg>
+        <div class="landing-payment-seal__center"><span>AGREED</span><strong>clear<br>terms</strong></div>
+      </div>
+      <span class="landing-payment__caption">A sequence, not a shortcut.</span>
+      <span class="landing-payment__decor landing-payment__decor--one"></span>
+      <span class="landing-payment__decor landing-payment__decor--two"></span>
+    </div>
+  </div>
+</section>
+
+<section class="landing-final" aria-labelledby="final-title" data-reveal>
+  <div class="landing-wrap landing-final__inner">
+    <div>
+      <p class="landing-eyebrow">For customers and artisans</p>
+      <h2 id="final-title">Let the work begin with clarity.</h2>
+      <p>Create an account to take the next step in the marketplace.</p>
+    </div>
+    <div class="landing-final__actions">
+      <a class="landing-button landing-button--primary" href="{% url 'register' %}">Create an account <span aria-hidden="true">↗</span></a>
+      <a class="landing-button landing-button--quiet" href="{% url 'login' %}">Sign in <span aria-hidden="true">↗</span></a>
+    </div>
+  </div>
+</section>
+{% endblock %}

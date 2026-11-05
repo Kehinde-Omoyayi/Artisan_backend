@@ -1,0 +1,75 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Privacy and retention · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Retention policies</h2>
+  <table class="console-table">
+    <thead><tr><th>Data class</th><th>Days</th><th>Enabled</th><th>Updated</th><th>Change</th></tr></thead>
+    <tbody>
+    {% for row in retention %}
+      <tr>
+        <td>{{ row.data_class|humanize_code }}<br><span class="console-muted">{{ row.notes }}</span></td>
+        <td>{{ row.days }}</td><td>{{ row.enabled|yesno:"Yes,No" }}</td><td>{{ row.updated_at|human_datetime }}</td>
+        <td>
+          <form method="post" action="{% url 'console-privacy-retention' %}" class="inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="data_class" value="{{ row.data_class }}">
+            <input type="number" name="days" value="{{ row.days }}" min="1" max="3650" aria-label="Retention days for {{ row.data_class }}">
+            <label class="console-check"><input type="checkbox" name="enabled"{% if row.enabled %} checked{% endif %}> Enabled</label>
+            <button class="console-button console-button--quiet" type="submit">Save</button>
+          </form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="5">No retention policy rows returned.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="console-muted">Export links expire after {{ payload.export_ttl_hours }} hours.</p>
+</section>
+
+<section class="console-block">
+  <h2>Data subject requests</h2>
+  <form method="post" action="{% url 'console-privacy-request' %}" class="console-filters">
+    {% csrf_token %}
+    <label class="console-field"><span>Account id</span><input type="text" name="user_id" placeholder="User UUID" required></label>
+    <label class="console-field"><span>Type</span>
+      <select name="type"><option value="ACCESS">Access</option><option value="ERASURE">Erasure</option>
+        <option value="RECTIFICATION">Rectification</option><option value="PORTABILITY">Portability</option></select>
+    </label>
+    <label class="console-field"><span>Details</span><input type="text" name="details" maxlength="300"></label>
+    <button class="console-button" type="submit">Log request</button>
+  </form>
+  <table class="console-table">
+    <thead><tr><th>Reference</th><th>Type</th><th>Status</th><th>Created</th><th>Due</th><th>Advance</th></tr></thead>
+    <tbody>
+    {% for row in privacy_requests %}
+      <tr>
+        <td>{{ row.reference }}</td><td>{{ row.request_type }}</td><td>{{ row.status }}</td>
+        <td>{{ row.created_at|human_datetime }}</td><td>{% if row.due_at %}{{ row.due_at|human_datetime }}{% else %}—{% endif %}</td>
+        <td>
+          <form method="post" action="{% url 'console-privacy-request-complete' row.reference %}" class="inline-form">
+            {% csrf_token %}
+            <select name="status"><option value="IN_PROGRESS">In progress</option><option value="COMPLETED">Completed</option><option value="REJECTED">Rejected</option></select>
+            <input type="text" name="notes" placeholder="Notes" maxlength="300">
+            <button class="console-button console-button--quiet" type="submit">Update</button>
+          </form>
+        </td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6">No data subject requests recorded.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="console-block">
+  <h2>Data classes</h2>
+  <table class="console-table"><thead><tr><th>Class</th><th>Where it lives</th></tr></thead><tbody>
+    {% for row in data_classes %}<tr><td>{{ row.label }}</td><td>{{ row.holders|join:", " }}</td></tr>
+    {% empty %}<tr><td colspan="2">No data classes returned.</td></tr>{% endfor %}
+  </tbody></table>
+  <ul class="console-list">{% for note in payload.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+</section>
+{% endblock %}

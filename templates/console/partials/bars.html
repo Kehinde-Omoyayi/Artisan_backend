@@ -1,0 +1,25 @@
+{% load site_tags %}
+{% comment %}
+Horizontal bar list. `rows` supplies label/percent plus either count or value.
+Only ``{% if %}`` and ``default_if_none`` are used for optional keys: a missing key
+in a filter argument raises, and a console row without a value must not break the
+page. ``firstof`` is deliberately avoided here: it prints nothing when every
+argument is falsy, which produced ``width: %`` and a full-width bar for a zero row.
+{% endcomment %}
+{% if rows %}
+  <ul class="bar-list">
+    {% for row in rows %}
+      <li class="bar-row">
+        <span class="bar-row__label">{% firstof row.label row.status %}</span>
+        <span class="bar-row__track">
+          <span class="bar-row__fill" style="width: {{ row.percent|default_if_none:0 }}%"></span>
+        </span>
+        <span class="bar-row__value">
+          {% if row.unit == 'kobo' %}{{ row.value|ngn_kobo }}{% elif row.count is not None %}{{ row.count }}{% else %}{{ row.value }}{% endif %}
+        </span>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="console-empty">No rows for this selection.</p>
+{% endif %}

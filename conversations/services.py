@@ -1,5 +1,5 @@
 import logging
-from datetime import date, time as datetime_time
+from datetime import date, time as datetime_time, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.db import IntegrityError, transaction
@@ -17,10 +17,16 @@ from home.models import (
     ServiceCategory,
     Locations,
 )
-from payments.services import prepare_booking_payment
+from payments.services import COMMITTED_PAYMENT_STATUSES, prepare_booking_payment
 from support.services import create_support_case
 from support.models import SupportCase
 from services.models import ServiceRequest
+
+from notifications.events import (
+    notify_offer_received,
+    notify_offer_resolved,
+    notify_offer_revision_requested,
+)
 
 from .events import money_text, record_booking_event, record_conversation_event
 from .models import (
@@ -230,12 +236,17 @@ def _time_for_model(value):
 
 
 def _request_ready(draft):
-    return (
-        bool(draft.get("description"))
-        and bool(draft.get("service_id"))
-        and bool(draft.get("location_id"))
-        and bool(draft.get("preferred_date"))
-    )
+    """What a request sent from the chat must contain: the work, in words.
+
+    Nothing else is demanded. The customer is already talking to one artisan,
+    so there is no catalogue to match against and nothing to search; the
+    artisan answers with an itemised offer that carries the priced lines and
+    the schedule, and that offer is what the customer accepts. Saying what
+    needs doing is therefore the whole request -- the way it works in a chat
+    app. A service, category, place, date or budget the customer does supply is
+    still validated and stored; it is simply never required.
+    """
+    return bool(str(draft.get("description") or "").strip())
 
 
 def _draft_from_request(service_request):
@@ -246,10 +257,16 @@ def _draft_from_request(service_request):
         "service_id": (
             str(service_request.service_id) if service_request.service_id else None
         ),
-        "location_id": str(service_request.location_id),
-        "country": location.country,
-        "state": location.state,
-        "area": location.area,
+        # A request sent straight from the chat carries no place of its own: the
+        # artisan and the customer settle where the work happens in the
+        # conversation. Rebuilding the draft from such a request must not invent
+        # a location or write the string "None" into it.
+        "location_id": (
+            str(service_request.location_id) if service_request.location_id else None
+        ),
+        "country": location.country if location else "",
+        "state": location.state if location else "",
+        "area": location.area if location else "",
         "preferred_date": (
             service_request.preferred_date.isoformat()
             if service_request.preferred_date
@@ -266,7 +283,9 @@ def _draft_from_request(service_request):
             else None
         ),
         "preferred_time_note": service_request.preferred_time_note or "",
-        "category_id": str(service_request.category_id),
+        "category_id": (
+            str(service_request.category_id) if service_request.category_id else None
+        ),
         "urgency": service_request.urgency,
         "budget": (
             str(service_request.budget) if service_request.budget is not None else None
@@ -277,18 +296,8 @@ def _draft_from_request(service_request):
 
 def _request_missing_errors(draft):
     errors = {}
-    if not draft.get("service_id"):
-        errors["service_id"] = "Select a service before submitting the request."
     if not str(draft.get("description") or "").strip():
         errors["description"] = "Describe the work before submitting the request."
-    if not draft.get("location_id"):
-        errors["location_id"] = (
-            "Select a catalogue location before submitting the request."
-        )
-    if not draft.get("preferred_date"):
-        errors["preferred_date"] = (
-            "Choose a preferred date before submitting the request."
-        )
     return errors
 
 
@@ -548,20 +557,18 @@ def apply_request_patch(*, conversation, user, payload):
         if submit_request is True and not complete:
             raise ValidationError(_request_missing_errors(draft))
         if should_submit:
-            if service is None:
-                raise ValidationError(
-                    {"service_id": "Select a service before completing the request."}
-                )
-            if location is None:
+            # The artisan itemises the work in the offer, so a request never
+            # needs the artisan's catalogue: a description alone is enough.
+            if location is None and draft.get("location_id"):
                 location = validate_artisan_location(
                     artisan=artisan, service=service, location_id=draft["location_id"]
                 )
             service_request = conversation.service_request
             request_values = {
                 "service": service,
-                "category": service.category,
+                "category": service.category if service is not None else None,
                 "location": location,
-                "preferred_date": _normalize_date(draft["preferred_date"]),
+                "preferred_date": _normalize_date(draft.get("preferred_date")),
                 "preferred_time_start": _time_for_model(start_time),
                 "preferred_time_end": _time_for_model(end_time),
                 "preferred_time_note": draft.get("preferred_time_note") or "",
@@ -912,6 +919,16 @@ def send_message(*, conversation, user, body, attachments=None, idempotency_key=
             return existing
         from core.services import enqueue_outbox
 
+        # Scanning is opt-in. Every upload is already signature-validated by
+        # validate_attachment(), so unless a scanner is explicitly configured the
+        # file is stored CLEAN and is immediately previewable/downloadable.
+        # (Scanning is never an AI step; it only exists for deployments that run
+        # ClamAV via CLAMAV_SCAN_URL.)
+        from django.conf import settings as django_settings
+
+        scan_required = bool(
+            str(getattr(django_settings, "CLAMAV_SCAN_URL", "") or "").strip()
+        ) or bool(getattr(django_settings, "REQUIRE_MEDIA_SCAN", False))
         for upload, content_type in validated_attachments:
             attachment = ConversationAttachment.objects.create(
                 message=message,
@@ -919,11 +936,16 @@ def send_message(*, conversation, user, body, attachments=None, idempotency_key=
                 content_type=content_type,
                 size=upload.size,
             )
-            enqueue_outbox(
-                event_type="media.scan",
-                event_key=f"media-scan:{attachment.id}",
-                payload={"attachment_id": str(attachment.id)},
-            )
+            if scan_required:
+                enqueue_outbox(
+                    event_type="media.scan",
+                    event_key=f"media-scan:{attachment.id}",
+                    payload={"attachment_id": str(attachment.id)},
+                )
+            else:
+                attachment.scan_status = "CLEAN"
+                attachment.scan_reason = "signature_validation_only"
+                attachment.save(update_fields=["scan_status", "scan_reason"])
         conversation.save(update_fields=["updated_at"])
         from .notifications import notify_room_message
 
@@ -1162,70 +1184,77 @@ def duration_label(value, unit):
     return f"{value} {unit_label}{'' if value == 1 else 's'}"
 
 
-def _resolve_offer_duration(payload, scheduled_start):
-    """Resolve duration fields and the scheduled end.
+# How long a sent quote stays acceptable when the artisan did not (and is no
+# longer asked to) state an expiry. It is always capped by the scheduled start.
+OFFER_VALIDITY = timedelta(hours=72)
 
-    When the artisan supplies a canonical duration (numeric value plus unit) the
-    scheduled end is computed from the proposed start server-side. A client may
-    still supply scheduled_end, but it must agree with the computed end exactly.
+
+def _resolve_offer_duration(payload, scheduled_start):
+    """Resolve the stated duration and the scheduled end.
+
+    The interface asks only for a duration value and unit (for example 3 Days).
+    scheduled_end and expires_at are derived here; neither is client input.
     """
     raw_value = payload.get("duration_value")
     raw_unit = payload.get("duration_unit")
-    scheduled_end = payload.get("scheduled_end")
-    now = timezone.now()
-    if raw_value not in (None, ""):
-        try:
-            duration_value = int(str(raw_value))
-        except (TypeError, ValueError) as exc:
-            raise ValidationError(
-                {"duration_value": "Duration must be a whole number."}
-            ) from exc
-        duration_unit = str(raw_unit or "").strip().upper()
-        if duration_unit not in DURATION_UNITS:
-            raise ValidationError(
-                {"duration_unit": "Duration unit must be hours, days or weeks."}
-            )
-        if duration_value < 1 or duration_value > _MAX_DURATION[duration_unit]:
-            raise ValidationError(
-                {"duration_value": "This duration is outside the allowed range."}
-            )
-        computed_end = scheduled_start + _duration_delta(duration_value, duration_unit)
-        if scheduled_end not in (None, "") and scheduled_end != computed_end:
-            raise ValidationError(
-                {"scheduled_end": "Scheduled end does not match the stated start and duration."}
-            )
-        return duration_value, duration_unit, computed_end, now
-    if scheduled_end in (None, ""):
+    if raw_value in (None, ""):
+        raise ValidationError({"duration_value": "State how long the work will take."})
+    try:
+        duration_value = int(str(raw_value))
+    except (TypeError, ValueError) as exc:
         raise ValidationError(
-            {"duration_value": "State a duration (for example 3 days) or a scheduled end."}
+            {"duration_value": "Duration must be a whole number."}
+        ) from exc
+    duration_unit = str(raw_unit or "").strip().upper()
+    if duration_unit not in DURATION_UNITS:
+        raise ValidationError(
+            {"duration_unit": "Duration unit must be hours, days or weeks."}
         )
-    delta = scheduled_end - scheduled_start
-    if delta.total_seconds() <= 0:
-        # The shared schedule sanity check below reports the precise error.
-        return 1, "DAYS", scheduled_end, now
-    import math
+    if duration_value < 1 or duration_value > _MAX_DURATION[duration_unit]:
+        raise ValidationError(
+            {"duration_value": "This duration is outside the allowed range."}
+        )
+    computed_end = scheduled_start + _duration_delta(duration_value, duration_unit)
+    return duration_value, duration_unit, computed_end
 
-    derived_days = max(1, math.ceil(delta.total_seconds() / 86400))
-    return derived_days, "DAYS", scheduled_end, now
+
+def offer_expiry(*, scheduled_start, now=None):
+    """Server-derived quote expiry: never later than the work is due to start."""
+    now = now or timezone.now()
+    candidate = now + OFFER_VALIDITY
+    return candidate if candidate <= scheduled_start else scheduled_start
+
+
+def offer_summary(offer):
+    """One-line description used wherever the removed scope field was shown."""
+    parts = [f"Labour {money_text(int(offer.labour_amount * 100))}"]
+    items = list(offer.materials.all()) if offer.pk else []
+    if items:
+        parts.append(
+            f"{len(items)} item{'s' if len(items) != 1 else ''} "
+            f"({money_text(int(offer.materials_amount * 100))})"
+        )
+    elif offer.materials_included:
+        parts.append("materials included")
+    if offer.transport_amount:
+        parts.append(f"transport {money_text(int(offer.transport_amount * 100))}")
+    if offer.additional_amount:
+        parts.append(f"additional {money_text(int(offer.additional_amount * 100))}")
+    parts.append(f"total {money_text(int(offer.total_amount * 100))}")
+    return " · ".join(parts)
 
 
 def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
-    if not conversation.request_submitted or not conversation.artisan_id:
-        raise ValidationError("Complete the service request before creating an offer.")
+    # The artisan owns the agreement: quoting never waits for the customer to
+    # fill in a separate request form. The request row is completed from the
+    # offer itself (see _ensure_request_for_offer).
+    if not conversation.artisan_id:
+        raise ValidationError("This conversation has no artisan to quote the work.")
     if conversation.customer_id != user.id and conversation.artisan.user_id != user.id:
         raise PermissionDenied("You are not a participant in this conversation.")
-    offer_by_artisan = conversation.artisan.user_id == user.id
-    if offer_by_artisan and not description_currently_confirmed(conversation):
-        raise ValidationError(
-            {
-                "request": "Confirm the clarified scope with Description Done before sending an offer."
-                + (
-                    " The description changed, so confirm the revised scope again."
-                    if conversation.description_confirmed_at
-                    else ""
-                )
-            }
-        )
+    # Quoting is never gated on a separate "description confirmed" step: the chat
+    # and the request summary are the description. The artisan can price the work
+    # at any point in the conversation.
     material_rows = payload.get("materials")
     normalized_items = None
     labour = _quantize_money(payload.get("labour_amount"), "labour_amount")
@@ -1243,26 +1272,24 @@ def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
             )
     else:
         materials = _quantize_money(payload.get("materials_amount"), "materials_amount")
-    total = _quantize_money(payload.get("total_amount"), "total_amount")
-    if labour < 0 or materials < 0:
+    raw_total = payload.get("total_amount")
+    total = None if raw_total in (None, "") else _quantize_money(
+        raw_total, "total_amount"
+    )
+    if labour <= 0:
+        raise ValidationError(
+            {"labour_amount": "Enter the labour price for this work."}
+        )
+    if materials < 0:
         raise ValidationError("Labour and materials amounts cannot be negative.")
-    if total <= 0:
+    if total is not None and total <= 0:
         raise ValidationError(
             {"total_amount": "Total amount must be greater than zero."}
         )
-    for term in ("payment_terms", "exclusions", "workmanship_terms"):
-        if not str(payload.get(term, "")).strip():
-            raise ValidationError(
-                {term: "State this term explicitly, or explicitly state None."}
-            )
-    if materials and not str(payload.get("materials_details", "")).strip():
-        raise ValidationError(
-            {"materials_details": "Disclose the materials covered by this price."}
-        )
-    transport = Decimal(str(payload.get("transport_amount", 0))).quantize(
+    transport = Decimal(str(payload.get("transport_amount", 0) or 0)).quantize(
         Decimal("0.01")
     )
-    additional = Decimal(str(payload.get("additional_amount", 0))).quantize(
+    additional = Decimal(str(payload.get("additional_amount", 0) or 0)).quantize(
         Decimal("0.01")
     )
     if (
@@ -1273,12 +1300,34 @@ def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
     ):
         raise ValidationError("Extra charges must be finite and nonnegative.")
     if additional and not str(payload.get("additional_charge_details", "")).strip():
-        raise ValidationError("Disclose what each additional charge covers.")
-    if labour + materials + transport + additional != total:
+        raise ValidationError(
+            {"additional_charge_details": "Describe what the additional charge covers."}
+        )
+    # "Materials included in this price" means the materials are supplied from
+    # inside the labour price: the itemised subtotal is recorded for disclosure
+    # but is not charged a second time. Unchecked, materials are charged on top.
+    materials_included = bool(payload.get("materials_included", False))
+    expected_total = labour + transport + additional
+    if not materials_included:
+        expected_total += materials
+    if total is None:
+        # The payable total is a computed row, never a separate input: when the
+        # client does not send one the server derives it from the parts.
+        total = expected_total
+    elif expected_total != total:
         raise ValidationError(
             {
-                "total_amount": "Labour, materials, transport and disclosed additional charges must equal total."
+                "total_amount": (
+                    "Payable total must equal labour + transport + additional "
+                    "because the materials are included in the price."
+                    if materials_included
+                    else "Payable total must equal labour + materials + transport + additional."
+                )
             }
+        )
+    if total <= 0:
+        raise ValidationError(
+            {"total_amount": "Total amount must be greater than zero."}
         )
     if total != total.quantize(Decimal("1")):
         raise ValidationError(
@@ -1292,35 +1341,18 @@ def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
         )
     if payload.get("scheduled_start") in (None, ""):
         raise ValidationError({"scheduled_start": "This field is required."})
-    if payload.get("expires_at") in (None, ""):
-        raise ValidationError({"expires_at": "This field is required."})
     scheduled_start = payload["scheduled_start"]
-    expires_at = payload["expires_at"]
-    if scheduled_start.tzinfo is None or expires_at.tzinfo is None:
+    if scheduled_start.tzinfo is None:
         raise ValidationError("Offer datetimes must be timezone-aware.")
-    duration_value, duration_unit, scheduled_end, now = _resolve_offer_duration(
+    duration_value, duration_unit, scheduled_end = _resolve_offer_duration(
         payload, scheduled_start
     )
-    if scheduled_end.tzinfo is None:
-        raise ValidationError("Offer datetimes must be timezone-aware.")
+    now = timezone.now()
     if scheduled_start < now or scheduled_end <= scheduled_start:
         raise ValidationError(
             {"scheduled_start": "Schedule must be in the future and end after start."}
         )
-    if expires_at <= now:
-        raise ValidationError({"expires_at": "Offer expiry must be in the future."})
-    if expires_at > scheduled_start:
-        raise ValidationError(
-            {"expires_at": "Offer expiry must be on or before the scheduled start."}
-        )
-    scope = str(payload.get("scope", "")).strip()
-    if not scope or len(scope) > 5000:
-        raise ValidationError(
-            {"scope": "Offer scope is required and must be 5,000 characters or fewer."}
-        )
-    notes = str(payload.get("notes", "")).strip()
-    if len(notes) > 3000:
-        raise ValidationError({"notes": "Offer notes are too long."})
+    expires_at = offer_expiry(scheduled_start=scheduled_start, now=now)
     if parent_offer:
         if (
             parent_offer.conversation_id != conversation.id
@@ -1352,13 +1384,58 @@ def _validate_offer_common(*, conversation, user, payload, parent_offer=None):
         scheduled_start,
         scheduled_end,
         expires_at,
-        scope,
-        notes,
+        materials_included,
+        transport,
+        additional,
+        str(payload.get("additional_charge_details", "")).strip(),
         normalized_items,
         duration_value,
         duration_unit,
     )
 
+
+
+def _ensure_request_for_offer(conversation, *, scheduled_start):
+    """Complete the conversation's request row from the artisan's offer.
+
+    Customers no longer fill a request form: the chat is the request and the
+    itemised offer is the agreement. This fills the stored request with what is
+    already known (service/category chosen when the chat started) so acceptance,
+    booking and reporting keep working.
+    """
+    from services.models import ServiceRequest
+
+    request = ServiceRequest.objects.select_for_update().filter(
+        pk=conversation.service_request_id
+    ).first()
+    if request is None:
+        return None
+    draft = conversation.draft or {}
+    changed = []
+    if request.service_id is None and draft.get("service_id"):
+        request.service_id = draft["service_id"]
+        changed.append("service")
+    if request.category_id is None and draft.get("category_id"):
+        request.category_id = draft["category_id"]
+        changed.append("category")
+    if not request.description:
+        service = getattr(request, "service", None)
+        label = getattr(service, "service_name", "") or getattr(
+            getattr(request, "category", None), "name", ""
+        )
+        request.description = (
+            f"{label or 'Service work'} agreed with the artisan in chat."
+        )
+        changed.append("description")
+    if request.preferred_date is None and scheduled_start is not None:
+        request.preferred_date = timezone.localtime(scheduled_start).date()
+        changed.append("preferred_date")
+    if request.status == ServiceRequest.Status.DRAFT:
+        request.status = ServiceRequest.Status.OPEN
+        changed.append("status")
+    if changed:
+        request.save(update_fields=[*changed, "updated_at"])
+    return request
 
 def create_offer(
     *, conversation, user, payload, parent_offer_id=None, idempotency_key=None
@@ -1425,8 +1502,10 @@ def create_offer(
             scheduled_start,
             scheduled_end,
             expires_at,
-            scope,
-            notes,
+            materials_included,
+            transport,
+            additional,
+            additional_charge_details,
             normalized_items,
             duration_value,
             duration_unit,
@@ -1434,6 +1513,7 @@ def create_offer(
         if parent:
             parent.status = Offer.Status.COUNTERED
             parent.save(update_fields=["status", "updated_at"])
+        _ensure_request_for_offer(conversation, scheduled_start=scheduled_start)
         try:
             with transaction.atomic():
                 from django.db.models import Max
@@ -1446,25 +1526,17 @@ def create_offer(
                 ) + 1
                 offer = Offer.objects.create(
                     version=version,
-                    materials_details=payload.get("materials_details", ""),
                     conversation=conversation,
                     created_by=user,
                     parent_offer=parent,
                     labour_amount=labour,
                     materials_amount=materials,
                     total_amount=total,
-                    materials_included=bool(payload.get("materials_included", False)),
-                    scope=scope,
-                    notes=notes,
+                    materials_included=materials_included,
                     payload_hash=quote_payload_hash(payload),
-                    transport_amount=payload.get("transport_amount", 0),
-                    additional_amount=payload.get("additional_amount", 0),
-                    additional_charge_details=payload.get(
-                        "additional_charge_details", ""
-                    ),
-                    payment_terms=payload.get("payment_terms", ""),
-                    exclusions=payload.get("exclusions", ""),
-                    workmanship_terms=payload.get("workmanship_terms", ""),
+                    transport_amount=transport,
+                    additional_amount=additional,
+                    additional_charge_details=additional_charge_details,
                     scheduled_start=scheduled_start,
                     scheduled_end=scheduled_end,
                     duration_value=duration_value,
@@ -1527,6 +1599,20 @@ def create_offer(
             ),
         )
         conversation.save(update_fields=["updated_at"])
+        offer = (
+            Offer.objects.select_related(
+                "conversation__customer",
+                "conversation__artisan__user",
+                "conversation__service_request__category",
+                "created_by",
+            )
+            .prefetch_related("materials")
+            .get(pk=offer.pk)
+        )
+        notify_counter = bool(parent)
+    # Delivered after the offer is committed: a notification failure must never
+    # roll back a saved quote, and the caller can see whether it actually went.
+    notify_offer_received(offer, counter=notify_counter)
     return offer
 
 
@@ -1562,6 +1648,7 @@ def decline_offer(*, conversation, user, offer_id):
             metadata={"offer_id": str(offer.id)},
         )
         conversation.save(update_fields=["updated_at"])
+        transaction.on_commit(lambda offer=offer: notify_offer_resolved(offer, accepted=False))
     return offer
 
 
@@ -1624,6 +1711,9 @@ def accept_offer(*, conversation, user, offer_id):
             raise ValidationError(
                 "Complete the service request before accepting an offer."
             )
+        if service_request.status == ServiceRequest.Status.DRAFT:
+            service_request.status = ServiceRequest.Status.OPEN
+            service_request.save(update_fields=["status", "updated_at"])
         if service_request.status != ServiceRequest.Status.OPEN:
             raise ValidationError("This request is no longer open for booking.")
         artisan = conversation.artisan
@@ -1634,18 +1724,22 @@ def accept_offer(*, conversation, user, offer_id):
             or artisan.verification.verification_status != "VERIFIED"
         ):
             raise PermissionDenied("The artisan is no longer eligible for booking.")
-        if (
-            not ArtisanService.objects.filter(
-                artisan=artisan,
-                service__category=service_request.category,
-                service__is_active=True,
-            )
-            .filter(Q(location=service_request.location) | Q(location__isnull=True))
-            .exists()
-        ):
-            raise PermissionDenied(
-                "The artisan no longer provides this service in the requested location."
-            )
+        # Only check the catalogue when the request actually named a category and
+        # a location; a chat-first agreement carries neither, and the artisan has
+        # already quoted the work in this conversation.
+        if service_request.category_id and service_request.location_id:
+            if (
+                not ArtisanService.objects.filter(
+                    artisan=artisan,
+                    service__category=service_request.category,
+                    service__is_active=True,
+                )
+                .filter(Q(location=service_request.location) | Q(location__isnull=True))
+                .exists()
+            ):
+                raise PermissionDenied(
+                    "The artisan no longer provides this service in the requested location."
+                )
         if Booking.objects.filter(
             request=service_request,
             status__in=[
@@ -1770,6 +1864,9 @@ def accept_offer(*, conversation, user, offer_id):
             robust=True,
         )
         conversation.save(update_fields=["updated_at"])
+        transaction.on_commit(
+            lambda offer=offer: notify_offer_resolved(offer, accepted=True), robust=True
+        )
     return booking, payment, offer
 
 
@@ -1830,6 +1927,41 @@ def mark_conversation_read(*, conversation, user, last_message_id=None):
             conversation=conversation, created_at__gt=state.last_read_at
         )
         .exclude(sender=user)
+        .count()
+    )
+
+
+def unread_message_total(*, user):
+    """Total unread messages addressed to ``user`` across every conversation.
+
+    This is the message badge only: it never includes workflow notifications.
+    It uses exactly the same per-user read watermark as the inbox list and as
+    ``mark_conversation_read``, so polling cannot double count and a read can
+    only clear the same messages it marked.
+    """
+    conversation_ids = list(
+        Conversation.objects.filter(Q(customer=user) | Q(artisan__user=user))
+        .values_list("id", flat=True)
+    )
+    if not conversation_ids:
+        return 0
+    read_map = {
+        row.conversation_id: row.last_read_at
+        for row in ConversationReadState.objects.filter(
+            user=user, conversation_id__in=conversation_ids
+        )
+    }
+    unread_filter = Q()
+    for conversation_id in conversation_ids:
+        read_at = read_map.get(conversation_id)
+        message_filter = Q(conversation_id=conversation_id)
+        if read_at is not None:
+            message_filter &= Q(created_at__gt=read_at)
+        unread_filter |= message_filter
+    return (
+        Message.objects.filter(unread_filter)
+        .exclude(sender=user)
+        .values("id")
         .count()
     )
 
@@ -1986,29 +2118,19 @@ def _available_actions(*, conversation, user, booking=None, offer=None):
     ):
         return actions
     if not booking:
-        scope_confirmed = description_currently_confirmed(conversation)
         if is_artisan:
-            if not scope_confirmed:
-                actions.append("CONFIRM_DESCRIPTION")
-            if (
-                offer
-                and offer.status == Offer.Status.REVISION_REQUESTED
-                and scope_confirmed
-            ):
+            if offer and offer.status == Offer.Status.REVISION_REQUESTED:
                 actions.append("REVISE_OFFER")
             if (
                 offer
                 and offer.created_by_id == conversation.customer_id
                 and offer.status == Offer.Status.PROPOSED
                 and offer.expires_at > now
-                and scope_confirmed
             ):
                 actions.append("COUNTER_OFFER")
-            elif (
-                not offer
-                and conversation.request_submitted
-                and scope_confirmed
-            ):
+            elif not offer:
+                # Booking is the artisan's job: they can always quote, with no
+                # customer-filled request form in the way.
                 actions.append("SEND_OFFER")
         if (
             is_customer
@@ -2027,6 +2149,7 @@ def _available_actions(*, conversation, user, booking=None, offer=None):
             is_customer
             and getattr(booking, "escrow_payment", None)
             and booking.escrow_payment.status == "PAYMENT_PENDING"
+            and not booking.escrow_payment.link_voided_at
         ):
             actions.append("PAY")
         if (
@@ -2062,12 +2185,26 @@ def _available_actions(*, conversation, user, booking=None, offer=None):
     ):
         if "DISPUTE" not in actions:
             actions.append("DISPUTE")
-        actions.append("CANCEL")
+        # Cancelling is only offered while no money is committed: once escrow
+        # holds funds the refund/dispute process owns the booking and the API
+        # would reject a plain cancellation anyway.
+        payment = getattr(booking, "escrow_payment", None)
+        committed = bool(
+            payment and payment.status in COMMITTED_PAYMENT_STATUSES
+        )
+        if booking.status in {Booking.Status.REQUESTED, Booking.Status.ACCEPTED} and not committed:
+            actions.append("CANCEL")
     if booking.status == Booking.Status.COMPLETED and is_customer:
         from reviews.models import Review
 
         if not Review.objects.filter(booking=booking).exists():
             actions.append("REVIEW")
+    if booking.status == Booking.Status.CANCELLED and is_artisan:
+        # The request is reopened by the cancellation, so the artisan can put the
+        # same agreement (or an edited one) back in front of the customer.
+        actions.append("SEND_OFFER")
+        if conversation.offers.filter(status=Offer.Status.ACCEPTED).exists():
+            actions.append("RESEND_AGREEMENT")
     return list(dict.fromkeys(actions))
 
 
@@ -2241,6 +2378,9 @@ def request_quote_revision(*, conversation, user, offer_id):
             event_key=f"offer:{offer.pk}:revision-requested",
             body="The customer requested a revised formal quote. No new amount has been accepted.",
         )
+        transaction.on_commit(
+            lambda offer=offer: notify_offer_revision_requested(offer), robust=True
+        )
         return offer
 
 
@@ -2258,18 +2398,12 @@ def quote_payload_hash(payload):
             "total_amount",
         )
     }
-    for key in (
-        "scope",
-        "notes",
-        "materials_details",
-        "additional_charge_details",
-        "payment_terms",
-        "exclusions",
-        "workmanship_terms",
-    ):
-        data[key] = str(payload.get(key, "")).strip()
-    for key in ("scheduled_start", "scheduled_end", "expires_at"):
-        data[key] = payload.get(key)
+    data["additional_charge_details"] = str(
+        payload.get("additional_charge_details", "")
+    ).strip()
+    # Only the fields the interface still collects take part in the hash, so the
+    # same key with the same terms is always recognised as the same submission.
+    data["scheduled_start"] = payload.get("scheduled_start")
     data["duration_value"] = str(payload.get("duration_value") or "")
     data["duration_unit"] = str(payload.get("duration_unit") or "").upper()
     items = payload.get("materials") or []

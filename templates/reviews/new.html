@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+{% block title %}How was the service? · Artisan Market{% endblock %}
+{% block content %}
+<section class="review-shell">
+  <form method="post" class="review-card" data-review-form>
+    {% csrf_token %}
+    <input type="hidden" name="booking" value="{{ form.booking.value|default:'' }}">
+
+    <header class="review-head">
+      <span class="review-eyebrow">Your service</span>
+      <span class="review-state">Completed</span>
+    </header>
+
+    <h1 class="review-title">How was the work?</h1>
+    <p class="review-sub">Tap a star. Anything you write is optional and helps the next customer.</p>
+
+    <fieldset class="review-stars" aria-label="Rating out of five">
+      {% for value in star_values %}
+      <input class="review-star-input" type="radio" name="rating" id="rating-{{ value }}" value="{{ value }}" {% if form.rating.value|stringformat:'s' == value|stringformat:'s' %}checked{% endif %} required>
+      <label class="review-star" for="rating-{{ value }}" data-value="{{ value }}" title="{{ value }} out of 5" aria-label="{{ value }} out of 5">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.8 2.85 5.78 6.38.93-4.62 4.5 1.09 6.35L12 17.36l-5.7 3 1.09-6.35-4.62-4.5 6.38-.93z"/></svg>
+      </label>
+      {% endfor %}
+    </fieldset>
+    <p class="review-stars-copy" data-review-copy>Tap a star</p>
+
+    {% if form.rating.errors or form.comment.errors or form.booking.errors %}
+    <p class="review-error">{{ form.rating.errors|striptags }} {{ form.comment.errors|striptags }} {{ form.booking.errors|striptags }}</p>
+    {% endif %}
+
+    <label class="review-field">
+      <span>Anything to add? <em>(optional)</em></span>
+      <textarea name="comment" rows="3" maxlength="2000" placeholder="Punctual, tidy, explained the fault…">{{ form.comment.value|default:'' }}</textarea>
+    </label>
+
+    <button class="button button-primary review-submit" type="submit">Send review</button>
+    <a class="review-skip" href="{% url 'bookings' %}">Not now</a>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const form = document.querySelector("[data-review-form]");
+  const copy = document.querySelector("[data-review-copy]");
+  if (!form) return;
+  const stars = Array.from(form.querySelectorAll(".review-star"));
+  const phrases = { 1: "Not good", 2: "Below expectations", 3: "Fair", 4: "Good", 5: "Excellent" };
+  const paint = (value) => {
+    stars.forEach((star) => {
+      star.classList.toggle("is-on", Number(star.dataset.value) <= value);
+    });
+  };
+  const showCopy = (value) => {
+    copy.textContent = phrases[value] || "Tap a star";
+    copy.setAttribute("data-filled", value ? "true" : "false");
+  };
+  form.querySelectorAll("input[name=rating]").forEach((input) => {
+    input.addEventListener("change", () => {
+      paint(Number(input.value));
+      showCopy(Number(input.value));
+    });
+  });
+  stars.forEach((star) => {
+    star.addEventListener("mouseenter", () => paint(Number(star.dataset.value)));
+    star.addEventListener("mouseleave", () => {
+      const checked = form.querySelector("input[name=rating]:checked");
+      paint(checked ? Number(checked.value) : 0);
+    });
+  });
+  const checked = form.querySelector("input[name=rating]:checked");
+  paint(checked ? Number(checked.value) : 0);
+  showCopy(checked ? Number(checked.value) : 0);
+})();
+</script>
+{% endblock %}

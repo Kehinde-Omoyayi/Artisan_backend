@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Manage support roles · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page support-role-edit-page">
+  <a class="support-back-link" href="{% url 'support-staff' %}"><span aria-hidden="true">←</span> Support team</a>
+  <header class="support-page-hero support-page-hero--compact" data-artisan-reveal data-motion="left"><div><span class="support-eyebrow">ADMINISTRATOR ACCESS CONTROL · STAFF #{{ user_id }}</span><h1>Manage support roles</h1><p>Update the minimum set of support permissions this teammate needs. Role changes are saved through the protected API.</p></div></header>
+  <div class="support-action-layout">
+    <article class="support-panel support-action-form-panel" data-artisan-reveal data-motion="up">
+      <div class="support-team-identity"><span class="support-team-avatar" aria-hidden="true">{{ staff_member.name|slice:':1'|upper }}</span><div><h2>{{ staff_member.name }}</h2><span>{{ staff_member.email }}</span></div></div>
+      <form method="post" class="support-stacked-form support-role-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+        {% for field in form %}
+          <fieldset class="support-role-fieldset {% if field.errors %}has-error{% endif %}"><legend>{{ field.label }}</legend><p class="support-role-fieldset-help">Select one or more groups. Each group grants the corresponding API permissions.</p>{{ field }}{% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}</fieldset>
+        {% endfor %}
+        <div class="support-form-actions"><button class="button button-primary" type="submit">Save role assignments <span aria-hidden="true">→</span></button><a class="button button-secondary" href="{% url 'support-staff' %}">Cancel</a></div>
+      </form>
+    </article>
+    <aside class="support-panel support-role-guide"><span class="support-eyebrow">ROLE GUIDE</span><h2>What each role can do</h2>
+      <dl><div><dt>Support agent</dt><dd>Claim and work cases, add internal notes, and request refunds.</dd></div><div><dt>Support supervisor</dt><dd>Assign and resolve cases, approve or reject refund requests, and view the staff directory.</dd></div><div><dt>Support finance</dt><dd>View finance-only provider detail, execute approved refunds, and reconcile provider outcomes.</dd></div><div><dt>Support admin</dt><dd>Manage support roles and perform all support and financial actions.</dd></div></dl>
+      <p class="support-guidance-note">The API enforces these permissions independently of this page.</p>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

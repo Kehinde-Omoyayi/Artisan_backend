@@ -66,10 +66,15 @@ class AdditionalOrderPaymentSummarySerializer(serializers.Serializer):
         request = self.context.get("request")
         if not request or obj.customer_id != request.user.id:
             return None
-        payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
-        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        link = data.get("link")
-        return str(link) if link else None
+        from payments.services import checkout_link_is_current, checkout_link_state
+
+        # A link that has expired, or that was minted before checkout was
+        # restricted to card and bank transfer, must never be handed to the page:
+        # the payer would land on the old PayPal screen. Withholding it makes the
+        # UI ask for a fresh checkout instead.
+        if not checkout_link_is_current(obj):
+            return None
+        return checkout_link_state(obj)["link"] or None
 
 
 class AdditionalOrderSerializer(serializers.ModelSerializer):

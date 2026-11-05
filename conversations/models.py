@@ -273,17 +273,14 @@ class Offer(models.Model):
     materials_amount = models.DecimalField(max_digits=12, decimal_places=2)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     version = models.PositiveIntegerField(default=1)
-    materials_details = models.TextField(max_length=1500, blank=True)
     transport_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     additional_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     additional_charge_details = models.TextField(max_length=1500, blank=True)
-    payment_terms = models.TextField(max_length=1500, blank=True)
-    exclusions = models.TextField(max_length=1500, blank=True)
-    workmanship_terms = models.TextField(max_length=1500, blank=True)
     payload_hash = models.CharField(max_length=64, blank=True)
+    # "Materials included in this price": the itemised materials are supplied
+    # from within the labour price, so the materials subtotal is recorded for
+    # disclosure but never added again to the payable total.
     materials_included = models.BooleanField(default=False)
-    scope = models.TextField(max_length=5000)
-    notes = models.TextField(max_length=3000, blank=True)
     scheduled_start = models.DateTimeField()
     scheduled_end = models.DateTimeField()
     # Canonical agreed duration that drives the service countdown once the
@@ -294,6 +291,8 @@ class Offer(models.Model):
         choices=[("HOURS", "Hours"), ("DAYS", "Days"), ("WEEKS", "Weeks")],
         default="DAYS",
     )
+    # Derived server-side from the schedule; the artisan is never asked for an
+    # expiry date. Kept so an old quote still stops being acceptable.
     expires_at = models.DateTimeField()
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PROPOSED, db_index=True
@@ -318,12 +317,24 @@ class Offer(models.Model):
             models.CheckConstraint(
                 condition=Q(total_amount__gt=0), name="offer_total_positive"
             ),
+            # Materials are charged on top unless they are declared included in
+            # the labour price, in which case the itemised subtotal is recorded
+            # for disclosure but never added to the payable total.
             models.CheckConstraint(
-                condition=Q(
-                    total_amount=models.F("labour_amount")
-                    + models.F("materials_amount")
-                    + models.F("transport_amount")
-                    + models.F("additional_amount")
+                condition=(
+                    Q(
+                        materials_included=True,
+                        total_amount=models.F("labour_amount")
+                        + models.F("transport_amount")
+                        + models.F("additional_amount"),
+                    )
+                    | Q(
+                        materials_included=False,
+                        total_amount=models.F("labour_amount")
+                        + models.F("materials_amount")
+                        + models.F("transport_amount")
+                        + models.F("additional_amount"),
+                    )
                 ),
                 name="offer_total_matches_parts",
             ),
@@ -355,20 +366,14 @@ class Offer(models.Model):
     }
     _COMMERCIAL_FIELDS = (
         "version",
-        "materials_details",
         "transport_amount",
         "additional_amount",
         "additional_charge_details",
-        "payment_terms",
-        "exclusions",
-        "workmanship_terms",
         "payload_hash",
         "labour_amount",
         "materials_amount",
         "total_amount",
         "materials_included",
-        "scope",
-        "notes",
         "scheduled_start",
         "scheduled_end",
         "duration_value",

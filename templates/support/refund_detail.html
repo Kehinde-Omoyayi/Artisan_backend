@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Refund {{ refund.reference }} · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page support-refund-detail-page" data-artisan-page="support-refund-detail">
+  <a class="support-back-link" href="{% if support_capabilities.can_view_refunds %}{% url 'support-refunds' %}{% else %}{% url 'support-cases' %}{% endif %}"><span aria-hidden="true">←</span> {% if support_capabilities.can_view_refunds %}Refund operations{% else %}Support cases{% endif %}</a>
+  <header class="support-refund-detail-hero">
+    <div class="support-refund-detail-main-title"><span class="support-eyebrow">REFUND RECORD · {{ refund.reference }}</span><h1>{% if refund.action_type == 'PARTIAL_REFUND' %}Partial refund{% else %}Refund request{% endif %}</h1><p>Linked to case <a href="{% url 'support-case-detail' pk=refund.case %}">{{ refund.case }}</a> · Payment {{ refund.payment }}</p></div>
+    <div class="support-refund-amount-card"><span>Refund amount</span><strong>{{ refund.amount|ngn }}</strong><span class="status-pill {{ refund.status|status_class }}">{{ refund.status|humanize_code }}</span></div>
+  </header>
+
+  <section class="support-panel support-refund-progress-panel" data-artisan-reveal data-motion="up" aria-labelledby="refund-progress-heading">
+    <div class="support-panel-heading"><div><span class="support-eyebrow">REFUND LIFECYCLE</span><h2 id="refund-progress-heading">Request to provider outcome</h2></div><span class="support-refund-reference">{{ refund.reference }}</span></div>
+    <ol class="support-refund-stepper" aria-label="Refund progress">
+      <li class="{% if refund.status != 'REQUESTED' %}is-complete{% else %}is-current{% endif %}"><span class="support-step-number">01</span><div><strong>Requested</strong><small>{% if refund.requested_at %}{{ refund.requested_at|date:'j M Y, g:i a' }}{% else %}Awaiting record{% endif %}</small></div></li>
+      <li class="{% if refund.status == 'APPROVED' or refund.status == 'PROCESSING' or refund.status == 'PROCESSING_UNKNOWN' or refund.status == 'SUCCEEDED' %}is-complete{% elif refund.status == 'REQUESTED' %}is-next{% else %}is-terminal{% endif %}"><span class="support-step-number">02</span><div><strong>Independent approval</strong><small>{% if refund.approved_at %}{{ refund.approved_at|date:'j M Y, g:i a' }}{% elif refund.status == 'REJECTED' %}Rejected{% else %}Supervisor / admin{% endif %}</small></div></li>
+      <li class="{% if refund.status == 'PROCESSING' or refund.status == 'PROCESSING_UNKNOWN' %}is-current{% elif refund.status == 'SUCCEEDED' %}is-complete{% elif refund.status == 'APPROVED' %}is-next{% else %}is-terminal{% endif %}"><span class="support-step-number">03</span><div><strong>Finance submission</strong><small>{% if refund.submitted_at %}{{ refund.submitted_at|date:'j M Y, g:i a' }}{% elif refund.status == 'PROCESSING_UNKNOWN' %}Outcome needs reconciliation{% else %}Finance role required{% endif %}</small></div></li>
+      <li class="{% if refund.status == 'SUCCEEDED' %}is-complete is-current{% elif refund.status == 'FAILED' or refund.status == 'REJECTED' %}is-terminal{% else %}is-next{% endif %}"><span class="support-step-number">04</span><div><strong>Provider outcome</strong><small>{% if refund.status == 'SUCCEEDED' %}Completed{% elif refund.status == 'FAILED' %}Failed{% elif refund.status == 'REJECTED' %}Request rejected{% else %}Awaiting confirmation{% endif %}</small></div></li>
+    </ol>
+    {% if refund.status == 'PROCESSING_UNKNOWN' %}<div class="support-unknown-outcome" role="alert"><span aria-hidden="true">!</span><p><strong>Provider outcome is unknown.</strong> Reconcile the provider record before any retry. Do not submit a second refund while the status is uncertain.</p></div>{% endif %}
+  </section>
+
+  <div class="support-refund-detail-grid">
+    <div class="support-refund-detail-main-column">
+      <section class="support-panel" data-artisan-reveal data-motion="up" aria-labelledby="refund-details-heading">
+        <div class="support-panel-heading"><div><span class="support-eyebrow">RECORD DETAILS</span><h2 id="refund-details-heading">Request information</h2></div><span class="support-panel-icon" aria-hidden="true">₦</span></div>
+        <dl class="support-refund-facts">
+          <div><dt>Reference</dt><dd>{{ refund.reference }}</dd></div>
+          <div><dt>Case</dt><dd><a href="{% url 'support-case-detail' pk=refund.case %}">{{ refund.case }}</a></dd></div>
+          <div><dt>Payment</dt><dd class="support-id-value">{{ refund.payment }}</dd></div>
+          <div><dt>Request type</dt><dd>{% if refund.action_type == 'PARTIAL_REFUND' %}Partial refund{% else %}Full refund{% endif %}</dd></div>
+          <div><dt>Amount</dt><dd class="support-money-value">{{ refund.amount|ngn }}</dd></div>
+          <div><dt>Requested</dt><dd>{% if refund.requested_at %}{{ refund.requested_at|date:'j M Y, g:i a' }}{% else %}—{% endif %}</dd></div>
+          <div><dt>Requested by</dt><dd>{{ refund.requested_by_name|default:'—' }}</dd></div>
+          <div><dt>Approved by</dt><dd>{{ refund.approved_by_name|default:'—' }}{% if refund.approved_at %}<small>{{ refund.approved_at|date:'j M Y, g:i a' }}</small>{% endif %}</dd></div>
+          <div><dt>Executed by</dt><dd>{{ refund.executed_by_name|default:'—' }}{% if refund.submitted_at %}<small>{{ refund.submitted_at|date:'j M Y, g:i a' }}</small>{% endif %}</dd></div>
+          {% if refund.provider_status %}<div><dt>Provider status</dt><dd>{{ refund.provider_status|humanize_code }}</dd></div>{% endif %}
+        </dl>
+        {% if refund.reason %}<div class="support-refund-reason"><span class="support-eyebrow">REQUEST REASON</span><p>{{ refund.reason|linebreaksbr }}</p></div>{% endif %}
+        {% if refund.failure_reason %}<div class="support-refund-failure" role="status"><strong>Failure / rejection note</strong><p>{{ refund.failure_reason|linebreaksbr }}</p></div>{% endif %}
+      </section>
+
+      <section class="support-panel" data-artisan-reveal data-motion="up" aria-labelledby="refund-events-heading">
+        <div class="support-panel-heading"><div><span class="support-eyebrow">CASE AUDIT TRAIL</span><h2 id="refund-events-heading">Refund events</h2></div><span class="support-total-badge">{{ refund_events|length }} event{{ refund_events|length|pluralize }}</span></div>
+        <div class="support-refund-events">
+          {% for event in refund_events %}
+          <article class="support-refund-event"><span class="support-event-marker" aria-hidden="true">{% if 'REJECT' in event.action or 'FAIL' in event.action %}!{% elif 'SUCC' in event.action %}✓{% else %}·{% endif %}</span><div><div class="support-refund-event-heading"><strong>{{ event.action|humanize_code }}</strong><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'j M Y, g:i a' }}</time></div><small>{{ event.performed_by_name|default:'Support workflow' }}</small>{% if event.note %}<p>{{ event.note|linebreaksbr }}</p>{% endif %}</div></article>
+          {% empty %}<div class="support-empty support-empty--compact"><strong>No public refund event is available yet</strong><p>The authoritative financial action record and provider status are shown above.</p></div>{% endfor %}
+        </div>
+      </section>
+    </div>
+
+    <aside class="support-refund-detail-sidebar" aria-label="Refund actions and controls">
+      <section class="support-panel support-refund-action-panel" data-artisan-reveal data-motion="up">
+        <span class="support-eyebrow">ROLE-AWARE ACTIONS</span><h2>Next step</h2>
+        {% if can_approve_refund or can_reject_refund or can_execute_refund or can_reconcile_refund %}
+        <div class="support-refund-action-list">
+          {% if can_approve_refund %}<a class="button button-primary full" href="{% url 'support-refund-approve' refund_id=refund.id %}">Approve request <span aria-hidden="true">→</span></a>{% endif %}
+          {% if can_reject_refund %}<a class="button button-secondary full" href="{% url 'support-refund-reject' refund_id=refund.id %}">Reject request</a>{% endif %}
+          {% if can_execute_refund %}<a class="button button-primary full" href="{% url 'support-refund-execute' refund_id=refund.id %}">Execute through provider <span aria-hidden="true">→</span></a>{% endif %}
+          {% if can_reconcile_refund %}<a class="button button-secondary full" href="{% url 'support-refund-reconcile' refund_id=refund.id %}">Reconcile provider status</a>{% endif %}
+        </div>
+        {% elif support_capabilities.is_support_staff %}<div class="support-no-action"><span aria-hidden="true">✓</span><p>No action is available for your role at this stage. The API will continue to enforce separation of duties.</p></div>
+        {% else %}<div class="support-no-action"><span aria-hidden="true">i</span><p>This refund is view-only. If you need help, send a message in the linked support case.</p></div>{% endif %}
+      </section>
+
+      <section class="support-panel support-separation-card" data-artisan-reveal data-motion="up">
+        <span class="support-eyebrow">FINANCIAL SAFEGUARD</span><h2>Two-person control</h2>
+        <ul class="support-check-list"><li><span aria-hidden="true">✓</span><span>Approval and finance execution are separate role permissions.</span></li><li><span aria-hidden="true">✓</span><span>The requester cannot approve their own refund.</span></li><li><span aria-hidden="true">✓</span><span>The approver cannot execute the same refund.</span></li></ul>
+        <p class="support-guidance-note">Role labels only shape this screen; permission checks remain server-side.</p>
+      </section>
+
+      {% if support_capabilities.can_view_finance and refund.provider_payload %}
+      <details class="support-panel support-provider-details"><summary><span class="support-eyebrow">FINANCE ONLY · PROVIDER RESPONSE</span><strong>View provider details</strong></summary><pre>{{ refund.provider_payload|pprint }}</pre>{% if refund.provider_refund_id %}<p><strong>Provider refund ID:</strong> {{ refund.provider_refund_id }}</p>{% endif %}{% if refund.provider_ref %}<p><strong>Provider reference:</strong> {{ refund.provider_ref }}</p>{% endif %}</details>
+      {% endif %}
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

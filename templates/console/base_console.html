@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+
+{% block title %}{{ console_title|default:'Manager Console' }} · Artisan Market{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% asset 'css/console.css' %}">
+{% endblock %}
+
+{% block main_class %}page-shell console-shell{% endblock %}
+
+{% block content %}
+<section class="console-head">
+  <div class="console-head__copy">
+    <p class="console-eyebrow">Manager Console</p>
+    <h1>{{ console_title|default:'Management overview' }}</h1>
+    <p class="console-sub">{{ console_subtitle|default:'Every figure on this page is read from the platform database through the manager API.' }}</p>
+  </div>
+  <div class="console-head__identity">
+    <p><strong>{{ console_session.name|default:console_session.email }}</strong></p>
+    <p class="console-muted">{{ console_session.role.name|default:'Manager' }}{% if console_session.totp_enrolled %} · authenticator app active{% elif console_session.email_otp_enabled %} · email code second factor{% else %} · no second factor enrolled{% endif %}</p>
+  </div>
+</section>
+
+<nav class="console-nav" aria-label="Manager console sections">
+  {% for item in console_nav %}
+    <a href="{% url item.url_name %}" class="console-nav__link{% if console_section == item.url_name %} is-active{% endif %}">{{ item.label }}</a>
+  {% endfor %}
+</nav>
+
+{% if show_console_filters %}
+  {% include 'console/partials/filters.html' %}
+{% endif %}
+
+{% if console_range.start %}
+  <p class="console-range">
+    Showing <strong>{{ console_range.label }}</strong>
+    ({{ console_range.start|human_date }} → {{ console_range.end|human_date }})
+    {% if payload.served_from_cache %}<span class="console-chip">cached view</span>{% endif %}
+    {% if freshness.events_last_recorded_at %}<span class="console-muted">Events last written {{ freshness.events_last_recorded_at|human_datetime }}</span>{% endif %}
+  </p>
+{% endif %}
+
+{% block console_body %}{% endblock %}
+
+<section class="console-meta">
+  <p class="console-muted">
+    Generated {% if payload.generated_at %}{{ payload.generated_at|human_datetime }}{% else %}—{% endif %}.
+    A metric is only shown when the API returned it; nothing on this page is estimated in the browser.
+  </p>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% asset 'js/console.js' %}" defer></script>
+{% endblock %}

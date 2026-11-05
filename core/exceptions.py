@@ -9,13 +9,40 @@ from rest_framework.views import exception_handler as drf_exception_handler
 logger = logging.getLogger(__name__)
 
 
+def _first_field_message(data):
+    """The first human sentence inside a field-error mapping.
+
+    DRF reports ``{"code": "That authenticator code is not valid."}``; without this
+    the caller would only see "Validation failed." and have no idea what to fix.
+    """
+    for value in data.values():
+        if isinstance(value, str) and value.strip() and not value.strip().isupper():
+            return value.strip()
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                if isinstance(item, str) and item.strip():
+                    return item.strip()
+        if isinstance(value, dict):
+            nested = _first_field_message(value)
+            if nested:
+                return nested
+    return ""
+
+
 def _message(data, status_code):
     if isinstance(data, dict):
         for key in ("message", "detail", "error"):
             value = data.get(key)
             if isinstance(value, str) and value.strip(): return value.strip()
+        field_message = _first_field_message(data)
+        if field_message:
+            return field_message
         return "Validation failed." if status_code == 400 else "The request could not be completed."
-    if isinstance(data, list): return "Validation failed." if status_code == 400 else "The request could not be completed."
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, str) and item.strip():
+                return item.strip()
+        return "Validation failed." if status_code == 400 else "The request could not be completed."
     return str(data or "The request could not be completed.")
 
 

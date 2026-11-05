@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Register staff recovery questions · Artisan Market{% endblock %}
+{% block content %}
+{% include 'partials/auth_flow_page.html' with flow_kind='staff-security-setup' title='Register your staff recovery questions' intro='Use the one-time code sent after your manager authorized setup, then register three different questions and answers. Answers are stored as one-way hashes.' page_eyebrow='Staff account security' flow_kicker='SECURITY SETUP' flow_side_title='Your answers are private and cannot be recovered by staff.' flow_side_copy='Choose questions you can answer consistently. A future staff reset requires the valid email code and all three registered answers.' active_step=2 step_total=2 step_one='Manager-authorized code' step_two='Register three answers' submit_label='Save security questions' cancel_url='/auth/login/' %}
+{% endblock %}

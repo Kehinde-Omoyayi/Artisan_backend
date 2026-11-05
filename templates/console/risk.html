@@ -1,0 +1,50 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Risk monitoring · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Signals</h2>
+  <table class="console-table">
+    <thead><tr><th>Signal</th><th>Count</th><th>Severity</th></tr></thead>
+    <tbody>
+    {% for signal in payload.signals %}
+      <tr><td>{{ signal.label }}</td><td>{{ signal.count }}</td><td><span class="tag tag--{{ signal.severity|lower }}">{{ signal.severity }}</span></td></tr>
+    {% empty %}
+      <tr><td colspan="3">No risk signal crossed its threshold in this range.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="console-muted">{{ payload.policy }}</p>
+</section>
+<section class="console-block">
+  <h2>Human reviews</h2>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead><tr><th>Signal</th><th>Severity</th><th>Status</th><th>Summary</th><th>Opened</th><th>Decision</th></tr></thead>
+      <tbody>
+      {% for review in reviews %}
+        <tr>
+          <td>{{ review.signal }}</td><td>{{ review.severity }}</td><td>{{ review.status }}</td>
+          <td>{{ review.summary }}</td><td>{{ review.created_at|human_datetime }}</td>
+          <td>
+            <form method="post" action="{% url 'console-risk-decision' review.id %}" class="inline-form">
+              {% csrf_token %}
+              <select name="status" aria-label="Review outcome">
+                <option value="IN_REVIEW">In review</option>
+                <option value="CLEARED">Cleared</option>
+                <option value="RESTRICTED">Restricted</option>
+                <option value="ESCALATED">Escalated</option>
+              </select>
+              <input type="text" name="notes" placeholder="Decision note" maxlength="300">
+              <button class="console-button console-button--quiet" type="submit">Record</button>
+            </form>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6">No open risk reviews. Nothing is suspended automatically.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

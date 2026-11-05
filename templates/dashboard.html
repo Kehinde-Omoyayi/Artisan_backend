@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Dashboard · Artisan Market{% endblock %}
+{% block body_class %}landing-page authenticated-home-page{% endblock %}
+{% block main_class %}landing-main authenticated-home-main{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/landing.css' %}">
+<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">
+<link rel="stylesheet" href="{% asset 'css/authenticated-home.css' %}">
+{% endblock %}
+{% block content %}
+<section class="artisan-motion-page workspace-page marketplace-dashboard-page" data-artisan-page="marketplace-dashboard" data-tour-target="transactions">
+  {% include 'partials/authenticated_home_hero.html' %}
+
+  {% if role == 'artisan' %}
+    <section class="workspace-metric-grid" aria-label="Artisan account overview">
+      <div class="workspace-metric-card" data-artisan-reveal data-motion="up"><span class="workspace-metric-icon" aria-hidden="true">★</span><span class="workspace-metric-label">Rating</span><strong>{{ profile.average_rating|default:0|floatformat:1 }}</strong><span class="workspace-metric-foot">Average customer rating</span></div>
+      <div class="workspace-metric-card" data-artisan-reveal data-motion="up"><span class="workspace-metric-icon" aria-hidden="true">✓</span><span class="workspace-metric-label">Completion</span><strong>{{ profile.completion_rate|default:0|floatformat:1 }}<small>%</small></strong><span class="workspace-metric-foot">Completed bookings</span></div>
+      <div class="workspace-metric-card" data-artisan-reveal data-motion="up"><span class="workspace-metric-icon" aria-hidden="true">↘</span><span class="workspace-metric-label">Cancellation</span><strong>{{ profile.cancellation_rate|default:0|floatformat:1 }}<small>%</small></strong><span class="workspace-metric-foot">Artisan cancellation rate</span></div>
+      <a class="workspace-metric-card" href="{% url 'artisan-services' %}" data-artisan-reveal data-motion="up"><span class="workspace-metric-icon" aria-hidden="true">✦</span><span class="workspace-metric-label">Services</span><strong>{{ services|length }}</strong><span class="workspace-metric-foot">Manage offerings <span aria-hidden="true">↗</span></span></a>
+      <a class="workspace-metric-card" href="{% url 'artisan-requests' %}" data-artisan-reveal data-motion="up"><span class="workspace-metric-icon" aria-hidden="true">⌕</span><span class="workspace-metric-label">Matching requests</span><strong>{{ request_total }}</strong><span class="workspace-metric-foot">Open request inbox <span aria-hidden="true">↗</span></span></a>
+      <a class="workspace-metric-card" href="{% url 'notifications-page' %}" data-artisan-reveal data-motion="up"><span class="workspace-metric-icon" aria-hidden="true">◌</span><span class="workspace-metric-label">Unread notifications</span><strong>{{ unread_notification_count|default:0 }}</strong><span class="workspace-metric-foot">{{ notification_total }} recent updates <span aria-hidden="true">↗</span></span></a>
+      <a class="workspace-metric-card" href="{% url 'bookings' %}" data-artisan-reveal data-motion="up"><span class="workspace-metric-icon" aria-hidden="true">◷</span><span class="workspace-metric-label">Bookings</span><strong>{{ booking_total|default:0 }}</strong><span class="workspace-metric-foot">View booking activity <span aria-hidden="true">↗</span></span></a>
+    </section>
+
+    <section class="panel dashboard-profile-health" aria-labelledby="artisan-health-heading" data-artisan-reveal data-motion="up">
+      <div class="dashboard-profile-health-copy">
+        <span class="artisan-panel-kicker">Profile Health</span>
+        {% if profile_health %}
+          <h2 id="artisan-health-heading">{% if profile_health.complete %}Your profile is ready{% else %}Your profile needs an update{% endif %}</h2>
+          <p>Based on the personal name, valid phone number and location required for requests and messages—not KYC verification.</p>
+          {% if profile_health.missing_labels %}<ul class="dashboard-profile-health-missing">{% for field in profile_health.missing_labels %}<li>{{ field }}</li>{% endfor %}</ul>{% else %}<p class="dashboard-profile-health-complete">All six profile details are complete.</p>{% endif %}
+        {% else %}
+          <h2 id="artisan-health-heading">Profile Health unavailable</h2>
+          <p>Open your profile to review your personal details.</p>
+        {% endif %}
+      </div>
+      <div class="dashboard-profile-health-meter">
+        {% if profile_health %}
+          <div class="dashboard-profile-health-score"><strong>{{ profile_health.percent }}%</strong><span>{{ profile_health.completed }} of {{ profile_health.total }} complete</span></div>
+          <div class="dashboard-profile-health-track"><progress max="100" value="{{ profile_health.percent }}" aria-label="Profile health"></progress></div>
+        {% endif %}
+        <a class="button button-primary" href="{% url 'artisan-profile' %}">{% if profile_health.complete %}Review profile{% else %}Update profile{% endif %}</a>
+      </div>
+    </section>
+
+    <section class="panel dashboard-activity-hub" aria-labelledby="dashboard-activity-heading" data-artisan-reveal data-motion="up">
+      <header class="workspace-card-heading"><div><span class="artisan-panel-kicker">Quick access</span><h2 id="dashboard-activity-heading">Your activity</h2></div><span aria-hidden="true">✦</span></header>
+      <p class="workspace-card-intro">Open your recent activity. Each popup shows three items at a time.</p>
+      <div class="customer-profile-action-grid dashboard-activity-tiles">
+<button type="button" class="customer-profile-action-card" data-activity-open="dashboard-requests" aria-haspopup="dialog" aria-controls="dashboard-requests" aria-expanded="false"><span class="customer-profile-action-icon" aria-hidden="true">⌕</span><span class="customer-profile-action-badge">{{ request_total|default:0 }}</span><strong>Service requests</strong><small>Matched to your services</small><span class="customer-profile-action-arrow" aria-hidden="true">↗</span></button>
+<button type="button" class="customer-profile-action-card" data-activity-open="dashboard-notifications" aria-haspopup="dialog" aria-controls="dashboard-notifications" aria-expanded="false"><span class="customer-profile-action-icon" aria-hidden="true">◌</span><span class="customer-profile-action-badge">{{ notification_total|default:0 }}</span><strong>Notifications</strong><small>Account activity</small><span class="customer-profile-action-arrow" aria-hidden="true">↗</span></button>
+<button type="button" class="customer-profile-action-card" data-activity-open="dashboard-bookings" aria-haspopup="dialog" aria-controls="dashboard-bookings" aria-expanded="false"><span class="customer-profile-action-icon" aria-hidden="true">◷</span><span class="customer-profile-action-badge">{{ booking_total|default:0 }}</span><strong>Recent bookings</strong><small>Service activity</small><span class="customer-profile-action-arrow" aria-hidden="true">↗</span></button>
+</div><noscript><p><a href="{% url 'artisan-requests' %}">Service requests</a> · <a href="{% url 'notifications-page' %}">Notifications</a> · <a href="{% url 'bookings' %}">Bookings</a></p></noscript></section>
+<dialog class="dashboard-activity-dialog" id="dashboard-requests" aria-labelledby="artisan-requests-heading" data-activity-dialog><div class="dashboard-dialog-top"><span>Recent activity · three per page</span><button type="button" data-activity-close aria-label="Close popup">×</button></div>      <article class="panel workspace-card workspace-requests-card" aria-labelledby="artisan-requests-heading" data-tour-target="transactions">
+        <header class="workspace-card-heading"><div><span class="artisan-panel-kicker">Matched to your services</span><h2 id="artisan-requests-heading">Service requests</h2></div><a class="workspace-view-link" href="{% url 'artisan-requests' %}">View all {{ request_total }} <span aria-hidden="true">↗</span></a></header>
+        <p class="workspace-card-intro">Requests match your active services, verified status, Active profile status, and service locations. An Anywhere offering can match requests at any location.</p>
+        {% if requests %}
+          <ul class="workspace-request-list">
+            {% for item in requests %}
+              <li data-activity-item class="workspace-request-row"><span class="workspace-row-mark workspace-row-mark-request" aria-hidden="true">{{ forloop.counter|stringformat:'02d' }}</span><div class="workspace-request-copy"><div class="workspace-request-topline"><strong>{% firstof item.service_name item.category_name 'Service request' %}</strong><span>{{ item.urgency|default:'Urgency not set'|title }}</span></div><p>{{ item.description|truncatechars:120 }}</p><small>Request #{{ item.id }} <span aria-hidden="true">·</span> {{ item.location.area|default:'Area not provided' }}{% if item.location.state %}, {{ item.location.state }}{% endif %}{% if item.location.country %}, {{ item.location.country }}{% endif %} <span aria-hidden="true">·</span> {{ item.preferred_date|default:'Date not set' }}</small></div></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="workspace-empty"><span class="workspace-empty-icon" aria-hidden="true">⌕</span><strong>No matching requests right now</strong><p>New requests matching your saved service locations—including Anywhere offerings—will appear here.</p><a href="{% url 'artisan-services' %}">Review your services <span aria-hidden="true">→</span></a></div>
+        {% endif %}
+      </article><div class="dashboard-dialog-pagination"><button type="button" data-activity-prev>← Previous</button><span data-activity-page role="status" aria-live="polite"></span><button type="button" data-activity-next>Next →</button></div></dialog>
+<dialog class="dashboard-activity-dialog" id="dashboard-notifications" aria-labelledby="artisan-notifications-heading" data-activity-dialog><div class="dashboard-dialog-top"><span>Recent activity · three per page</span><button type="button" data-activity-close aria-label="Close popup">×</button></div>      <article class="panel workspace-card workspace-notifications-card" aria-labelledby="artisan-notifications-heading">
+        <header class="workspace-card-heading"><div><span class="artisan-panel-kicker">Account activity</span><h2 id="artisan-notifications-heading">Notifications</h2></div><a class="workspace-view-link" href="{% url 'notifications-page' %}">View all <span aria-hidden="true">↗</span></a></header>
+        {% if notifications %}
+          <ul class="workspace-notification-list">
+            {% for item in notifications %}
+              <li data-activity-item class="workspace-notification-row{% if not item.read_at %} is-unread{% endif %}"><span class="workspace-notification-mark" aria-hidden="true">{% if not item.read_at %}•{% else %}✓{% endif %}</span><div class="workspace-notification-copy"><strong>{{ item.title }}</strong><p>{{ item.message|truncatechars:110 }}</p><small><time datetime="{{ item.created_at }}">{{ item.created_at|slice:":10" }}</time></small>{% if item.safe_url %}<a href="{{ item.safe_url }}">{{ item.safe_action_label|default:'Open update' }} <span aria-hidden="true">→</span></a>{% endif %}</div></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="workspace-empty workspace-empty-compact"><span class="workspace-empty-icon" aria-hidden="true">◌</span><strong>No recent notifications</strong><p>Request and booking updates will appear here.</p></div>
+        {% endif %}
+      </article><div class="dashboard-dialog-pagination"><button type="button" data-activity-prev>← Previous</button><span data-activity-page role="status" aria-live="polite"></span><button type="button" data-activity-next>Next →</button></div></dialog>
+<dialog class="dashboard-activity-dialog" id="dashboard-bookings" aria-labelledby="artisan-bookings-heading" data-activity-dialog><div class="dashboard-dialog-top"><span>Recent activity · three per page</span><button type="button" data-activity-close aria-label="Close popup">×</button></div>      <article class="panel workspace-card workspace-bookings-card" aria-labelledby="artisan-bookings-heading">
+        <header class="workspace-card-heading"><div><span class="artisan-panel-kicker">Service activity</span><h2 id="artisan-bookings-heading">Recent bookings</h2></div><a class="workspace-view-link" href="{% url 'bookings' %}">View all <span aria-hidden="true">↗</span></a></header>
+        {% if bookings %}<ul class="workspace-row-list">{% for item in bookings %}<li data-activity-item><a class="workspace-activity-row" href="{% url 'booking-detail' pk=item.id %}"><span class="workspace-row-mark workspace-row-mark-booking" aria-hidden="true">◷</span><span class="workspace-row-copy"><strong>{{ item.status|default:'Booking'|title }}</strong><small>{{ item.scheduled_time_start|default:'Schedule not set' }}</small></span><span class="status-pill {{ item.status|status_class }}">Request #{{ item.request_id|default:'—' }}</span></a></li>{% endfor %}</ul>{% else %}<div class="workspace-empty workspace-empty-compact"><span class="workspace-empty-icon" aria-hidden="true">◷</span><strong>No bookings yet</strong><p>Booking activity will appear here when available.</p></div>{% endif %}
+      </article><div class="dashboard-dialog-pagination"><button type="button" data-activity-prev>← Previous</button><span data-activity-page role="status" aria-live="polite"></span><button type="button" data-activity-next>Next →</button></div></dialog>
+
+  {% else %}
+    <div class="workspace-dashboard-grid staff-dashboard-grid">
+      <article class="panel workspace-card" data-artisan-reveal data-motion="left"><header class="workspace-card-heading"><div><span class="artisan-panel-kicker">Operations</span><h2>Support operations</h2></div><a class="workspace-view-link" href="{% url 'support-cases' %}">Open cases <span aria-hidden="true">↗</span></a></header>{% for item in cases %}<a class="list-row" href="{% url 'support-case-detail' pk=item.id %}"><div><strong>{{ item.subject }}</strong><small>{{ item.priority }} · {{ item.status }}</small></div><span>{{ item.reference }}</span></a>{% empty %}<div class="empty">No accessible support cases.</div>{% endfor %}</article>
+      <article class="panel workspace-card" data-artisan-reveal data-motion="right"><header class="workspace-card-heading"><div><span class="artisan-panel-kicker">Administration</span><h2>Workspace links</h2></div></header><nav class="workspace-admin-links" aria-label="Support workspace links"><a href="{% url 'support-cases' %}">Case queue <span>↗</span></a><a href="{% url 'support-refunds' %}">Refunds <span>↗</span></a>{% if support_capabilities.can_manage_staff %}<a href="{% url 'support-staff' %}">Support team <span>↗</span></a>{% endif %}<a href="{% url 'staff-password-change' %}">Change password <span>↗</span></a><a href="{% url 'staff-security-questions' %}">Security questions <span>↗</span></a></nav></article>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

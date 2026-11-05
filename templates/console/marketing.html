@@ -1,0 +1,37 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Marketing intelligence · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Campaigns</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.campaigns.total }}</span><small>Total</small></div>
+    <div class="stat"><span>{{ payload.campaigns.drafts }}</span><small>Drafts</small></div>
+    <div class="stat"><span>{{ payload.campaigns.pending_approval }}</span><small>Awaiting approval</small></div>
+    <div class="stat"><span>{{ payload.campaigns.scheduled }}</span><small>Scheduled</small></div>
+    <div class="stat"><span>{{ payload.campaigns.sent }}</span><small>Sent</small></div>
+  </div>
+</section>
+<section class="console-block">
+  <h2>Delivery</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.delivery.queued }}</span><small>Queued</small></div>
+    <div class="stat"><span>{{ payload.delivery.delivered }}</span><small>Delivered</small></div>
+    <div class="stat"><span>{{ payload.delivery.failed }}</span><small>Failed</small></div>
+    <div class="stat"><span>{{ payload.delivery.suppressed }}</span><small>Suppressed</small></div>
+    <div class="stat"><span>{{ payload.delivery.opens }}</span><small>Opens ({{ payload.delivery.open_rate }}%)</small></div>
+    <div class="stat"><span>{{ payload.delivery.clicks }}</span><small>Clicks ({{ payload.delivery.click_rate }}%)</small></div>
+  </div>
+  <p class="console-muted">{{ payload.delivery.definition }}</p>
+</section>
+<section class="console-block">
+  <h2>Attribution</h2>
+  <p class="console-muted">{{ payload.attribution.method }}</p>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.attribution.window_days }} days</span><small>Attribution window</small></div>
+    <div class="stat"><span>{{ payload.attribution.attributed_bookings }}</span><small>Attributed bookings</small></div>
+    <div class="stat"><span>{{ payload.attribution.attributed_value_kobo|ngn_kobo }}</span><small>Attributed value</small></div>
+  </div>
+  <p class="console-muted">Paid promotion revenue: {{ payload.promotions.revenue_kobo|ngn_kobo }} across {{ payload.promotions.active_campaigns }} active campaigns ({{ payload.promotions.payments_verified }} verified payments).</p>
+</section>
+{% endblock %}

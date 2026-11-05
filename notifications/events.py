@@ -1,6 +1,9 @@
 from uuid import uuid4
+
 from django.conf import settings
 from django.db import transaction
+
+from booking.models import booking_display_name
 
 from .constants import NotificationEvent
 from .tasks import fanout_service_request
@@ -8,7 +11,7 @@ from core.services import enqueue_outbox
 import logging
 from core.tasks import dispatch_outbox_events
 from .in_app import create_in_app_notification
-from .links import absolute_url, booking_link, dashboard_link, cancellation_risk_link, payment_link, promotion_application_link, promotion_center_link, service_request_link, support_case_link, verification_link
+from .links import absolute_url, booking_link, conversation_link, dashboard_link, cancellation_risk_link, payment_link, promotion_application_link, promotion_center_link, service_request_link, support_case_link, verification_link
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +20,7 @@ def _safe_dispatch_outbox():
     except Exception:
         logger.exception("notification_outbox_dispatch_enqueue_failed")
 
-def schedule_email(*, event_key, recipient, subject, message, action_url=None, action_label=None, attachments=None):
+def schedule_email(*, event_key, recipient, subject, message, action_url=None, action_label=None, attachments=None, popup=None, extra_data=None):
     """Create the in-app notification and the durable email outbox event for one recipient.
 
     The rows are written in the caller's transaction, so they commit atomically with the business change
@@ -28,7 +31,15 @@ def schedule_email(*, event_key, recipient, subject, message, action_url=None, a
     label = action_label or ("Open in Artisan Marketplace" if action_url else None)
     try:
         with transaction.atomic():
-            create_in_app_notification(user=recipient, event_key=event_key, title=subject, message=message, data={"action_url": action_url, "action_label": label})
+            data = {"action_url": action_url, "action_label": label}
+            if popup:
+                # "modal" is a decision the recipient must make; "toast" is a
+                # plain confirmation. Both are durable in-app notifications and
+                # stay in the notification list after being acknowledged.
+                data["popup"] = popup
+            if extra_data:
+                data.update(extra_data)
+            create_in_app_notification(user=recipient, event_key=event_key, title=subject, message=message, data=data)
             if recipient.email:
                 payload = {"event_key": event_key, "recipient_email": recipient.email, "recipient_name": recipient.first_name or recipient.email, "subject": subject, "message": message, "action_url": absolute_url(action_url), "action_label": label}
                 if attachments:
@@ -39,12 +50,37 @@ def schedule_email(*, event_key, recipient, subject, message, action_url=None, a
         return
     transaction.on_commit(_safe_dispatch_outbox, robust=True)
 
+def _request_label(service_request):
+    """Name the work for the customer, even when they simply described it in chat.
+
+    A request sent from a conversation does not have to name a catalogue service
+    or category -- the customer says what needs doing and the artisan itemises it
+    in the offer -- so nothing here may assume either one exists.
+    """
+    category = getattr(service_request, "category", None)
+    service = getattr(service_request, "service", None)
+    for candidate in (category, service):
+        name = getattr(candidate, "name", "") or getattr(candidate, "service_name", "")
+        if str(name or "").strip():
+            return str(name).strip()
+    return ""
+
+
+def _request_has_catalogue(service_request):
+    """Only a request that names a category can be fanned out to matching artisans."""
+    return bool(getattr(service_request, "category_id", None))
+
+
 def _queue_service_request_fanout(service_request, variant):
     """Ask every matching artisan in the request's category and area to look again.
 
     `variant` keeps the outbox key distinct per lifecycle event, so an update or a
     withdrawal is never swallowed as a duplicate of the original "new request" fan-out.
     """
+    if not _request_has_catalogue(service_request):
+        # A chat request lives in one conversation with one artisan; there is no
+        # category to match against, so there is nobody else to notify.
+        return
     revision = uuid4().hex
     variant = f"{variant}:{revision}"
     try:
@@ -66,13 +102,14 @@ def _queue_service_request_fanout(service_request, variant):
 
 def notify_service_request_created(service_request):
     customer = service_request.requester
-    category_name = service_request.category.name
+    label = _request_label(service_request)
+    subject_line = f"Your {label} service request" if label else "Your service request"
 
     schedule_email(
         event_key=f"{NotificationEvent.SERVICE_REQUEST_CREATED}:{service_request.id}:customer",
         recipient=customer,
-        subject="Your service request has been received",
-        message=f"Your {category_name} service request has been received successfully. We are now looking for suitable artisans.",
+        subject=f"{subject_line} has been received",
+        message=f"{subject_line} has been received successfully. We are now looking for suitable artisans.",
         action_url=service_request_link(service_request),
     )
 
@@ -81,17 +118,19 @@ def notify_service_request_created(service_request):
 
 def notify_service_request_updated(service_request):
     """The customer changed a live request: tell the same artisans who saw it first."""
-    category_name = service_request.category.name
+    label = _request_label(service_request)
     customer = service_request.requester
+    subject_line = f"Your {label} request" if label else "Your request"
+    if _request_has_catalogue(service_request):
+        detail = "Artisans serving this category and area have been notified of the change."
+    else:
+        detail = "The artisan in your conversation can see the change."
 
     schedule_email(
         event_key=f"{NotificationEvent.SERVICE_REQUEST_UPDATED}:{service_request.id}:{uuid4().hex}:customer",
         recipient=customer,
-        subject="Your service request has been updated",
-        message=(
-            f"Your {category_name} request has been updated. Artisans serving this "
-            "category and area have been notified of the change."
-        ),
+        subject=f"{subject_line} has been updated",
+        message=f"{subject_line} has been updated. {detail}",
         action_url=service_request_link(service_request),
     )
 
@@ -182,6 +221,161 @@ def notify_service_request_no_match(service_request):
         message=f"No active verified artisan currently matches service request {service_request.id}. Category: {category_name}.",
     )
 
+def _money(amount):
+    try:
+        return f"₦{int(amount):,}.00"
+    except (TypeError, ValueError):
+        return str(amount)
+
+
+def _offer_recipient(offer):
+    """The participant who must see this offer: never the person who sent it."""
+    conversation = offer.conversation
+    if offer.created_by_id == conversation.customer_id:
+        return conversation.artisan.user
+    return conversation.customer
+
+
+def offer_recipient(offer):
+    """Public alias: the participant who must be told about this offer."""
+    return _offer_recipient(offer)
+
+
+def offer_notification_key(offer, *, counter=None):
+    if counter is None:
+        counter = bool(offer.parent_offer_id)
+    recipient = _offer_recipient(offer)
+    event = (
+        NotificationEvent.COUNTER_OFFER_RECEIVED
+        if counter
+        else NotificationEvent.OFFER_RECEIVED
+    )
+    return f"{event}:{offer.id}:{recipient.id}", recipient
+
+
+def _person_name(user, fallback):
+    name = str(getattr(user, "first_name", "") or "").strip()
+    return name or fallback
+
+
+def _artisan_name(conversation):
+    """How the artisan is introduced: their business name, else their own name."""
+    artisan = getattr(conversation, "artisan", None)
+    business = str(getattr(artisan, "business_name", "") or "").strip()
+    if business:
+        return business
+    return _person_name(getattr(artisan, "user", None), "The artisan")
+
+
+def _customer_name(conversation):
+    return _person_name(getattr(conversation, "customer", None), "The customer")
+
+
+def notify_offer_received(offer, *, counter=False):
+    """Itemised work is announced to both sides the moment it is sent.
+
+    The person who has to answer gets a decision popup that names who priced the
+    work and what the payable total is. The person who sent it gets a short
+    confirmation naming who is now holding the quote -- never a modal, because
+    they cannot answer their own offer. Both are one-use: acknowledging marks the
+    same durable notification as read, so neither repeats on the next page.
+    """
+    conversation = offer.conversation
+    recipient = _offer_recipient(offer)
+    created_by = offer.created_by
+    sender_is_artisan = offer.created_by_id == conversation.artisan.user_id
+    sender_name = (
+        _artisan_name(conversation) if sender_is_artisan else _customer_name(conversation)
+    )
+    recipient_name = (
+        _customer_name(conversation) if sender_is_artisan else _artisan_name(conversation)
+    )
+    service_request = (
+        conversation.service_request if conversation.service_request_id else None
+    )
+    work = _request_label(service_request) if service_request is not None else ""
+    work_line = f" for {work}" if work else ""
+    kind = "revised quote" if counter else "quote"
+    payload_data = {
+        "offer_id": str(offer.id),
+        "conversation_id": str(conversation.id),
+        "offer_amount": str(offer.total_amount),
+        "offer_kind": "counter" if counter else "offer",
+    }
+
+    schedule_email(
+        event_key=f"{NotificationEvent.COUNTER_OFFER_RECEIVED if counter else NotificationEvent.OFFER_RECEIVED}:{offer.id}:{recipient.id}",
+        recipient=recipient,
+        subject=(
+            f"Counter offer from {sender_name}"
+            if counter
+            else f"Quote from {sender_name}"
+        ),
+        message=(
+            f"{sender_name} itemised the work{work_line}. "
+            f"Payable total {_money(offer.total_amount)}. "
+            "Accept it, decline it, or ask for a change."
+        ),
+        action_url=conversation_link(conversation),
+        action_label="Review the offer",
+        popup="modal",
+        extra_data=dict(payload_data),
+    )
+
+    # The sender's side of the same moment: a confirmation, not a decision.
+    if created_by is not None and created_by.id != recipient.id:
+        schedule_email(
+            event_key=f"{NotificationEvent.OFFER_SENT}:{offer.id}:{created_by.id}",
+            recipient=created_by,
+            subject=(
+                f"Counter offer sent to {recipient_name}"
+                if counter
+                else f"Quote sent to {recipient_name}"
+            ),
+            message=(
+                f"Your {kind} of {_money(offer.total_amount)}{work_line} is with "
+                f"{recipient_name}. You will be told as soon as they accept, "
+                "decline or ask for a change."
+            ),
+            action_url=conversation_link(conversation),
+            action_label="Open the conversation",
+            popup="toast",
+            extra_data=dict(payload_data),
+        )
+
+
+def notify_offer_resolved(offer, *, accepted):
+    """The outcome of a proposal, sent to the person who wrote it."""
+    conversation = offer.conversation
+    recipient = offer.created_by
+    schedule_email(
+        event_key=f"{NotificationEvent.OFFER_ACCEPTED if accepted else NotificationEvent.OFFER_DECLINED}:{offer.id}:{recipient.id}",
+        recipient=recipient,
+        subject="Your offer was accepted" if accepted else "Your offer was declined",
+        message=(
+            f"Your offer of {_money(offer.total_amount)} was accepted. The booking and the payment step are now open."
+            if accepted
+            else f"Your offer of {_money(offer.total_amount)} was declined. No price was agreed and no payment was taken."
+        ),
+        action_url=conversation_link(conversation),
+        action_label="Open the conversation",
+        popup="toast",
+    )
+
+
+def notify_offer_revision_requested(offer):
+    conversation = offer.conversation
+    schedule_email(
+        event_key=f"{NotificationEvent.OFFER_REVISION_REQUESTED}:{offer.id}:{offer.created_by_id}",
+        recipient=offer.created_by,
+        subject="The customer asked for changes",
+        message="The customer asked to change this quote. Edit the itemized list and send the revised price.",
+        action_url=conversation_link(conversation),
+        action_label="Edit and resend",
+        popup="modal",
+    )
+
+
 def notify_booking_created(booking):
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_CREATED}:{booking.id}:customer",
@@ -189,14 +383,17 @@ def notify_booking_created(booking):
         subject="Your booking request has been submitted",
         message=f"Your booking request for {booking.request.category.name} has been submitted successfully.",
         action_url=booking_link(booking),
+        popup="toast",
     )
 
     schedule_email(
         event_key=f"{NotificationEvent.BOOKING_CREATED}:{booking.id}:artisan",
         recipient=booking.artisan.user,
         subject="You have a new booking request",
-        message=f"You have received a booking request for {booking.request.category.name}.",
+        message=f"You have received a booking request for {booking.request.category.name}. Accept or decline it to keep the schedule clear.",
         action_url=booking_link(booking),
+        action_label="Review the request",
+        popup="modal",
     )
 
 def notify_booking_accepted(booking):
@@ -206,6 +403,8 @@ def notify_booking_accepted(booking):
         subject="Your booking was accepted",
         message=f"The artisan has accepted your {booking.request.category.name} booking. You can now proceed with payment.",
         action_url=booking_link(booking),
+        action_label="Continue to payment",
+        popup="modal",
     )
 
 def notify_booking_rejected(booking):
@@ -213,8 +412,9 @@ def notify_booking_rejected(booking):
         event_key=f"{NotificationEvent.BOOKING_REJECTED}:{booking.id}:customer",
         recipient=booking.customer.user,
         subject="Your booking was declined",
-        message="The artisan has declined your booking request. You can select another artisan.",
+        message="The artisan has declined your booking request. No payment was taken. You can select another artisan.",
         action_url=booking_link(booking),
+        popup="toast",
     )
 
 def notify_booking_cancelled(booking):
@@ -222,8 +422,9 @@ def notify_booking_cancelled(booking):
         event_key=f"{NotificationEvent.BOOKING_CANCELLED}:{booking.id}:artisan",
         recipient=booking.artisan.user,
         subject="Booking cancelled",
-        message="The customer has cancelled this booking.",
+        message="The customer has cancelled this booking. No work should start and no payment will be collected.",
         action_url=booking_link(booking),
+        popup="toast",
     )
 
 def notify_booking_started(booking):
@@ -233,6 +434,7 @@ def notify_booking_started(booking):
         subject="Your service has started",
         message="The artisan has marked your booking as started.",
         action_url=booking_link(booking),
+        popup="toast",
     )
 
 def notify_artisan_completed(booking):
@@ -242,6 +444,8 @@ def notify_artisan_completed(booking):
         subject="The artisan marked your service complete",
         message="The artisan has marked the service as completed. Please review the work and confirm completion.",
         action_url=booking_link(booking),
+        action_label="Review and confirm",
+        popup="modal",
     )
 
 def notify_customer_completed(booking):
@@ -260,6 +464,8 @@ def notify_booking_disputed(booking):
         subject="Your booking dispute has been recorded",
         message="Your dispute has been recorded. Payout processing is currently frozen while the matter is reviewed.",
         action_url=booking_link(booking),
+        action_label="Open the booking",
+        popup="toast",
     )
 
     schedule_email(
@@ -272,50 +478,106 @@ def notify_booking_disputed(booking):
 
     notify_support(
         event_key=f"{NotificationEvent.BOOKING_DISPUTED}:{booking.id}:support",
-        subject=f"Booking dispute: {booking.id}",
-        message=f"Booking {booking.id} has been disputed and requires review.",
+        subject=f"Booking dispute: {booking_display_name(booking)}",
+        message=f"The {booking_display_name(booking)} booking has been disputed and requires review.",
     )
+
+def _booking_label(payment) -> str:
+    """Human description of the booking behind a payment — never its UUID."""
+    booking = getattr(payment, "booking", None)
+    if booking is None:
+        return "this booking"
+    return booking_display_name(booking)
+
+
+def _addon_label(payment) -> str:
+    """Human description of a separate add-on order — never its UUID."""
+    order = getattr(payment, "addon_order", None)
+    offer = getattr(order, "accepted_offer", None)
+    text = (getattr(offer, "description", "") or "").split("\n")[0].strip()[:60]
+    return f"the add-on order for {text}" if text else "your add-on order"
 
 def notify_payment_initialized(payment):
     is_addon = bool(payment.addon_order_id)
     subject = "Your add-on payment is ready" if is_addon else "Your payment is ready"
-    target = f"add-on order {payment.addon_order_id}" if is_addon else f"booking {payment.booking_id}"
+    target = _addon_label(payment) if is_addon else _booking_label(payment)
     schedule_email(
         event_key=f"{NotificationEvent.PAYMENT_INITIALIZED}:{payment.id}",
         recipient=payment.customer,
         subject=subject,
         message=f"Your payment for {target} has been initialized and is ready to complete.",
         action_url=payment_link(payment),
+        action_label="Complete payment",
+        popup="modal",
     )
 
+def _payment_conversation(payment):
+    """The chat this money was agreed in, when the payment came out of one."""
+    booking = getattr(payment, "booking", None)
+    service_request = getattr(booking, "request", None) if booking is not None else None
+    conversation = (
+        getattr(service_request, "conversation", None)
+        if service_request is not None
+        else None
+    )
+    return conversation
+
+
 def notify_payment_held(payment):
+    """The money landed: both sides are told, by email and in the app.
+
+    The customer gets a receipt-style confirmation, the artisan gets the news
+    that the escrow is funded. Both are popups that point back at the chat,
+    because that is where the work and the schedule were agreed.
+    """
     is_addon = bool(payment.addon_order_id)
-    target = f"separate add-on order {payment.addon_order_id}" if is_addon else f"booking {payment.booking_id}"
+    target = _addon_label(payment) if is_addon else _booking_label(payment)
+    conversation = _payment_conversation(payment)
+    action_url = (
+        conversation_link(conversation) if conversation is not None else payment_link(payment)
+    )
+    amount = _money(payment.total_amount_kobo // 100)
+
     schedule_email(
         event_key=f"{NotificationEvent.PAYMENT_HELD}:{payment.id}:customer",
         recipient=payment.customer,
         subject="Add-on payment confirmed" if is_addon else "Payment confirmed",
-        message=f"Your payment for the {target} has been confirmed and is protected in escrow until the parent service completion conditions are satisfied.",
-        action_url=payment_link(payment),
+        message=(
+            f"Your payment of {amount} for the {target} has been confirmed and is "
+            "protected in escrow. The artisan is paid only after you confirm the "
+            "work is complete."
+        ),
+        action_url=action_url,
+        action_label="Open the chat",
+        popup="toast",
+        extra_data={"payment_id": str(payment.id), "amount": amount},
     )
 
     schedule_email(
         event_key=f"{NotificationEvent.PAYMENT_HELD}:{payment.id}:artisan",
         recipient=payment.artisan.user,
         subject="Add-on payment confirmed" if is_addon else "Customer payment confirmed",
-        message=f"Payment for the {target} has been confirmed and is held in escrow.",
-        action_url=payment_link(payment),
+        message=(
+            f"{amount} for the {target} is now held in escrow. You are paid out "
+            "after you submit completion and the customer confirms the work."
+        ),
+        action_url=action_url,
+        action_label="Open the chat",
+        popup="toast",
+        extra_data={"payment_id": str(payment.id), "amount": amount},
     )
 
 def notify_payment_failed(payment):
     is_addon = bool(payment.addon_order_id)
-    target = f"add-on order {payment.addon_order_id}" if is_addon else f"booking {payment.booking_id}"
+    target = _addon_label(payment) if is_addon else _booking_label(payment)
     schedule_email(
         event_key=f"{NotificationEvent.PAYMENT_FAILED}:{payment.id}:customer",
         recipient=payment.customer,
         subject="Add-on payment could not be confirmed" if is_addon else "Payment could not be confirmed",
         message=f"We could not confirm the payment for this {target}. Please verify the transaction before attempting another payment.",
         action_url=payment_link(payment),
+        action_label="Check the payment",
+        popup="modal",
     )
 
     notify_support(
@@ -325,7 +587,7 @@ def notify_payment_failed(payment):
     )
 
 def notify_payout_pending(payment):
-    target = f"add-on order {payment.addon_order_id}" if payment.addon_order_id else f"booking {payment.booking_id}"
+    target = _addon_label(payment) if payment.addon_order_id else _booking_label(payment)
     schedule_email(
         event_key=f"{NotificationEvent.PAYOUT_PENDING}:{payment.id}",
         recipient=payment.artisan.user,
@@ -336,7 +598,7 @@ def notify_payout_pending(payment):
 
 def notify_payout_successful(payment):
     is_addon = bool(payment.addon_order_id)
-    order_label = f"add-on order {payment.addon_order_id}" if is_addon else f"booking {payment.booking_id}"
+    order_label = _addon_label(payment) if is_addon else _booking_label(payment)
     schedule_email(
         event_key=f"{NotificationEvent.PAYOUT_SUCCESSFUL}:{payment.id}",
         recipient=payment.artisan.user,
@@ -347,7 +609,7 @@ def notify_payout_successful(payment):
     )
 
 def notify_payout_failed(payment):
-    target = f"add-on order {payment.addon_order_id}" if payment.addon_order_id else f"booking {payment.booking_id}"
+    target = _addon_label(payment) if payment.addon_order_id else _booking_label(payment)
     schedule_email(
         event_key=f"{NotificationEvent.PAYOUT_FAILED}:{payment.id}:artisan",
         recipient=payment.artisan.user,
@@ -496,7 +758,7 @@ def notify_review_received(*, artisan_user, booking, rating):
         event_key=f"{NotificationEvent.REVIEW_RECEIVED}:{booking.id}:artisan",
         recipient=artisan_user,
         subject="You received a new customer review",
-        message=f"A customer has submitted a {rating}-star review for booking {booking.id}.",
+        message=f"A customer has submitted a {rating}-star review for the {booking_display_name(booking)} booking.",
         action_url=booking_link(booking),
     )
 

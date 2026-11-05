@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Something went wrong · Artisan Marketplace{% endblock %}
+{% block content %}
+<section class="auth-wrap" role="alert">
+  <div class="auth-card">
+    <div class="eyebrow">Artisan Market</div>
+    <h1>Something went wrong</h1>
+    <p>We hit an unexpected problem. Please try again in a moment.</p>
+    <a class="button button-primary full" href="{% url 'home' %}">Back to home</a>
+  </div>
+</section>
+{% endblock %}

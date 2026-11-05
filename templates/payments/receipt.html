@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% load site_tags %}
+{% block title %}Receipt {{ receipt.number }} · Artisan Market{% endblock %}
+{% block content %}
+<section class="receipt-page">
+  <div class="receipt-sheet">
+    <header class="receipt-band">
+      <span class="receipt-brand">Artisan Market</span>
+      <h1>Payment receipt</h1>
+      <small>Receipt {{ receipt.number }}</small>
+    </header>
+
+    <div class="receipt-amount">
+      <span class="receipt-status">{{ receipt.status_label }}</span>
+      <strong>NGN {{ receipt.amounts.total|floatformat:2 }}</strong>
+      <p>Received from {{ receipt.payer_name }}{% if receipt.issued_label %} · <time datetime="{{ receipt.issued_at }}">{{ receipt.issued_label }}</time>{% endif %}</p>
+    </div>
+
+    <div class="receipt-block">
+      <span class="receipt-kicker">Payment details</span>
+      <dl class="receipt-rows">
+        <div><dt>Service</dt><dd>{{ receipt.service }}</dd></div>
+        <div><dt>Service amount</dt><dd>NGN {{ receipt.amounts.service|floatformat:2 }}</dd></div>
+        <div><dt>Service fee</dt><dd>NGN {{ receipt.amounts.fee|floatformat:2 }}</dd></div>
+        <div class="is-strong"><dt>Total paid</dt><dd>NGN {{ receipt.amounts.total|floatformat:2 }}</dd></div>
+        {% if receipt.amounts.net_to_payee %}<div class="is-strong"><dt>Net to you</dt><dd>NGN {{ receipt.amounts.net_to_payee|floatformat:2 }}</dd></div>{% endif %}
+      </dl>
+    </div>
+
+    <div class="receipt-block">
+      <span class="receipt-kicker">Paid to</span>
+      <dl class="receipt-rows">
+        <div><dt>Payer</dt><dd>{{ receipt.payer_name|default:'—' }}</dd></div>
+        <div><dt>Payee</dt><dd>{{ receipt.payee_name|default:'—' }}</dd></div>
+        <div><dt>Method</dt><dd>{{ receipt.method|default:'—' }}</dd></div>
+        <div><dt>Provider reference</dt><dd class="receipt-mono">{{ receipt.provider_reference|default:'—' }}</dd></div>
+        <div><dt>Our reference</dt><dd class="receipt-mono">{{ receipt.reference }}</dd></div>
+      </dl>
+    </div>
+
+    <div class="receipt-actions" data-print-hide>
+      <a class="button button-primary" href="{% url 'payment-receipt-pdf' payment_id=receipt.payment_id %}">Download receipt</a>
+      <button class="button button-secondary" type="button" data-receipt-print>Print</button>
+      {% if back_url %}<a class="receipt-back" href="{{ back_url }}">Back</a>{% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const button = document.querySelector("[data-receipt-print]");
+  if (button) button.addEventListener("click", () => window.print());
+})();
+</script>
+{% endblock %}

@@ -6,7 +6,7 @@ from notifications.events import notify_review_received
 from conversations.events import record_booking_event
 from core.services import create_audit_log
 
-from .models import Review
+from .models import PlatformFeedback, Review
 
 class ReviewSerializer(serializers.ModelSerializer):
     booking = serializers.PrimaryKeyRelatedField(queryset=Booking.objects.all())
@@ -70,3 +70,24 @@ class ReviewSerializer(serializers.ModelSerializer):
             )
         )
         return review
+
+
+class PlatformFeedbackSerializer(serializers.ModelSerializer):
+    """One improvement note from a user, about us rather than the artisan."""
+
+    class Meta:
+        model = PlatformFeedback
+        fields = ["id", "note", "page", "created_at"]
+        read_only_fields = ["id", "created_at"]
+
+    def validate_note(self, value):
+        text = str(value or "").strip()
+        if not text:
+            raise serializers.ValidationError("Write one thing we could do better.")
+        if len(text) > 2000:
+            raise serializers.ValidationError("Keep it under 2,000 characters.")
+        return text
+
+    def create(self, validated_data):
+        validated_data["user"] = self.context["request"].user
+        return super().create(validated_data)

@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}{{ title }} · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page artisan-verification-action-page" data-artisan-page="verification-action">
+  <header class="page-heading artisan-page-heading" data-artisan-reveal data-motion="left">
+    <div><div class="eyebrow">Identity verification</div><h1 data-text-motion>{{ title }}</h1><p>{{ intro }}</p></div>
+    <span class="verification-action-mark" aria-hidden="true">02</span>
+  </header>
+
+  <section class="verification-action-layout">
+    <article class="panel verification-form-panel" data-artisan-reveal data-motion="right">
+      <div class="panel-head"><div><span class="artisan-panel-kicker">Verification request</span><h2>{% if title == 'NIN verification' %}Enter your NIN{% elif title == 'Start BVN verification' %}Enter your BVN{% elif title == 'Complete BVN verification' %}Enter your verification code{% else %}Enter the requested details{% endif %}</h2></div><span class="verification-form-icon" aria-hidden="true">↗</span></div>
+      <form method="post" {% if form.is_multipart %}enctype="multipart/form-data"{% endif %} class="js-submit-form artisan-verification-form" data-artisan-form>
+        {% include 'partials/form.html' %}
+        <div class="verification-form-actions">
+          <button class="button button-primary artisan-form-submit" type="submit" data-artisan-action>Continue</button>
+          <a class="button button-secondary" href="/account/artisan/verification/">Cancel</a>
+        </div>
+      </form>
+    </article>
+
+    <aside class="verification-action-aside" data-artisan-reveal data-motion="scale">
+      <div class="verification-aside-orbit" aria-hidden="true"><span></span><span></span><i>✓</i></div>
+      <span class="artisan-panel-kicker">Next step</span>
+      <h2>Continue with this method</h2>
+      <p>Your request follows the existing method-specific verification flow. Follow any confirmation or next-step instructions shown after you continue.</p>
+      <a class="artisan-subtle-link" href="{% url 'verification' %}">Return to verification center</a>
+    </aside>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Management overview · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Platform totals</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.totals.customers }}</span><small>Customers</small></div>
+    <div class="stat"><span>{{ payload.totals.artisans }}</span><small>Artisans</small></div>
+    <div class="stat"><span>{{ payload.totals.verified_artisans }}</span><small>Verified artisans</small></div>
+    <div class="stat"><span>{{ payload.totals.active_artisans }}</span><small>Active artisan profiles</small></div>
+  </div>
+</section>
+
+<section class="console-block">
+  <h2>Inside the selected range</h2>
+  {% include 'console/partials/metrics.html' with metrics=payload.period %}
+</section>
+
+<section class="console-block console-grid-2">
+  <div>
+    <h2>Conversion and quality</h2>
+    {% include 'console/partials/metrics.html' with metrics=payload.ratios %}
+  </div>
+  <div>
+    <h2>Escrow position</h2>
+    <ul class="money-list">
+      <li><span>Held for customers</span><strong>{{ payload.escrow.held_kobo|ngn_kobo }}</strong></li>
+      <li><span>Payable to artisans</span><strong>{{ payload.escrow.artisan_payable_kobo|ngn_kobo }}</strong></li>
+      <li><span>Payouts pending</span><strong>{{ payload.escrow.pending_payouts_kobo|ngn_kobo }}</strong></li>
+      <li><span>Payouts released</span><strong>{{ payload.escrow.released_kobo|ngn_kobo }}</strong></li>
+      <li><span>Refund liability</span><strong>{{ payload.escrow.refund_liability_kobo|ngn_kobo }}</strong></li>
+    </ul>
+    <h2>Bookings by status</h2>
+    {% include 'console/partials/bars.html' with rows=payload.bookings_by_status %}
+  </div>
+</section>
+
+{% if payload.attention.items %}
+<section class="console-block">
+  <h2>Needs attention</h2>
+  <div class="attention-grid">
+    {% for key, item in payload.attention.items %}
+      <article class="attention">
+        <p class="attention__value">{{ item.value|default:item }}</p>
+        <p class="attention__label">{{ item.label|default:key|humanize_code }}</p>
+        {% if item.definition %}<p class="attention__definition">{{ item.definition }}</p>{% endif %}
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

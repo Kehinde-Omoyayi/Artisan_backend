@@ -173,6 +173,23 @@ class ConversationBookingSummarySerializer(serializers.Serializer):
     artisan_completed_at = serializers.DateTimeField(allow_null=True)
     customer_completed_at = serializers.DateTimeField(allow_null=True)
     finalized_at = serializers.DateTimeField(allow_null=True)
+    service_name = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    artisan_name = serializers.SerializerMethodField()
+
+    def get_service_name(self, obj) -> str:
+        category = getattr(getattr(obj, "request", None), "category", None)
+        return getattr(category, "name", "") or ""
+
+    def get_customer_name(self, obj) -> str:
+        from booking.models import _person_name
+
+        return _person_name(getattr(obj, "customer", None))
+
+    def get_artisan_name(self, obj) -> str:
+        from booking.models import _person_name
+
+        return _person_name(getattr(obj, "artisan", None))
 
 
 class ConversationPaymentSummarySerializer(serializers.Serializer):
@@ -199,10 +216,15 @@ class ConversationPaymentSummarySerializer(serializers.Serializer):
         request = self.context.get("request")
         if not request or obj.customer_id != request.user.id:
             return None
-        payload = obj.provider_payload if isinstance(obj.provider_payload, dict) else {}
-        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        link = data.get("link")
-        return str(link) if link else None
+        from payments.services import checkout_link_is_current, checkout_link_state
+
+        # A link that has expired, or that was minted before checkout was
+        # restricted to card and bank transfer, must never be handed to the page:
+        # the payer would land on the old PayPal screen. Withholding it makes the
+        # UI ask for a fresh checkout instead.
+        if not checkout_link_is_current(obj):
+            return None
+        return checkout_link_state(obj)["link"] or None
 
 
 class OfferMaterialSerializer(serializers.ModelSerializer):
@@ -233,6 +255,35 @@ class OfferSerializer(serializers.ModelSerializer):
 
         return duration_label(obj.duration_value, obj.duration_unit)
 
+    notification_delivered = serializers.SerializerMethodField()
+
+    def get_notification_delivered(self, obj) -> bool:
+        """True when the other participant actually received the in-app alert.
+
+        A saved offer is never rolled back because a notification failed; the
+        interface offers a retry instead, so "saved" and "notified" are visible
+        as two different facts.
+        """
+        if not obj.pk or not obj.conversation_id:
+            return False
+        from notifications.events import offer_notification_key
+        from notifications.models import InAppNotification
+
+        key, recipient = offer_notification_key(obj)
+        if recipient is None:
+            return False
+        return InAppNotification.objects.filter(
+            recipient=recipient, event_key=key
+        ).exists()
+
+    summary = serializers.SerializerMethodField()
+
+    def get_summary(self, obj) -> str:
+        """Plain-language line replacing the removed free-text scope field."""
+        from .services import offer_summary
+
+        return offer_summary(obj)
+
     class Meta:
         model = Offer
         fields = [
@@ -241,7 +292,6 @@ class OfferSerializer(serializers.ModelSerializer):
             "creator_id",
             "parent_offer_id",
             "version",
-            "materials_details",
             "materials",
             "duration_minutes",
             "duration_value",
@@ -252,13 +302,10 @@ class OfferSerializer(serializers.ModelSerializer):
             "transport_amount",
             "additional_amount",
             "additional_charge_details",
-            "payment_terms",
-            "exclusions",
-            "workmanship_terms",
             "total_amount",
             "materials_included",
-            "scope",
-            "notes",
+            "summary",
+            "notification_delivered",
             "scheduled_start",
             "scheduled_end",
             "expires_at",
@@ -287,9 +334,6 @@ class OfferCreateSerializer(serializers.Serializer):
     materials = serializers.ListField(
         child=OfferMaterialInputSerializer(), required=False, allow_empty=True
     )
-    materials_details = serializers.CharField(
-        max_length=1500, allow_blank=True, default=""
-    )
     transport_amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, min_value=Decimal("0"), default=Decimal("0")
     )
@@ -299,40 +343,25 @@ class OfferCreateSerializer(serializers.Serializer):
     additional_charge_details = serializers.CharField(
         max_length=1500, required=False, allow_blank=True, default=""
     )
-    payment_terms = serializers.CharField(
-        max_length=1500, required=False, allow_blank=True, default=""
-    )
-    exclusions = serializers.CharField(
-        max_length=1500, required=False, allow_blank=True, default=""
-    )
-    workmanship_terms = serializers.CharField(
-        max_length=1500, required=False, allow_blank=True, default=""
-    )
     labour_amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, min_value=Decimal("0")
     )
     materials_amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, min_value=Decimal("0")
     )
+    # Computed by the form and always re-derived/validated server-side; a client
+    # that omits it gets the correct sum instead of an error.
     total_amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal("0.01")
+        max_digits=12, decimal_places=2, min_value=Decimal("0.01"), required=False
     )
     materials_included = serializers.BooleanField(required=False, default=False)
-    scope = serializers.CharField(max_length=5000)
-    notes = serializers.CharField(max_length=3000, required=False, allow_blank=True)
     scheduled_start = serializers.DateTimeField()
-    # Legacy clients may send scheduled_end directly; the current UI sends a
-    # canonical duration instead, and the service layer derives scheduled_end
-    # from scheduled_start + duration.
-    scheduled_end = serializers.DateTimeField(required=False, allow_null=True)
-    duration_value = serializers.IntegerField(
-        required=False, allow_null=True, min_value=1, max_value=8760
-    )
+    # The artisan states a duration; scheduled_end and expires_at are derived
+    # server-side. Both used to be required inputs and are no longer accepted.
+    duration_value = serializers.IntegerField(min_value=1, max_value=8760)
     duration_unit = serializers.ChoiceField(
-        choices=[("HOURS", "Hours"), ("DAYS", "Days"), ("WEEKS", "Weeks")],
-        required=False,
+        choices=[("HOURS", "Hours"), ("DAYS", "Days"), ("WEEKS", "Weeks")]
     )
-    expires_at = serializers.DateTimeField()
 
 
 class CounterOfferSerializer(OfferCreateSerializer):
@@ -357,9 +386,10 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
     def get_url(self, obj) -> str | None:
         from django.urls import reverse
+        from .media_scan import scan_blocked
         from .retention import access_blocked
 
-        if obj.scan_status != "CLEAN" or access_blocked(obj):
+        if scan_blocked(obj) or access_blocked(obj):
             return None
         path = reverse(
             "conversation-media",
@@ -944,7 +974,7 @@ class ConversationDetailSerializer(ConversationListSerializer):
             offer_current = False
             payment_current = (
                 booking_status in {"REQUESTED", "ACCEPTED"} and not payment_held
-            )
+            ) or booking_status in {"CANCELLED", "REJECTED"}
             progress_current = booking_status == "IN_PROGRESS" and not addon_pending
             addon_current = booking_status == "IN_PROGRESS" and addon_pending
             completion_current = booking_status == "COMPLETION_REQUESTED"

@@ -414,6 +414,11 @@ class LoginView(NoStoreAPIView):
 
         update_last_login(None, user)
         tokens = issue_marketplace_tokens(user)
+        # Staff accounts never reach this branch (they go through MFA above), so
+        # the role is whatever profile the account owns. Sending it means the
+        # browser app never has to guess a workspace -- the guess is what let an
+        # artisan land on the previous (staff) user's dashboard.
+        signed_in_role = "artisan" if getattr(user, "artisan_profile", None) is not None else "customer"
         user_payload = {
             "id": str(user.pk),
             "first_name": user.first_name,
@@ -421,7 +426,7 @@ class LoginView(NoStoreAPIView):
             "email": user.email,
             "is_staff": bool(user.is_staff),
             "is_superuser": bool(user.is_superuser),
-            "role": "",
+            "role": signed_in_role,
             "session_version": tokens["session_version"],
         }
         response = Response(

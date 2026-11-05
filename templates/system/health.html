@@ -1,0 +1,3 @@
+{% extends 'base.html' %}
+{% block title %}{{ title }} · Artisan Market{% endblock %}
+{% block content %}<section class="page-heading"><div><div class="eyebrow">System</div><h1>{{ title }}</h1><p>This page displays the response from the API health endpoint without exposing raw JSON.</p></div></section><section class="health-box large"><div class="health-icon {% if health.status == 'ok' or health.status == 'healthy' %}ok{% else %}warn{% endif %}"></div><div><strong>{{ health.status|default:'Unknown'|title }}</strong><span>{{ health.detail|default:'The API returned a health response.' }}</span></div></section>{% endblock %}

@@ -1,0 +1,87 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Staff and roles · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Managers</h2>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Second factor</th><th>Sessions</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for member in staff %}
+        <tr>
+          <td>{{ member.name }}</td><td>{{ member.email }}</td>
+          <td>{% if member.role.name %}{{ member.role.name }}{% else %}{{ member.role }}{% endif %}</td>
+          <td>{% if member.totp_enrolled %}Authenticator app{% elif member.email_otp_enabled %}Email code{% else %}<span class="tag tag--high">Not enrolled</span>{% endif %}</td>
+          <td>{{ member.active_sessions|default_if_none:0 }}</td>
+          <td>{% if member.is_suspended %}<span class="tag tag--high">Suspended</span>{% else %}Active{% endif %}</td>
+          <td class="console-cell-actions">
+            {% if can_manage %}
+              <form method="post" action="{% url 'console-staff-role' member.id %}" class="inline-form">
+                {% csrf_token %}
+                <select name="role" aria-label="Role for {{ member.email }}">
+                  {% for role in roles %}
+                    <option value="{{ role.slug }}"{% if role.slug == member.role.slug %} selected{% endif %}>{{ role.name }}</option>
+                  {% endfor %}
+                </select>
+                <button class="console-button console-button--quiet" type="submit">Set role</button>
+              </form>
+              <form method="post" action="{% url 'console-staff-suspend' member.id %}" class="inline-form">
+                {% csrf_token %}
+                {% if member.is_suspended %}
+                  <input type="hidden" name="action" value="restore">
+                  <button class="console-button console-button--quiet" type="submit">Restore</button>
+                {% else %}
+                  <input type="hidden" name="action" value="suspend">
+                  <input type="text" name="reason" placeholder="Reason" maxlength="200">
+                  <button class="console-button console-button--danger" type="submit">Suspend</button>
+                {% endif %}
+              </form>
+            {% else %}
+              <span class="console-muted">Read only for your role</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7">No manager accounts yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="console-block">
+  <h2>Roles</h2>
+  <table class="console-table">
+    <thead><tr><th>Role</th><th>Members</th><th>Permissions</th><th>Type</th></tr></thead>
+    <tbody>
+    {% for role in roles %}
+      <tr>
+        <td>{{ role.name }}<br><span class="console-muted">{{ role.description }}</span></td>
+        <td>{{ role.member_count }}</td>
+        <td>{{ role.permissions|length }}</td>
+        <td>{{ role.is_system|yesno:"System role,Custom role" }}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="4">No roles returned.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="console-block">
+  <h2>Permission catalogue</h2>
+  {% for group in permission_catalogue %}
+    <details class="domain-help__item">
+      <summary>{{ group.category|humanize_code }}</summary>
+      <ul class="console-list">
+        {% for permission in group.permissions %}
+          <li><code>{{ permission.code }}</code> — {{ permission.label }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% empty %}
+    <p class="console-empty">The API did not return a permission catalogue.</p>
+  {% endfor %}
+</section>
+{% endblock %}

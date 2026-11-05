@@ -1,0 +1,99 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Sign in · Artisan Market{% endblock %}
+{% block content %}
+<section class="auth-wrap login-auth-wrap">
+  <article class="login-shell" data-login-page aria-labelledby="login-title">
+    <aside class="login-visual" data-login-reveal aria-label="Artisan Market account access">
+      <div class="login-visual-brand">
+        <svg class="login-brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+          <path d="M20 3.5 36 12.7v14.6L20 36.5 4 27.3V12.7L20 3.5Z" fill="currentColor"/>
+          <path d="M12.3 25.9 20 12.8l7.7 13.1M15.6 20.3h8.8" fill="none" stroke="#f9f5ee" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1"/>
+        </svg>
+        <span>Artisan <span class="login-brand-light">Market</span></span>
+      </div>
+
+      <div class="login-visual-copy">
+        <span class="login-visual-kicker">A marketplace for artisan work</span>
+        <h2>Good to have you back.</h2>
+        <p>Pick up your requests, bookings, and conversations right where you left them.</p>
+      </div>
+
+      <ul class="login-feature-list" aria-label="What you can do after signing in">
+        <li><span class="login-feature-icon" aria-hidden="true">01</span><span>Continue conversations</span></li>
+        <li><span class="login-feature-icon" aria-hidden="true">02</span><span>Review requests and bookings</span></li>
+        <li><span class="login-feature-icon" aria-hidden="true">03</span><span>Manage your account</span></li>
+      </ul>
+
+      <div class="login-visual-footnote"><span class="login-footnote-dot" aria-hidden="true"></span>For customers and artisans</div>
+      <span class="login-orbit login-orbit-one" aria-hidden="true"></span>
+      <span class="login-orbit login-orbit-two" aria-hidden="true"></span>
+    </aside>
+
+    <div class="login-content">
+      <header class="login-heading" data-login-reveal>
+        <div class="login-heading-topline">
+          <span class="eyebrow">Welcome back</span>
+          <span class="login-secure-label"><span aria-hidden="true">●</span> Secure sign in</span>
+        </div>
+        <h1 id="login-title">Sign in</h1>
+        <p>Use your marketplace account. Provider sign-in works for accounts created with that provider.</p>
+      </header>
+
+      {% if request.GET.verified %}
+        <div class="flash success login-verified" role="status" data-login-reveal>Email verified. You can now sign in.</div>
+      {% endif %}
+
+      <form method="post" class="js-submit-form login-form" data-login-form aria-label="Email sign-in">
+        {% csrf_token %}
+        {% if next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
+        {% if form.non_field_errors %}<div class="form-error login-form-error" role="alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+        {% for field in form %}
+          <div class="form-field login-field {% if field.errors %}has-error{% endif %}" data-login-reveal>
+            {{ field.label_tag }}
+            {% if field.name == 'password' %}
+              <div class="login-password-wrap">
+                {{ field }}
+                <button class="login-password-toggle" type="button" data-login-password-toggle aria-controls="{{ field.id_for_label }}" aria-pressed="false" hidden>Show</button>
+              </div>
+            {% else %}
+              {{ field }}
+            {% endif %}
+            {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+            {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+          </div>
+        {% endfor %}
+
+        <div class="login-form-actions" data-login-reveal>
+          <button class="button button-primary login-submit" type="submit" data-login-submit>Sign in</button>
+          <a class="login-inline-link" href="{% url 'forgot-password' %}">Forgot password?</a>
+        </div>
+      </form>
+
+      <div class="register-divider login-divider" data-login-reveal><span>Or sign in with</span></div>
+      <div class="auth-provider-grid login-provider-grid" aria-label="Social sign-in options" data-login-reveal>
+        <form method="post" action="/auth/social/google/start/" class="login-provider-form" data-login-provider="google">
+          {% csrf_token %}
+          <input type="hidden" name="intent" value="login">
+          {% if next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
+          <button class="button register-provider-button login-provider-button" type="submit" data-login-provider-button>
+            <img class="provider-brand-icon" src="{% static 'images/auth-google.svg' %}" alt="" aria-hidden="true" width="18" height="18">
+            <span>Continue with Google</span>
+          </button>
+        </form>
+        <form method="post" action="/auth/social/apple/start/" class="login-provider-form" data-login-provider="apple">
+          {% csrf_token %}
+          <input type="hidden" name="intent" value="login">
+          {% if next_target %}<input type="hidden" name="next" value="{{ next_target }}">{% endif %}
+          <button class="button register-provider-button login-provider-button" type="submit" data-login-provider-button>
+            <img class="provider-brand-icon" src="{% static 'images/auth-apple.svg' %}" alt="" aria-hidden="true" width="18" height="18">
+            <span>Continue with Apple</span>
+          </button>
+        </form>
+      </div>
+
+      <p class="login-create-account" data-login-reveal>New to Artisan Market? {% if next_target %}<a href="{% url 'register' %}?next={{ next_target|urlencode }}">Create an account</a>{% else %}<a href="{% url 'register' %}">Create an account</a>{% endif %}</p>
+    </div>
+  </article>
+</section>
+{% endblock %}

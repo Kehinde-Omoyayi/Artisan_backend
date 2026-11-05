@@ -1,0 +1,92 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}BVN verification · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page artisan-bvn-verification-page" data-artisan-page="bvn-verification" data-flow-stage="{{ flow_stage }}" data-status-url="{% url 'verification' %}" data-method-url="{% url 'bvn-method' %}" data-has-otp-errors="{% if otp_form.errors %}true{% else %}false{% endif %}">
+  <header class="page-heading artisan-page-heading" data-artisan-reveal data-motion="left">
+    <div>
+      <div class="eyebrow">Identity verification</div>
+      <h1 data-text-motion>BVN verification</h1>
+      <p>Submit your BVN and consent once. We’ll request the email code automatically; enter the six-digit code here when it arrives.</p>
+    </div>
+    <span class="verification-action-mark" aria-hidden="true">02</span>
+  </header>
+
+  <section class="bvn-flow-layout">
+    <article class="panel bvn-flow-card" data-artisan-reveal data-motion="right">
+      <div data-bvn-step="input" {% if flow_stage != 'bvn' %}hidden{% endif %}>
+        <div class="panel-head">
+          <div><span class="artisan-panel-kicker">Step 1 · BVN and consent</span><h2>Enter your BVN</h2></div>
+          <span class="verification-form-icon" aria-hidden="true">01</span>
+        </div>
+        <form method="post" action="{% url 'bvn-initiate' %}" class="js-submit-form artisan-verification-form" data-bvn-start-form>
+          {% include 'partials/form.html' with form=bvn_form %}
+          <div class="verification-form-actions">
+            <button class="button button-primary artisan-form-submit" type="submit" data-artisan-action>Start verification</button>
+            <a class="button button-secondary" href="{% url 'verification' %}">Cancel</a>
+          </div>
+        </form>
+      </div>
+
+      <section class="bvn-flow-stage" data-bvn-step="progress" {% if flow_stage == 'bvn' or flow_stage == 'otp' %}hidden{% endif %} aria-live="polite" aria-atomic="true">
+        <div class="bvn-flow-status-mark" aria-hidden="true"><span></span></div>
+        <span class="artisan-panel-kicker" data-bvn-progress-kicker>BVN verification</span>
+        <h2 data-bvn-progress-title>Starting verification</h2>
+        <p data-bvn-flow-message>{{ flow_message|default:'Your request is being processed. This page will continue through the existing verification steps.' }}</p>
+        <p class="bvn-flow-subnote">You can leave this page open while the current step is processed.</p>
+      </section>
+
+      <section data-bvn-step="otp" {% if flow_stage != 'otp' %}hidden{% endif %}>
+        <div class="panel-head">
+          <div><span class="artisan-panel-kicker">Step 3 · Enter the code</span><h2>Check your email</h2></div>
+          <span class="verification-form-icon" aria-hidden="true">03</span>
+        </div>
+        <p class="bvn-otp-intro" data-bvn-otp-note role="status" aria-live="polite">The API confirmed that the email code was sent. Enter the six-digit code here.</p>
+        <form method="post" action="{% url 'bvn-initiate' %}" class="js-submit-form artisan-verification-form" data-bvn-otp-form>
+          {% include 'partials/form.html' with form=otp_form %}
+          <div class="verification-form-actions">
+            <button class="button button-primary artisan-form-submit" type="submit" data-artisan-action>Submit code</button>
+            <a class="button button-secondary" href="{% url 'verification' %}">Return to verification center</a>
+          </div>
+        </form>
+      </section>
+
+      <section class="bvn-flow-result" data-bvn-step="result" hidden aria-live="polite" aria-atomic="true">
+        <span class="bvn-result-mark" data-bvn-result-mark aria-hidden="true">✓</span>
+        <span class="artisan-panel-kicker">Verification outcome</span>
+        <h2 data-bvn-result-title>Verification status</h2>
+        <p class="bvn-result-status" data-bvn-result-status></p>
+        <p data-bvn-result-message></p>
+        <p class="bvn-result-guidance" data-bvn-result-guidance></p>
+        <div class="verification-form-actions">
+          <button class="button button-primary" type="button" data-bvn-retry hidden>Start another BVN attempt</button>
+          <a class="button button-secondary" href="{% url 'verification' %}">Return to verification center</a>
+        </div>
+      </section>
+      <div class="bvn-code-actions" data-bvn-code-actions hidden>
+        <p class="bvn-code-feedback" data-bvn-code-feedback role="status" aria-live="polite"></p>
+        <button class="button button-secondary" type="button" data-bvn-resend>Request email code again</button>
+      </div>
+    </article>
+
+    <aside class="panel bvn-flow-aside" data-artisan-reveal data-motion="scale">
+      <span class="artisan-panel-kicker">One page · Existing verification flow</span>
+      <h2>We’ll handle the next step</h2>
+      <ol class="bvn-flow-steps" aria-label="BVN verification steps">
+        <li data-bvn-step-indicator="bvn"><span>01</span><div><strong>BVN and consent</strong><small>Submit the existing verification form.</small></div></li>
+        <li data-bvn-step-indicator="email"><span>02</span><div><strong>Email code request</strong><small>Requested automatically when the API is ready.</small></div></li>
+        <li data-bvn-step-indicator="otp"><span>03</span><div><strong>Six-digit code</strong><small>You enter the code received by email.</small></div></li>
+      </ol>
+      <p class="bvn-flow-aside-note">Your code is still required to complete verification. It is submitted securely through the existing authenticated API flow.</p>
+    </aside>
+  </section>
+
+  <form method="post" action="{% url 'bvn-method' %}" data-bvn-method-form hidden>
+    {% csrf_token %}
+    <input type="hidden" name="method" value="email">
+  </form>
+  <noscript><p class="bvn-no-script-note">Automatic continuation needs JavaScript. Enable it to request the email code and continue on this page.</p></noscript>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

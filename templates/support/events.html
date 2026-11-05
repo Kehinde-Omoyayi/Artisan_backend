@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Case audit trail · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page support-events-page">
+  <a class="support-back-link" href="{% url 'support-case-detail' pk=pk %}"><span aria-hidden="true">←</span> Case details</a>
+  <header class="support-page-hero support-page-hero--compact" data-artisan-reveal data-motion="left"><div><span class="support-eyebrow">CASE {{ pk }} · {% if support_capabilities.is_support_staff %}STAFF AUDIT{% else %}PUBLIC ACTIVITY{% endif %}</span><h1>Case events</h1><p>{% if support_capabilities.is_support_staff %}The API-recorded history of case changes, public messages, and private support notes.{% else %}The public case history visible to participants. Private staff notes are excluded by the API.{% endif %}</p></div></header>
+  <section class="support-panel support-events-panel" data-artisan-reveal data-motion="up">
+    <div class="support-panel-heading"><div><span class="support-eyebrow">AUDIT LOG</span><h2>Timeline</h2></div><span class="support-total-badge">{{ events|length }} event{{ events|length|pluralize }}</span></div>
+    <div class="support-event-timeline">
+      {% for event in events %}
+      <article class="support-event-row{% if event.action == 'CASE_NOTE_ADDED' %} support-event-row--private{% endif %}">
+        <span class="support-event-marker" aria-hidden="true">{% if event.action == 'CASE_NOTE_ADDED' %}🔒{% elif 'CLOSED' in event.action or 'RESOLVED' in event.action or 'SUCCEEDED' in event.action %}✓{% else %}·{% endif %}</span>
+        <div class="support-event-copy"><div class="support-event-title-row"><strong>{{ event.action|humanize_code }}</strong>{% if event.action == 'CASE_NOTE_ADDED' %}<span class="support-private-badge">STAFF ONLY</span>{% endif %}</div><small>{{ event.performed_by_name|default:'System' }} · <time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'j M Y, g:i a' }}</time></small>{% if event.note %}<p>{{ event.note|linebreaksbr }}</p>{% endif %}</div>
+      </article>
+      {% empty %}<div class="support-empty support-empty--compact"><strong>No events recorded</strong><p>Case activity from the API will appear here.</p></div>{% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

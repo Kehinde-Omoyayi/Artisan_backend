@@ -63,6 +63,9 @@ class RequestContextMiddleware(MiddlewareMixin):
         if started is not None:
             elapsed_ms = (time.perf_counter() - started) * 1000
             response["X-Response-Time-ms"] = f"{elapsed_ms:.2f}"
+            from core.observability import record_latency
+
+            record_latency(request.path, elapsed_ms, response.status_code)
             threshold = getattr(settings, "SLOW_REQUEST_THRESHOLD_MS", 200)
             if elapsed_ms > threshold:
                 logger.warning(

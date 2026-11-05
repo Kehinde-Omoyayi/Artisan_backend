@@ -1,0 +1,108 @@
+/* Request workspace actions: edit, delete and the record that follows them.
+   Scoped to the customer request pages so no other route inherits these rules. */
+
+/* ------------------------------------------------ request list card actions -- */
+.request-list-page .workflow-list-card.request-list-card {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.request-list-page .request-list-open {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 12px;
+  padding: 13px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.request-list-page .request-list-open:hover { color: inherit; }
+
+.request-list-page .request-list-actions,
+.request-detail-page .request-record-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 13px 12px;
+}
+
+.request-list-page .request-list-actions form,
+.request-detail-page .request-record-actions form {
+  margin: 0;
+  display: inline-flex;
+}
+
+.request-list-page .request-list-actions .button,
+.request-detail-page .request-record-actions .button {
+  min-height: 33px;
+  padding: 7px 11px;
+  font-size: 11px;
+  border-radius: 10px;
+}
+
+.request-list-page .request-list-actions .button-secondary:hover,
+.request-detail-page .request-record-actions .button-secondary:hover {
+  border-color: #c7a993;
+  background: var(--surface-soft, #f7efe6);
+}
+
+.request-list-page .request-list-actions .button-danger,
+.request-detail-page .request-record-actions .button-danger {
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease, transform .16s ease;
+}
+
+.request-list-page .request-list-actions .button-danger:hover,
+.request-detail-page .request-record-actions .button-danger:hover {
+  background: #fdeeec;
+  border-color: #e3a49d;
+  transform: translateY(-1px);
+}
+
+/* ------------------------------------------------------- request detail -- */
+.request-detail-page .request-record-actions {
+  margin-top: 12px;
+  padding: 14px 0 0;
+  border-top: 1px solid rgba(116, 67, 47, .12);
+}
+
+.request-detail-page .request-record-hint {
+  color: #8a7663;
+  font-size: 11px;
+}
+
+.request-detail-page .request-status-note {
+  display: grid;
+  gap: 4px;
+  margin: 14px 0 6px;
+  padding: 14px 15px;
+  border: 1px solid #e3d2c1;
+  border-left: 3px solid var(--brand, #74432f);
+  border-radius: 12px;
+  background: #fbf5ee;
+}
+
+.request-detail-page .request-status-note strong {
+  color: var(--brand-dark, #4c3025);
+  font-size: 13px;
+}
+
+.request-detail-page .request-status-note span {
+  color: #6c5a4c;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  .request-list-page .request-list-open { grid-template-columns: 31px minmax(0, 1fr) 15px; gap: 9px; padding: 11px 10px; }
+  .request-list-page .workflow-list-price { display: none; }
+  .request-list-page .request-list-actions,
+  .request-detail-page .request-record-actions { padding: 0 10px 11px; }
+  .request-detail-page .request-record-actions { padding: 12px 0 0; }
+  .request-list-page .request-list-actions .button,
+  .request-detail-page .request-record-actions .button { flex: 1 1 auto; }
+}
+```
+

@@ -1,0 +1,45 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Financial intelligence · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Money movement</h2>
+  {% include 'console/partials/metrics.html' with metrics=payload.kpis %}
+</section>
+
+<section class="console-block">
+  <h2>Payment status</h2>
+  {% include 'console/partials/bars.html' with rows=payload.payment_status_breakdown %}
+</section>
+
+<section class="console-block console-grid-2">
+  <div>
+    <h2>Reconciliation</h2>
+    <p class="console-muted">Checked {{ payload.reconciliation.checked_at|human_datetime }}</p>
+    <table class="console-table">
+      <thead><tr><th>Check</th><th>Count</th><th>Severity</th></tr></thead>
+      <tbody>
+      {% for issue in payload.reconciliation.issues %}
+        <tr>
+          <td>{{ issue.label }}</td>
+          <td>{{ issue.count }}</td>
+          <td><span class="tag tag--{{ issue.severity|lower }}">{{ issue.severity }}</span></td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="3">No reconciliation differences found in this range.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <h2>Metric definitions</h2>
+    <dl class="definition-list">
+      {% for key, label in payload.definitions %}
+        <dt>{{ key }}</dt><dd>{{ label }}</dd>
+      {% empty %}
+        <dt>Definitions</dt><dd>The API did not return a definition list for this payload.</dd>
+      {% endfor %}
+    </dl>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,53 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Customer intelligence · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>New customers</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.growth.value }}</span><small>{{ payload.growth.label }}</small></div>
+    <div class="stat"><span>{{ payload.growth.previous }}</span><small>Previous period</small></div>
+    <div class="stat"><span>{% if payload.growth.change_percent is None %}—{% else %}{{ payload.growth.change_percent|delta_label }}{% endif %}</span><small>Change</small></div>
+  </div>
+  <p class="console-muted">{{ payload.growth.definition }}</p>
+</section>
+<section class="console-block">
+  <h2>Activity</h2>
+  {% include 'console/partials/metrics.html' with metrics=payload.activity %}
+</section>
+<section class="console-block console-grid-2">
+  <div>
+    <h2>Spend</h2>
+    {% include 'console/partials/metrics.html' with metrics=payload.spend %}
+    <table class="console-table">
+      <thead><tr><th>Top spenders</th><th>Value</th></tr></thead>
+      <tbody>
+      {% for row in payload.spend.top_spenders %}
+        <tr><td>{{ row.customer }}</td><td>{{ row.value_kobo|ngn_kobo }}</td></tr>
+      {% empty %}
+        <tr><td colspan="2">No captured payments for these customers yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="console-muted">Median days between a customer's bookings: {{ payload.time_between_bookings_days.median }} (sample {{ payload.time_between_bookings_days.sample }})</p>
+  </div>
+  <div>
+    <h2>Segments</h2>
+    <table class="console-table">
+      <thead><tr><th>Segment</th><th>Customers</th></tr></thead>
+      <tbody>
+      {% for row in payload.segments %}<tr><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>
+      {% empty %}<tr><td colspan="2">No segments returned.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+    <h2>Cohort retention</h2>
+    <table class="console-table">
+      <thead><tr><th>Cohort</th><th>New</th><th>Returned</th><th>Retention</th></tr></thead>
+      <tbody>
+      {% for row in payload.cohorts %}<tr><td>{{ row.cohort }}</td><td>{{ row.new_customers }}</td><td>{{ row.returned }}</td><td>{{ row.retention_percent }}%</td></tr>
+      {% empty %}<tr><td colspan="4">No cohorts in range.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

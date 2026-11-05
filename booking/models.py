@@ -94,7 +94,29 @@ class Booking(models.Model):
         return self.escrow_payments.filter(addon_order__isnull=True).order_by("created_at").first()
 
     def __str__(self):
-        return f"Booking {self.id} - {self.status}"
+        return f"{booking_display_name(self)} - {self.status}"
+
+
+def _person_name(profile) -> str:
+    """Best human name for a customer or artisan profile (never an id)."""
+    if profile is None:
+        return ""
+    business = (getattr(profile, "business_name", "") or "").strip()
+    user = getattr(profile, "user", None)
+    personal = ""
+    if user is not None:
+        personal = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+        personal = personal or (getattr(user, "email", "") or "").split("@")[0]
+    return business or personal
+
+
+def booking_display_name(booking) -> str:
+    """Human label for a booking: "<service> with <artisan>", never the UUID."""
+    request = getattr(booking, "request", None)
+    category = getattr(request, "category", None)
+    service = (getattr(category, "name", "") or "").strip() or "Service"
+    artisan_name = _person_name(getattr(booking, "artisan", None))
+    return f"{service} with {artisan_name}" if artisan_name else service
 
 
 class BookingAdditionalOrder(models.Model):

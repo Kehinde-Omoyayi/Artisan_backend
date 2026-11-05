@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}{% if role == 'customer' %}Booking with {{ booking.artisan_name|default:'your artisan' }}{% else %}Booking for {{ booking.customer_name|default:'your customer' }}{% endif %} · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page workflow-page booking-workflow-page booking-detail-page" data-artisan-page="booking-detail">
+  <header class="page-heading artisan-page-heading workflow-heading workflow-detail-heading" data-artisan-reveal data-motion="left">
+    <div class="workflow-heading-copy">
+      <span class="workflow-kicker"><span class="workflow-kicker-mark" aria-hidden="true">✦</span> Booking overview</span>
+      <h1 data-text-motion>{% if role == 'customer' %}Booking with {{ booking.artisan_name|default:'your artisan' }}{% else %}Booking for {{ booking.customer_name|default:'your customer' }}{% endif %}</h1>
+      <p>Review the agreed schedule, the price and what you can do next. Nothing is taken from your account until a payment is confirmed.</p>
+    </div>
+    <div class="workflow-detail-heading-side">
+      <span class="workflow-detail-reference">Service <strong>{{ booking.service_name|default:'Artisan work' }}</strong></span>
+      <span class="status-pill {{ booking.status|status_class }} workflow-detail-status"><span class="workflow-status-dot" aria-hidden="true"></span>{{ booking.status|default:'Status unavailable'|title }}</span>
+      <a class="workflow-back-link" href="{% url 'bookings' %}"><span aria-hidden="true">←</span> All bookings</a>
+    </div>
+  </header>
+
+  <div class="workflow-detail-layout booking-detail-layout">
+    <div class="workflow-detail-main">
+      <article class="panel workflow-panel workflow-schedule-panel" aria-labelledby="booking-schedule-title" data-artisan-reveal data-motion="up">
+        <div class="workflow-panel-head">
+          <div><span class="artisan-panel-kicker">Appointment window</span><h2 id="booking-schedule-title">Agreed schedule</h2></div>
+          <span class="workflow-panel-icon workflow-panel-icon-schedule" aria-hidden="true">◷</span>
+        </div>
+        <div class="workflow-schedule-hero">
+          <span class="workflow-schedule-label">Start time</span>
+          <time class="workflow-schedule-value" datetime="{{ booking.scheduled_time_start }}">{{ booking.scheduled_time_start|human_datetime|default:'Not provided' }}</time>
+          <span class="workflow-schedule-divider" aria-hidden="true"><span></span><b>to</b><span></span></span>
+          <span class="workflow-schedule-label">End time</span>
+          <time class="workflow-schedule-value" datetime="{{ booking.scheduled_time_end }}">{{ booking.scheduled_time_end|human_datetime|default:'Not provided' }}</time>
+          <span class="workflow-schedule-glow" aria-hidden="true"></span>
+        </div>
+      </article>
+
+      <article class="panel workflow-panel workflow-reference-panel" aria-labelledby="booking-reference-title" data-artisan-reveal data-motion="left">
+        <div class="workflow-panel-head">
+          <div><span class="artisan-panel-kicker">Booking information</span><h2 id="booking-reference-title">At a glance</h2></div>
+          <span class="workflow-panel-icon" aria-hidden="true">⌘</span>
+        </div>
+        <dl class="workflow-facts-grid">
+          <div class="workflow-fact-card"><dt>Service</dt><dd>{% if booking.service_name %}{{ booking.service_name }}{% elif service_summary.service %}{{ service_summary.service }}{% else %}Artisan work{% endif %}</dd></div>
+          <div class="workflow-fact-card"><dt>Agreed price</dt><dd>{{ booking.price_agreed|ngn }}</dd></div>
+          <div class="workflow-fact-card"><dt>Duration</dt><dd>{{ booking.duration_label|default:'Not recorded' }}</dd></div>
+          <div class="workflow-fact-card"><dt>Artisan</dt><dd>{{ booking.artisan_name|default:'Not recorded' }}</dd></div>
+          <div class="workflow-fact-card"><dt>Customer</dt><dd>{{ booking.customer_name|default:'Not recorded' }}</dd></div>
+          {% if service_summary.location %}<div class="workflow-fact-card workflow-fact-card-wide"><dt>Location</dt><dd>{{ service_summary.location }}</dd></div>{% endif %}
+          <div class="workflow-fact-card workflow-fact-card-wide"><dt>Price breakdown</dt><dd>Agreed through the itemized quote: labour, materials, transport and additional charges were confirmed before payment. Payable now: {{ booking.price_agreed|ngn }}</dd></div>
+        </dl>
+      </article>
+    </div>
+
+    <aside class="panel workflow-panel booking-actions-panel" aria-labelledby="booking-actions-title" data-artisan-reveal data-motion="right">
+      <div class="workflow-panel-head">
+        <div><span class="artisan-panel-kicker">Next step</span><h2 id="booking-actions-title">Booking actions</h2></div>
+        <span class="workflow-panel-icon" aria-hidden="true">↗</span>
+      </div>
+      {% if booking_actions %}
+      {% if booking_actions|length > 1 %}<p class="workflow-panel-intro">Only the actions that are valid for your role and this booking's current state are shown.</p>{% endif %}
+      <nav class="booking-action-grid" aria-label="Booking actions">
+        {% for action in booking_actions %}{% if action.url and action.code != 'PAY_BOOKING' %}
+          <a href="{{ action.url }}" class="booking-action-link{% if action.variant == 'danger' %} booking-action-link-dispute{% endif %}{% if action.code == 'VIEW_HISTORY' %} booking-action-link-history{% endif %}" data-artisan-action data-booking-action="{{ action.code }}"><span class="booking-action-mark" aria-hidden="true">{% if action.code == 'CANCEL_BOOKING' %}–{% elif action.code == 'REJECT_BOOKING' %}×{% elif action.code == 'DISPUTE_BOOKING' %}!{% elif action.code == 'VIEW_HISTORY' %}◷{% else %}✓{% endif %}</span><span>{{ action.label }}</span><span class="booking-action-arrow" aria-hidden="true">↗</span></a>
+          {% endif %}
+        {% endfor %}
+      </nav>
+      {% else %}
+      <div class="workflow-empty">
+        <span class="workflow-empty-symbol" aria-hidden="true">◌</span>
+        <strong>No action is available to you</strong>
+        <p>This booking is {% if booking.status %}{{ booking.status|lower|cut:'_' }}{% else %}in an unknown state{% endif %}. Its history and conversation stay readable.</p>
+      </div>
+      {% endif %}
+      {% for action in booking_actions %}{% if action.code == 'PAY_BOOKING' %}
+      <form method="post" action="{{ action.url }}" class="booking-payment-form">
+        {% csrf_token %}
+        <button class="button button-primary workflow-submit" type="submit" data-artisan-action data-booking-action="PAY_BOOKING">Pay {{ booking.price_agreed|ngn }} securely <span aria-hidden="true">→</span></button>
+        <small class="muted">Escrow: the artisan is paid only after you confirm the work is complete.</small>
+      </form>
+      {% endif %}{% endfor %}
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

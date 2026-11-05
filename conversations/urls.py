@@ -10,6 +10,9 @@ from .views import (
     ConversationOfferDeclineView,
     ConversationOfferListView,
     ConversationOfferCounterView,
+    ConversationOfferRenotifyView,
+    ConversationOfferResendView,
+    ConversationUnreadCountView,
     ConversationPaymentInitializeView,
     ConversationReadView,
     ConversationRequestView,
@@ -28,6 +31,11 @@ urlpatterns = [
     path("", ConversationCreateView.as_view(), name="conversation-list"),
     path("start/", ConversationStartView.as_view(), name="conversation-start"),
     path("inbox/", ConversationListView.as_view(), name="conversation-inbox"),
+    path(
+        "unread-count/",
+        ConversationUnreadCountView.as_view(),
+        name="conversation-unread-count",
+    ),
     path(
         "<uuid:conversation_id>/",
         ConversationDetailView.as_view(),
@@ -67,6 +75,16 @@ urlpatterns = [
         "<uuid:conversation_id>/offers/<uuid:offer_id>/decline/",
         ConversationOfferDeclineView.as_view(),
         name="conversation-offer-decline",
+    ),
+    path(
+        "<uuid:conversation_id>/offers/<uuid:offer_id>/renotify/",
+        ConversationOfferRenotifyView.as_view(),
+        name="conversation-offer-renotify",
+    ),
+    path(
+        "<uuid:conversation_id>/offers/<uuid:offer_id>/resend/",
+        ConversationOfferResendView.as_view(),
+        name="conversation-offer-resend",
     ),
     path(
         "<uuid:conversation_id>/read/",

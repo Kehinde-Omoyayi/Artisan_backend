@@ -13,6 +13,7 @@ class EscrowPayment(models.Model):
         REFUND_PENDING = "REFUND_PENDING", "Refund Pending"
         REFUNDED = "REFUNDED", "Refunded"
         FAILED = "FAILED", "Failed"
+        CANCELLED = "CANCELLED", "Cancelled"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     booking = models.ForeignKey("booking.Booking", on_delete=models.PROTECT, related_name="escrow_payments")
@@ -37,6 +38,11 @@ class EscrowPayment(models.Model):
     release_requested_at = models.DateTimeField(null=True, blank=True)
     released_at = models.DateTimeField(null=True, blank=True)
     failure_reason = models.TextField(blank=True)
+    # A cancelled booking neuters its unpaid payment link. The reference is kept
+    # so a late provider callback can still be matched, verified and held for a
+    # support refund review instead of being silently ignored.
+    link_voided_at = models.DateTimeField(null=True, blank=True)
+    link_void_reason = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

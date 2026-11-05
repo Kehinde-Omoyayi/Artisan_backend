@@ -1,0 +1,36 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Service intelligence · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Categories in this range</h2>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead>
+        <tr><th>Category</th><th>Requests</th><th>Customers</th><th>Artisans</th><th>Offers</th><th>Bookings</th>
+          <th>Paid</th><th>Completed</th><th>Cancelled</th><th>Disputes</th><th>Value</th></tr>
+      </thead>
+      <tbody>
+      {% for row in payload.categories %}
+        <tr>
+          <td>{{ row.name }}</td><td>{{ row.requests }}</td><td>{{ row.unique_customers }}</td><td>{{ row.artisans }}</td>
+          <td>{{ row.offers }}</td><td>{{ row.bookings }}</td><td>{{ row.paid_bookings }}</td><td>{{ row.completed }}</td>
+          <td>{{ row.cancelled }}</td><td>{{ row.disputes }}</td><td>{{ row.transaction_value|ngn }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="11">No category activity in this range.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section class="console-block">
+  <h2>How these figures are built</h2>
+  <dl class="definition-list">
+    {% for key, text in payload.definitions.items %}
+      <dt>{{ key|humanize_code }}</dt><dd>{{ text }}</dd>
+    {% endfor %}
+  </dl>
+  <p class="console-muted">{{ payload.rankings.method }}</p>
+</section>
+{% endblock %}

@@ -1,0 +1,46 @@
+.notification-page{width:min(1120px,100%);margin:0 auto;padding:0 0 42px;color:var(--ink)}
+.notification-back-nav{margin:2px 0 12px}
+.notification-back-link{display:inline-flex;align-items:center;gap:8px;color:var(--brand);font-size:12px;font-weight:800;text-decoration:none}
+.notification-back-link:hover{text-decoration:underline;text-underline-offset:3px}
+.notification-back-link span{font-size:18px;line-height:1}
+.notification-page-heading{margin:0 0 18px}
+.notification-inbox{padding:22px;border:1px solid var(--line);border-radius:18px;background:var(--surface);box-shadow:var(--shadow)}
+.notification-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 0 18px;border-bottom:1px solid var(--line)}
+.notification-kicker{display:block;margin-bottom:4px;color:var(--muted);font-size:9px;font-weight:900;letter-spacing:.14em}
+.notification-toolbar h2{margin:0;color:var(--ink);font:700 23px/1.2 "DM Serif Display",Georgia,serif;letter-spacing:-.025em}
+.notification-toolbar p{margin:5px 0 0;color:var(--muted);font-size:12px}
+.notification-toolbar-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+.notification-filter-link,.notification-secondary-button,.notification-danger-button,.notification-delete-button,.notification-text-button{font:700 11px "DM Sans",system-ui,sans-serif;cursor:pointer}
+.notification-filter-nav{display:flex;align-items:center}
+.notification-filter-link{display:inline-flex;align-items:center;min-height:36px;padding:0 11px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--brand)}
+.notification-filter-link:hover,.notification-secondary-button:hover{background:var(--surface-soft)}
+.notification-action-form{display:inline-flex;margin:0}
+.notification-secondary-button,.notification-danger-button{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)}
+.notification-danger-button{border-color:#efcbc6;color:var(--danger)}
+.notification-danger-button:hover,.notification-delete-button:hover{background:#fff1ef}
+.notification-list{display:grid;gap:9px;margin:17px 0 0;padding:0;list-style:none}
+.notification-item{display:flex;align-items:flex-start;gap:13px;margin:0;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--surface);font-weight:400;transition:border-color .18s ease,background .18s ease,box-shadow .18s ease}
+.notification-item:hover{border-color:#d4bba7;box-shadow:0 7px 18px rgba(54,39,29,.045)}
+.notification-item.unread{border-left:4px solid var(--accent);background:linear-gradient(110deg,#fffdf9,#fbf6f0)}
+.notification-item-mark{display:grid;flex:0 0 30px;place-items:center;width:30px;height:30px;border-radius:10px;background:var(--surface-soft);color:var(--brand);font-size:18px;font-weight:900}
+.notification-item.unread .notification-item-mark{background:#f3e4d6;color:var(--accent)}
+.notification-item-copy{min-width:0;flex:1}
+.notification-item-heading{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.notification-item-heading h3{margin:0;color:var(--ink);font:800 13px/1.35 "DM Sans",system-ui,sans-serif;overflow-wrap:anywhere}
+.notification-unread-badge{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:#f5e4d8;color:#76462f;font-size:9px;font-weight:850;letter-spacing:.035em;text-transform:uppercase}
+.notification-item-copy>p{margin:7px 0 7px;color:#65574d;font-size:12px;line-height:1.65;overflow-wrap:anywhere}
+.notification-timestamp{display:block;color:var(--muted);font-size:10px;font-weight:650}
+.notification-item-actions{display:flex;align-items:center;flex-wrap:wrap;gap:13px;margin-top:11px}
+.notification-open-link{color:var(--brand);font-size:11px;font-weight:800;text-decoration:none}
+.notification-open-link:hover,.notification-text-button:hover,.notification-delete-button:hover{text-decoration:underline;text-underline-offset:3px}
+.notification-text-button,.notification-delete-button{padding:0;border:0;background:transparent;color:var(--brand)}
+.notification-delete-button{color:var(--danger)}
+.notification-pagination{display:flex;justify-content:space-between;gap:12px;margin-top:17px}
+.notification-pagination a{display:inline-flex;align-items:center;min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--brand);font-size:11px;font-weight:800}
+.notification-pagination a:hover{background:var(--surface-soft)}
+.notification-empty-state{display:grid;justify-items:center;padding:42px 18px 30px;text-align:center}
+.notification-empty-mark{display:grid;place-items:center;width:44px;height:44px;margin-bottom:10px;border-radius:14px;background:var(--surface-soft);color:var(--brand);font-size:22px}
+.notification-empty-state strong{color:var(--ink);font-size:14px}
+.notification-empty-state p{max-width:400px;margin:6px 0 0;color:var(--muted);font-size:12px}
+@media(max-width:760px){.notification-toolbar{align-items:flex-start;flex-direction:column}.notification-toolbar-actions{justify-content:flex-start;width:100%}.notification-inbox{padding:17px}}
+@media(max-width:520px){.notification-page{padding-bottom:26px}.notification-toolbar-actions{display:grid;grid-template-columns:1fr 1fr;align-items:stretch}.notification-filter-nav,.notification-action-form{min-width:0}.notification-filter-link,.notification-secondary-button,.notification-danger-button{width:100%;justify-content:center}.notification-action-form{display:flex}.notification-item{gap:10px;padding:13px}.notification-item-mark{flex-basis:26px;width:26px;height:26px;border-radius:8px}.notification-item-actions{gap:12px}.notification-item-copy>p{font-size:11px}}

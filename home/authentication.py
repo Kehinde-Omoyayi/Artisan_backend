@@ -46,9 +46,24 @@ def _is_password_maintenance_path(path):
     )
 
 
+def _is_active_manager(user) -> bool:
+    """True when the account holds an active manager profile (manager app)."""
+    try:
+        from manager.models import ManagerProfile
+    except Exception:  # pragma: no cover - manager app not installed
+        return False
+    return ManagerProfile.objects.filter(user=user, is_suspended=False).exists()
+
+
 def _is_staff_work_path_allowed(user, path):
     """Fail closed for staff outside their support role or the manager surface."""
     if _is_password_maintenance_path(path):
+        return True
+
+    if path.startswith("/api/v1/manager/") and _is_active_manager(user):
+        # The manager console authorises every endpoint itself (role permission +
+        # object rules), so a staff account with a manager role is inside its
+        # boundary here instead of being treated as a support-only account.
         return True
 
     if user.is_superuser:

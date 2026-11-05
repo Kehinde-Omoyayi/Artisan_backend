@@ -73,3 +73,50 @@ class ReviewRulesTests(TestCase):
         )
         self.assertFalse(serializer.is_valid())
         self.assertIn("booking", serializer.errors)
+
+
+class PlatformFeedbackTests(TestCase):
+    """The improvement note is ours, and it is never mixed with the rating."""
+
+    def setUp(self):
+        self.user = CustomUser.objects.create_user(
+            email="feedback@example.com", first_name="Kehinde", last_name="Omoyayi",
+            password="StrongPassword123!", is_active=True,
+        )
+
+    def test_a_signed_in_user_can_send_one_note(self):
+        from rest_framework.test import APIClient
+        from .models import PlatformFeedback
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.post(
+            "/api/v1/reviews/platform-feedback/",
+            {"note": "The offer screen scrolls past the accept button.", "page": "review"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        saved = PlatformFeedback.objects.get(user=self.user)
+        self.assertIn("accept button", saved.note)
+        self.assertEqual(saved.page, "review")
+
+    def test_an_empty_note_is_refused(self):
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        response = client.post(
+            "/api/v1/reviews/platform-feedback/", {"note": "   "}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_anonymous_note_is_refused(self):
+        from rest_framework.test import APIClient
+
+        response = APIClient().post(
+            "/api/v1/reviews/platform-feedback/", {"note": "hello"}, format="json"
+        )
+
+        self.assertIn(response.status_code, (401, 403))

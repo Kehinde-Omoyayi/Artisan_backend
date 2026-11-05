@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block title %}Choose BVN method · Artisan Market{% endblock %}
+{% block content %}
+<section class="artisan-motion-page bvn-method-page" data-artisan-page="bvn-method">
+  <header class="page-heading artisan-page-heading" data-artisan-reveal data-motion="right">
+    <div>
+      <div class="eyebrow">BVN verification</div>
+      <h1 data-text-motion>Choose a verification method</h1>
+      <p>Select one of the methods returned by the API. Your choice is submitted through the existing verification flow.</p>
+    </div>
+    <span class="bvn-step-badge" aria-label="Verification method step">02</span>
+  </header>
+
+  <section class="bvn-method-layout">
+    <article class="panel bvn-method-options-panel" data-artisan-reveal data-motion="left">
+      <div class="panel-head">
+        <div><span class="bvn-panel-kicker">Available options</span><h2>Choose a method</h2></div>
+        <span class="bvn-method-count">{{ methods|length }}</span>
+      </div>
+      <div class="bvn-method-options" role="group" aria-label="Verification methods returned by the API">
+        {% for method in methods %}
+          {% if method.method %}
+            <button class="bvn-method-option" type="button" data-bvn-method-option="{{ method.method }}" aria-pressed="false" data-artisan-reveal data-motion="up">
+              <span class="bvn-method-number">{{ forloop.counter|stringformat:'02d' }}</span>
+              <span class="bvn-method-option-copy">
+                <strong>{{ method.name|default:method.method|default:'Verification method' }}</strong>
+                <small>{{ method.method }}</small>
+              </span>
+              <span class="bvn-method-arrow" aria-hidden="true">↗</span>
+            </button>
+          {% else %}
+            <div class="bvn-method-option bvn-method-option-static" data-artisan-reveal data-motion="up">
+              <span class="bvn-method-number">{{ forloop.counter|stringformat:'02d' }}</span>
+              <span class="bvn-method-option-copy"><strong>{{ method.name|default:method.method|default:'Verification method' }}</strong><small>Method details supplied by the API</small></span>
+            </div>
+          {% endif %}
+        {% empty %}
+          <div class="empty bvn-method-empty" data-artisan-reveal data-motion="up">No verification methods are currently available. Start BVN verification again to request the latest options.</div>
+        {% endfor %}
+      </div>
+      <p class="bvn-selection-status" data-bvn-selection-status role="status" aria-live="polite">Choose an option to fill the method field.</p>
+    </article>
+
+    <article class="panel form-panel bvn-method-form-panel" data-artisan-reveal data-motion="right">
+      <div class="panel-head"><div><span class="bvn-panel-kicker">Continue securely</span><h2>Confirm your choice</h2></div></div>
+      <form method="post" class="js-submit-form bvn-method-form" data-bvn-method-form>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+        {% for field in form %}
+          <div class="form-field {% if field.errors %}has-error{% endif %}" data-artisan-reveal data-motion="up">
+            {{ field.label_tag }}{{ field }}
+            {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+            {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+          </div>
+        {% endfor %}
+        <button class="button button-primary bvn-submit-button" type="submit" data-artisan-action>Select method</button>
+      </form>
+      <a class="artisan-subtle-link" href="{% url 'verification' %}">Back to verification center</a>
+    </article>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

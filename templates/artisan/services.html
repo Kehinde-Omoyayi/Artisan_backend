@@ -1,0 +1,395 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}My services · Artisan Market{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% asset 'css/artisan-pages.css' %}">
+<style>
+/* Picker styles are inlined on purpose: this page must render correctly even if a
+   browser holds an older artisan-pages.css, so nothing here depends on another file. */
+/* Artisan "My services" form.
+   Self-contained on purpose: this page must render correctly even if a stale
+   artisan-pages.css is cached, so none of these rules depend on other files. */
+
+.artisan-services-page .artisan-service-form { display: block; }
+
+.artisan-service-pickers {
+  display: block;
+  margin: 14px 0 6px;
+  padding: 2px 14px;
+  border: 1px solid rgba(116, 67, 47, .14);
+  border-radius: 16px;
+  background: rgba(255, 253, 249, .78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+/* --- one picker row ------------------------------------------------------ */
+.artisan-pick { border-bottom: 1px solid rgba(116, 67, 47, .1); }
+.artisan-pick:last-child { border-bottom: 0; }
+
+.artisan-pick-head {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.artisan-pick-icon {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: #f4e9dd;
+  color: var(--brand, #74432f);
+}
+.artisan-pick-icon svg { width: 15px; height: 15px; display: block; }
+
+.artisan-pick-label { font-size: 12.5px; font-weight: 700; color: inherit; }
+
+.artisan-pick-value {
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--brand, #74432f);
+  font-size: 11.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.artisan-pick-value.is-placeholder { color: #a08d7a; font-weight: 600; }
+
+.artisan-pick-chevron {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: #9c8875;
+  transition: transform .22s ease, color .18s ease;
+}
+.artisan-pick-chevron svg { width: 15px; height: 15px; display: block; }
+.artisan-pick.is-open .artisan-pick-chevron { color: var(--brand, #74432f); transform: rotate(-180deg); }
+
+.artisan-pick-body { padding: 0 0 12px; }
+.artisan-pick-body[hidden] { display: none; }
+
+.artisan-pick-options {
+  display: grid;
+  gap: 2px;
+  max-height: 232px;
+  overflow-y: auto;
+  padding: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: #dcc9b7 transparent;
+  animation: artisan-pick-in .18s ease both;
+}
+.artisan-pick-options::-webkit-scrollbar { width: 7px; }
+.artisan-pick-options::-webkit-scrollbar-thumb { border-radius: 999px; background: #dcc9b7; }
+
+@keyframes artisan-pick-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.artisan-pick-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease, padding-left .18s ease;
+}
+.artisan-pick-option:hover { border-color: #e6d5c4; background: rgba(255, 253, 249, .96); padding-left: 14px; }
+.artisan-pick-option.is-selected {
+  border-color: #dcc3ad;
+  background: #f4e7d9;
+  font-weight: 700;
+}
+.artisan-pick-option.is-selected::before { content: "✓"; color: var(--brand, #74432f); font-size: 10px; }
+
+.artisan-pick-empty { margin: 6px 2px 2px; color: #8a7663; font-size: 11.5px; }
+.artisan-pick-empty[hidden] { display: none; }
+
+/* --- coverage switch ----------------------------------------------------- */
+.artisan-coverage { margin: 14px 0 4px; }
+
+.artisan-coverage-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(116, 67, 47, .18);
+  border-radius: 14px;
+  background: rgba(255, 253, 249, .92);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .2s ease, background .2s ease;
+}
+.artisan-coverage-toggle:hover { border-color: #d9bfa9; background: #fffdf9; }
+.artisan-coverage-toggle:focus-visible { outline: 2px solid var(--brand, #74432f); outline-offset: 2px; }
+
+.artisan-coverage-switch {
+  position: relative;
+  flex: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e2d3c4;
+  transition: background .22s ease;
+}
+.artisan-coverage-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fffdf9;
+  box-shadow: 0 1px 3px rgba(60, 32, 20, .28);
+  transition: transform .22s cubic-bezier(.2, .75, .25, 1);
+}
+.artisan-coverage-toggle[aria-pressed="true"] .artisan-coverage-switch { background: var(--brand, #74432f); }
+.artisan-coverage-toggle[aria-pressed="true"] .artisan-coverage-knob { transform: translateX(18px); }
+
+.artisan-coverage-copy { display: grid; gap: 2px; min-width: 0; }
+.artisan-coverage-copy strong { font-size: 13px; }
+.artisan-coverage-copy small { color: #7c6a5c; font-size: 11px; }
+
+.artisan-location-picks { border-top: 1px solid rgba(116, 67, 47, .1); margin-top: 4px; }
+.artisan-location-picks[hidden] { display: none; }
+
+/* --- limit notice -------------------------------------------------------- */
+.artisan-service-limit {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 14px;
+  padding: 11px 13px;
+  border: 1px solid #e3c9ae;
+  border-radius: 12px;
+  background: #fbf1e5;
+  color: #6d4a32;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.artisan-service-limit strong { display: block; font-size: 12.5px; }
+.artisan-service-limit[hidden] { display: none; }
+
+.artisan-service-capacity { margin: 0 0 12px; color: #8a7663; font-size: 11.5px; }
+.artisan-service-capacity strong { color: var(--brand, #74432f); }
+
+/* --- budget -------------------------------------------------------------- */
+.artisan-service-budget { margin-top: 16px; }
+.artisan-service-budget label { display: block; margin-bottom: 6px; font-size: 12.5px; font-weight: 700; }
+.artisan-coverage-field { margin-top: 16px; }
+.artisan-coverage-field-label { display: block; margin-bottom: 6px; font-size: 12.5px; font-weight: 700; color: #5d4636; }
+.artisan-coverage-field-help { display: block; margin: 0 0 10px; color: #8a7663; font-size: 11px; line-height: 1.6; }
+.artisan-location-picks-title { margin-bottom: 2px; }
+.artisan-location-picks-help { margin: 0 0 10px; color: #8a7663; font-size: 11px; line-height: 1.6; }
+.artisan-service-budget input { width: 100%; }
+.artisan-service-budget .help { display: block; margin-top: 6px; color: #8a7663; font-size: 11px; }
+
+@media (max-width: 560px) {
+  .artisan-service-pickers { padding: 2px 10px; }
+  .artisan-pick-value { max-width: 110px; }
+}
+</style>
+{% endblock %}
+{% block content %}
+<section class="artisan-motion-page artisan-services-page" data-artisan-page="services">
+  <header class="page-heading artisan-page-heading services-page-heading" data-artisan-reveal data-motion="up">
+    <div><div class="eyebrow">Artisan catalogue</div><h1 data-text-motion>My services</h1><p>Manage your personal service offerings in one place: category, service, coverage, starting budget and edits.</p></div>
+    <span class="services-heading-count" aria-label="Services in current API response">{{ service_count }}<small>of {{ max_services }}</small></span>
+  </header>
+
+  <section class="artisan-services-layout">
+    <article class="panel artisan-service-add-panel" id="service-offer-form" data-artisan-reveal data-motion="left">
+      <div class="panel-head">
+        <div><span class="artisan-panel-kicker">{% if editing_item %}Update an offering{% else %}Grow your catalogue{% endif %}</span><h2>{% if editing_item %}Edit service{% else %}Add a service{% endif %}</h2></div>
+        <span class="artisan-panel-mark" aria-hidden="true">{% if editing_item %}✎{% else %}＋{% endif %}</span>
+      </div>
+      <p class="artisan-form-intro">Pick a catalogue service, choose its coverage (<strong>Anywhere</strong> or a location from the geographic catalogue), then set a starting budget.</p>
+
+      <div class="artisan-service-limit" data-service-limit {% if not at_limit %}hidden{% endif %} role="status">
+        <span aria-hidden="true">◆</span>
+        <span><strong>You have reached the {{ max_services }}-service limit.</strong>
+        Remove an offering below to add a different one. You can still edit the {{ max_services }} you have.</span>
+      </div>
+
+      <form method="post" class="js-submit-form artisan-service-form" data-artisan-form data-service-filter-form data-service-picker-form data-anywhere-value="{{ anywhere_value }}" data-geographic-value="{{ geographic_value }}" data-max-services="{{ max_services }}" data-service-count="{{ service_count }}">
+        {% csrf_token %}
+        {{ form.category_name.as_hidden }}
+        {{ form.service_name.as_hidden }}
+        {{ form.location_country_filter.as_hidden }}
+        {{ form.location_state_filter.as_hidden }}
+        {{ form.location_area_filter.as_hidden }}
+        {{ form.institution.as_hidden }}
+        {{ form.location_id.as_hidden }}
+
+        {% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
+
+        <p class="artisan-service-capacity"><strong>{{ service_count }}</strong> of <strong>{{ max_services }}</strong> services used{% if editing_item %} · editing “{{ editing_item.service_name }}”{% endif %}</p>
+
+        <div class="artisan-service-pickers" data-service-pickers>
+          <section class="artisan-pick" data-service-row data-picker-key="category">
+            <button class="artisan-pick-head" type="button" data-picker-toggle aria-expanded="false" aria-controls="pick-category">
+              <span class="artisan-pick-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><rect x="4" y="4" width="7" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+              <span class="artisan-pick-label">Category</span>
+              <span class="artisan-pick-value is-placeholder" data-picker-value>Choose a category</span>
+              <span class="artisan-pick-chevron" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+            </button>
+            <div class="artisan-pick-body" id="pick-category" data-picker-body hidden>
+              <div class="artisan-pick-options" role="listbox" aria-label="Category" data-picker-options="category"></div>
+            </div>
+          </section>
+
+          <section class="artisan-pick" data-service-row data-picker-key="service">
+            <button class="artisan-pick-head" type="button" data-picker-toggle aria-expanded="false" aria-controls="pick-service">
+              <span class="artisan-pick-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="M4 7.5h16M4 12h16M4 16.5h10" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.6"/></svg></span>
+              <span class="artisan-pick-label">Service</span>
+              <span class="artisan-pick-value is-placeholder" data-picker-value>Choose a category first</span>
+              <span class="artisan-pick-chevron" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+            </button>
+            <div class="artisan-pick-body" id="pick-service" data-picker-body hidden>
+              <div class="artisan-pick-options" role="listbox" aria-label="Service" data-picker-options="service"></div>
+              <p class="artisan-pick-empty" data-picker-empty="service" hidden>Choose a category to list its services.</p>
+            </div>
+          </section>
+        </div>
+
+        <div class="form-field artisan-coverage-field">
+          <span class="artisan-coverage-field-label">Availability / coverage</span>
+          <small class="artisan-coverage-field-help help">Choose where this service can be delivered. Anywhere means you accept clients from every location; turn it off to serve one catalogue location.</small>
+          <div class="artisan-coverage">
+            <button class="artisan-coverage-toggle" type="button" data-anywhere-toggle aria-pressed="true">
+              <span class="artisan-coverage-switch" aria-hidden="true"><span class="artisan-coverage-knob"></span></span>
+              <span class="artisan-coverage-copy">
+                <strong>Anywhere</strong>
+                <small data-anywhere-caption>Available across all locations</small>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div class="artisan-service-pickers artisan-location-picks" data-location-rows hidden>
+          <span class="artisan-coverage-field-label artisan-location-picks-title">Service location</span>
+          <small class="help artisan-location-picks-help">Pick a country, state and area from the geographic catalogue. Choosing a closest institution fills them in for you.</small>
+          <section class="artisan-pick" data-service-row data-picker-key="country">
+            <button class="artisan-pick-head" type="button" data-picker-toggle aria-expanded="false" aria-controls="pick-country">
+              <span class="artisan-pick-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.6 12h16.8M12 3.6c2.4 2.3 3.7 5.2 3.7 8.4s-1.3 6.1-3.7 8.4c-2.4-2.3-3.7-5.2-3.7-8.4S9.6 5.9 12 3.6Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+              <span class="artisan-pick-label">Country</span>
+              <span class="artisan-pick-value is-placeholder" data-picker-value>All countries</span>
+              <span class="artisan-pick-chevron" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+            </button>
+            <div class="artisan-pick-body" id="pick-country" data-picker-body hidden>
+              <div class="artisan-pick-options" role="listbox" aria-label="Country" data-picker-options="country"></div>
+            </div>
+          </section>
+
+          <section class="artisan-pick" data-service-row data-picker-key="state">
+            <button class="artisan-pick-head" type="button" data-picker-toggle aria-expanded="false" aria-controls="pick-state">
+              <span class="artisan-pick-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="M9 4.5 3.8 6.7v12.8L9 17.3l6 2.2 5.2-2.2V4.5L15 6.7 9 4.5Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/><path d="M9 4.5v12.8M15 6.7v12.8" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+              <span class="artisan-pick-label">State or region</span>
+              <span class="artisan-pick-value is-placeholder" data-picker-value>All states</span>
+              <span class="artisan-pick-chevron" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+            </button>
+            <div class="artisan-pick-body" id="pick-state" data-picker-body hidden>
+              <div class="artisan-pick-options" role="listbox" aria-label="State or region" data-picker-options="state"></div>
+            </div>
+          </section>
+
+          <section class="artisan-pick" data-service-row data-picker-key="area">
+            <button class="artisan-pick-head" type="button" data-picker-toggle aria-expanded="false" aria-controls="pick-area">
+              <span class="artisan-pick-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="M12 21s6.4-5.6 6.4-10.2A6.4 6.4 0 0 0 5.6 10.8C5.6 15.4 12 21 12 21Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/><circle cx="12" cy="10.6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+              <span class="artisan-pick-label">Area or locality</span>
+              <span class="artisan-pick-value is-placeholder" data-picker-value>All areas</span>
+              <span class="artisan-pick-chevron" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+            </button>
+            <div class="artisan-pick-body" id="pick-area" data-picker-body hidden>
+              <div class="artisan-pick-options" role="listbox" aria-label="Area or locality" data-picker-options="area"></div>
+              <p class="artisan-pick-empty" data-picker-empty="area" hidden>Choose a state first.</p>
+            </div>
+          </section>
+
+          <section class="artisan-pick" data-service-row data-picker-key="institution">
+            <button class="artisan-pick-head" type="button" data-picker-toggle aria-expanded="false" aria-controls="pick-institution">
+              <span class="artisan-pick-icon" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="M4 20.4h16M6.2 20.4V9.6M17.8 20.4V9.6M3.4 9.6 12 4l8.6 5.6M9.4 20.4v-5.2h5.2v5.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg></span>
+              <span class="artisan-pick-label">Closest institution</span>
+              <span class="artisan-pick-value is-placeholder" data-picker-value>Optional</span>
+              <span class="artisan-pick-chevron" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+            </button>
+            <div class="artisan-pick-body" id="pick-institution" data-picker-body hidden>
+              <div class="artisan-pick-options" role="listbox" aria-label="Closest institution" data-picker-options="institution"></div>
+            </div>
+          </section>
+        </div>
+
+        <div class="form-field artisan-service-budget{% if form.starting_price.errors %} has-error{% endif %}">
+          <label for="{{ form.starting_price.id_for_label }}">Starting budget</label>
+          {{ form.starting_price }}
+          <small class="help">Optional. Leave blank to show “Budget on request”.</small>
+          {% if form.starting_price.errors %}<div class="field-error">{{ form.starting_price.errors|striptags }}</div>{% endif %}
+        </div>
+
+        <div class="artisan-service-form-actions">
+          <button class="button button-primary artisan-form-submit" type="submit" data-artisan-action {% if at_limit and not editing_item %}disabled{% endif %}>{% if editing_item %}Save changes{% else %}Add service{% endif %}</button>
+          {% if editing_item %}<a class="button button-secondary" href="{% url 'artisan-services' %}">Cancel edit</a>{% endif %}
+        </div>
+
+        {% if editing_item %}<input type="hidden" name="offering_id" value="{{ editing_item.id }}">{% endif %}
+        {{ geography_records|json_script:"service-geography-records" }}
+        {{ institutions|json_script:"service-institution-records" }}
+        {{ service_catalog|json_script:"service-catalogue-records" }}
+      </form>
+    </article>
+
+    <article class="panel artisan-services-list-panel" data-artisan-reveal data-motion="right">
+      <div class="panel-head"><div><span class="artisan-panel-kicker">Your personal services</span><h2>Current offerings</h2></div><span class="services-list-count">{{ service_count }}</span></div>
+      <div class="artisan-service-list">
+        {% for item in items %}
+          <article class="artisan-service-record{% if editing_item.id == item.id %} is-editing{% endif %}" data-artisan-reveal data-motion="up">
+            <header class="artisan-service-record-head">
+              <span class="service-list-index">{{ forloop.counter|stringformat:'02d' }}</span>
+              <div class="service-list-copy"><span class="artisan-service-record-category">{{ item.category_name|default:'Service category' }}</span><h3>{{ item.service_name|default:'Service offering' }}</h3></div>
+              <span class="service-list-price">{% if item.starting_price == 0 or item.starting_price %}₦{{ item.starting_price|floatformat:'2g' }}{% else %}Budget on request{% endif %}</span>
+            </header>
+            <div class="artisan-service-record-facts">
+              <div><span>Service location</span><strong>{% if item.location %}{{ item.location.area|default:'' }}{% if item.location.state %}, {{ item.location.state }}{% endif %}{% if item.location.country %}, {{ item.location.country }}{% endif %}{% else %}Anywhere{% endif %}</strong></div>
+              <div><span>Starting budget</span><strong>{% if item.starting_price == 0 or item.starting_price %}₦{{ item.starting_price|floatformat:'2g' }}{% else %}On request{% endif %}</strong></div>
+            </div>
+            <div class="artisan-service-record-actions">
+              <a class="button button-secondary" href="{% url 'artisan-services' %}?edit={{ item.id }}#service-offer-form">Edit service</a>
+              <form method="post" class="js-confirm-form" data-confirm="Remove {{ item.service_name|default:'this service' }} from your profile?">
+                {% csrf_token %}
+                <input type="hidden" name="_delete" value="1">
+                <input type="hidden" name="offering_id" value="{{ item.id }}">
+                <button class="button button-danger" type="submit" data-artisan-action>Delete</button>
+              </form>
+            </div>
+          </article>
+        {% empty %}
+          <div class="empty artisan-services-empty" data-artisan-reveal data-motion="scale"><span class="services-empty-mark" aria-hidden="true">✦</span><strong>No artisan services yet.</strong><span>Add a catalogue service and choose Anywhere or a location already in the marketplace.</span></div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}{% page_script 'js/pages/artisan-ui.js' %}{% endblock %}

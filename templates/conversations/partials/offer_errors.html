@@ -1,0 +1,14 @@
+{% if offer_field_errors %}{{ offer_field_errors|json_script:"offer-field-errors" }}{% endif %}
+{% if offer_errors %}
+<div class="inline-alert inline-alert-error" role="alert" data-offer-error-panel>
+  <div>
+    <strong>Nothing was sent.</strong>
+    <span>Your entries are still here — fix the flagged values and send again. No booking or payment was created.</span>
+  </div>
+  <ul class="field-error-list">
+    {% for message in offer_errors %}
+    <li>{{ message }}</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}

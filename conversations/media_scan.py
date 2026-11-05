@@ -5,6 +5,28 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+def scanning_required() -> bool:
+    """Scanning is opt-in. Signature validation always runs on upload."""
+    if str(getattr(settings, "CLAMAV_SCAN_URL", "") or "").strip():
+        return True
+    return bool(getattr(settings, "REQUIRE_MEDIA_SCAN", False))
+
+
+def scan_blocked(attachment) -> bool:
+    """True when this attachment must not be served to a participant.
+
+    Every upload is still signature-validated, so an unscanned file is served
+    normally. When a scanner is configured the file stays hidden until it is
+    cleared, and anything the scanner flags is never served.
+    """
+    status = (getattr(attachment, "scan_status", "") or "").upper()
+    if status in {"INFECTED", "FAILED"}:
+        return True
+    if scanning_required() and status != "CLEAN":
+        return True
+    return False
+
+
 
 def scan_attachment(attachment):
     scanner_url = str(getattr(settings, "CLAMAV_SCAN_URL", "") or "").strip()

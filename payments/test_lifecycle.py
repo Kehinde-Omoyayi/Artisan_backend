@@ -93,6 +93,49 @@ class OrphanedPaymentTests(PaymentFixtureMixin, TestCase):
         self.assertIsNotNone(self.payment.held_at)
 
 
+class VoidedPaymentLinkTests(PaymentFixtureMixin, TestCase):
+    def test_a_late_payment_after_cancellation_is_held_for_review_not_applied(self):
+        from payments.services import void_booking_payment_link
+
+        self.make_world(booking_status=Booking.Status.CANCELLED)
+        voided = void_booking_payment_link(
+            payment=self.payment, reason="Booking cancelled before payment."
+        )
+        self.assertIsNotNone(voided.link_voided_at)
+        with patch(
+            "payments.services.FlutterwaveClient.verify_transaction",
+            return_value=provider_result(),
+        ):
+            verify_and_hold_payment(self.payment.id, 777)
+        self.payment.refresh_from_db()
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.CANCELLED)
+        self.assertEqual(self.payment.status, EscrowPayment.Status.HELD)
+        self.assertIn("Refund review required", self.payment.failure_reason)
+
+    def test_a_voided_link_is_never_reinitialized_with_the_provider(self):
+        from payments.services import _initialize_prepared_payment_external, void_booking_payment_link
+
+        self.make_world(booking_status=Booking.Status.CANCELLED)
+        void_booking_payment_link(payment=self.payment, reason="Cancelled.")
+        with patch("payments.services.FlutterwaveClient.initialize_payment") as provider:
+            with self.assertRaises(ValueError):
+                _initialize_prepared_payment_external(self.payment)
+            provider.assert_not_called()
+
+    def test_voiding_never_touches_money_that_is_already_held(self):
+        from payments.services import void_booking_payment_link
+
+        self.make_world(booking_status=Booking.Status.ACCEPTED)
+        self.payment.status = EscrowPayment.Status.HELD
+        self.payment.save(update_fields=["status", "updated_at"])
+        untouched = void_booking_payment_link(
+            payment=self.payment, reason="Attempted cancel."
+        )
+        self.assertIsNone(untouched.link_voided_at)
+        self.assertEqual(untouched.status, EscrowPayment.Status.HELD)
+
+
 class FlutterwaveClientSafetyTests(TestCase):
     def test_provider_ids_must_be_numeric_before_entering_a_url_path(self):
         self.assertEqual(_provider_id("12345"), 12345)

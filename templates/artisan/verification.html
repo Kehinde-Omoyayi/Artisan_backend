@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}Artisan verification · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page artisan-verification-page" data-artisan-page="verification">
+  <header class="page-heading artisan-page-heading" data-artisan-reveal data-motion="scale">
+    <div><div class="eyebrow">Identity</div><h1 data-text-motion>Verification center</h1><p>Check your current tier and continue with NIN or BVN when a new attempt is available.</p></div>
+    <div class="verification-header-seal" aria-hidden="true"><span>AM</span></div>
+  </header>
+
+  <section class="verification-center-grid">
+    <article class="panel verification-tier-panel" data-artisan-reveal data-motion="left">
+      <div class="panel-head"><div><span class="artisan-panel-kicker">Your account</span><h2>Current verification tier</h2></div><span class="verification-tier-mark" aria-hidden="true">01</span></div>
+      <div class="verification-tier-display">
+        <span>Tier</span><strong>{{ verification.tier|default:0 }}</strong>
+      </div>
+      <p class="verification-tier-note">Select an available verification action to continue.</p>
+      <div class="verification-tier-orbit" aria-hidden="true"><span></span><span></span><span></span></div>
+    </article>
+
+    <article class="panel verification-options-panel" data-artisan-reveal data-motion="right">
+      <div class="panel-head"><div><span class="artisan-panel-kicker">NIN or BVN</span><h2>Verification actions</h2></div><span class="verification-options-mark" aria-hidden="true">→</span></div>
+      <div class="verification-flow-list">
+        {% if verification.status == 'VERIFIED' and verification.identity_name_available %}
+          <div class="verification-flow-link verification-flow-link-verified" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">01</span><span class="verification-flow-copy"><strong>NIN verification</strong><small>Submit NIN with consent.</small></span>{% if verification.method == 'NIN' %}<span class="verification-method-status is-verified">Already verified</span>{% else %}<span class="verification-method-status is-unavailable">Unavailable</span>{% endif %}
+          </div>
+          <div class="verification-flow-link verification-flow-link-verified" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">02</span><span class="verification-flow-copy"><strong>BVN verification</strong><small>Submit BVN and enter the emailed code on one page.</small></span>{% if verification.method == 'BVN' %}<span class="verification-method-status is-verified">Already verified</span>{% else %}<span class="verification-method-status is-unavailable">Unavailable</span>{% endif %}
+          </div>
+        {% elif verification_can_retry %}
+          <a class="verification-flow-link" href="{% url 'nin-verification' %}" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">01</span><span class="verification-flow-copy"><strong>NIN verification</strong><small>Submit NIN with consent.</small></span><span class="verification-flow-cta">Verify <span aria-hidden="true">↗</span></span>
+          </a>
+          <a class="verification-flow-link" href="{% url 'bvn-initiate' %}" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">02</span><span class="verification-flow-copy"><strong>BVN verification</strong><small>Submit BVN and enter the emailed code on one page.</small></span><span class="verification-flow-cta">Verify <span aria-hidden="true">↗</span></span>
+          </a>
+        {% elif verification.method == 'BVN' and verification.status != 'SUSPENDED' %}
+          <div class="verification-flow-link verification-flow-link-verified" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">01</span><span class="verification-flow-copy"><strong>NIN verification</strong><small>A BVN attempt is currently active.</small></span><span class="verification-method-status is-unavailable">Unavailable</span>
+          </div>
+          <a class="verification-flow-link" href="{% url 'bvn-initiate' %}" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">02</span><span class="verification-flow-copy"><strong>BVN verification</strong><small>Continue the active attempt and enter its email code.</small></span><span class="verification-flow-cta">Continue <span aria-hidden="true">↗</span></span>
+          </a>
+        {% else %}
+          <div class="verification-flow-link verification-flow-link-verified" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">01</span><span class="verification-flow-copy"><strong>NIN verification</strong><small>{% if verification.method == 'NIN' %}The current attempt is still processing.{% else %}A new attempt is not available right now.{% endif %}</small></span><span class="verification-method-status is-unavailable">Unavailable</span>
+          </div>
+          <div class="verification-flow-link verification-flow-link-verified" data-artisan-reveal data-motion="right">
+            <span class="verification-flow-number">02</span><span class="verification-flow-copy"><strong>BVN verification</strong><small>{% if verification.status == 'SUSPENDED' %}Verification is suspended.{% else %}A new attempt is not available right now.{% endif %}</small></span><span class="verification-method-status is-unavailable">Unavailable</span>
+          </div>
+        {% endif %}
+      </div>
+      {% if verification.status == 'VERIFIED' and verification.identity_name_available %}
+        <p class="verification-flow-note">The completed method is marked above. The other method is unavailable for a verified profile.</p>
+      {% elif verification_can_retry %}
+        <p class="verification-flow-note">A new verification attempt can be started with either available method.</p>
+      {% elif verification.status == 'VERIFIED' %}
+        <p class="verification-flow-note">Your existing verification does not include a securely stored identity name. Complete verification again before setting payout details.</p>
+      {% else %}
+        <p class="verification-flow-note">The API controls when another verification request can be started.</p>
+      {% endif %}
+    </article>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

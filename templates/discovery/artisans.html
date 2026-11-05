@@ -1,0 +1,337 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Discover artisans · Artisan Market{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% asset 'css/institution-picker.css' %}">
+<style>
+/* Safety layer: these few rules keep the discovery page readable even before
+   (or without) artisan-pages.css — icons can never render at intrinsic size. */
+.visually-hidden{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0 0 0 0)!important;white-space:nowrap!important;border:0!important}
+.artisan-discovery-page svg{width:18px;height:18px;flex:none;vertical-align:-3px}
+.artisan-discovery-page .artisan-discovery-search-icon{width:17px;height:17px}
+.artisan-discovery-page .artisan-filter-trigger-icon{width:17px;height:17px}
+.artisan-discovery-page .artisan-filter-trigger-chevron,
+.artisan-discovery-page .artisan-discovery-search-icon+.artisan-filter-trigger-chevron{width:15px;height:15px}
+.artisan-discovery-search-row{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
+.artisan-discovery-search-field{flex:1 1 320px;min-width:0}
+.artisan-filter-trigger{display:inline-flex;align-items:center;gap:8px}
+.artisan-discovery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:18px}
+</style>
+<link rel="stylesheet" href="{% asset 'css/artisan-pages.css' %}">
+{% endblock %}
+{% block content %}
+<div hidden aria-hidden="true">{% csrf_token %}</div>
+<section class="artisan-discovery-page artisan-motion-page" data-artisan-page="discovery-artisans">
+  <header class="page-heading artisan-discovery-heading" data-artisan-reveal data-motion="up">
+    <div>
+      <div class="eyebrow">Marketplace · Discover</div>
+      <h1 data-text-motion>Find the right artisan</h1>
+      <p>Browse active, verified artisans and review their public profiles and service offerings.</p>
+    </div>
+  </header>
+
+  <form class="artisan-discovery-filter" id="artisan-discovery-filters" data-tour-target="profiles-services" method="get" role="search" aria-label="Search and filter artisans" data-discovery-form data-artisan-reveal data-motion="scale">
+    <input type="hidden" name="category_name" value="{{ params.category_name }}" data-filter-input="category_name">
+    <input type="hidden" name="service_name" value="{{ params.service_name }}" data-filter-input="service_name">
+
+    <div class="artisan-discovery-search-row">
+      <label class="artisan-discovery-search-field" for="discovery-query">
+        <span class="artisan-discovery-search-label">Search artisans, services or locations</span>
+        <span class="artisan-discovery-search-control">
+          <svg width="17" height="17" class="artisan-discovery-search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16.4 16.4 4.1 4.1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg>
+          <input id="discovery-query" name="q" type="search" value="{{ params.q }}" placeholder="e.g. plumbing, tailoring, Ikeja" autocomplete="off">
+        </span>
+      </label>
+
+      <button class="button button-primary artisan-discovery-submit" type="submit" data-artisan-action>Search</button>
+
+      <div class="artisan-filter-anchor" data-filter-root>
+        <button class="artisan-filter-trigger" type="button" data-filter-toggle aria-expanded="false" aria-controls="artisan-filter-panel" data-artisan-action>
+          <svg width="17" height="17" class="artisan-filter-trigger-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 7h16M7 12h10M10 17h4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg>
+          <span>Filter</span>
+          <span class="artisan-filter-badge" data-filter-count hidden>0</span>
+          <svg width="15" height="15" class="artisan-filter-trigger-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg>
+        </button>
+
+        <div class="artisan-filter-scrim" data-filter-scrim hidden></div>
+
+        <div class="artisan-filter-panel" id="artisan-filter-panel" data-filter-panel hidden role="dialog" aria-modal="false" aria-labelledby="artisan-filter-title">
+          <header class="artisan-filter-head">
+            <div>
+              <span class="artisan-filter-kicker">Refine results</span>
+              <h2 id="artisan-filter-title">Filters</h2>
+            </div>
+            <button class="artisan-filter-clear" type="button" data-filter-clear>Clear all</button>
+          </header>
+
+          <div class="artisan-filter-scroll">
+            <section class="artisan-filter-trades" aria-labelledby="artisan-filter-trades-title" data-filter-trades>
+              <div class="artisan-filter-trades-head">
+                <span class="artisan-filter-row-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="M4 5.4h6.4v6.4H4zM13.6 5.4H20v6.4h-6.4zM4 12.2h6.4v6.4H4zM13.6 12.2H20v6.4h-6.4z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/></svg></span>
+                <h3 class="artisan-filter-trades-title" id="artisan-filter-trades-title">Categories &amp; services</h3>
+                <span class="artisan-filter-trades-summary" data-trades-summary>All categories</span>
+              </div>
+
+              <label class="artisan-filter-trade-search" for="discovery-trade-search">
+                <span class="visually-hidden">Find a category or service</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16.4 16.4 4.1 4.1" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg>
+                <input id="discovery-trade-search" type="search" placeholder="Find a category or service" autocomplete="off" data-trade-search>
+              </label>
+
+              <ul class="artisan-filter-trades-list" data-trades-list>
+                {% for category in categories %}
+                <li class="artisan-trade{% if category.is_active %} is-selected{% endif %}{% if category.is_open %} is-open{% endif %}" data-trade-item data-trade-name="{{ category.name }}" data-trade-category="{{ category.name }}">
+                  <button class="artisan-trade-head" type="button" data-trade-toggle aria-expanded="{% if category.is_open %}true{% else %}false{% endif %}" aria-controls="artisan-trade-{{ forloop.counter }}">
+                    <span class="artisan-trade-dot" aria-hidden="true"></span>
+                    <span class="artisan-trade-name">{{ category.name }}</span>
+                    <span class="artisan-trade-count">{{ category.services|length }}</span>
+                    <span class="artisan-trade-chevron" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9"/></svg></span>
+                  </button>
+                  <div class="artisan-trade-services" id="artisan-trade-{{ forloop.counter }}" data-trade-services>
+                    <div class="artisan-trade-services-inner">
+                      <button class="artisan-trade-service artisan-trade-service--all{% if category.is_active and not params.service_name %} is-selected{% endif %}" type="button" data-trade-select="{{ category.name }}">
+                        <span>All {{ category.name }} services</span>
+                        <span class="artisan-trade-check" aria-hidden="true">✓</span>
+                      </button>
+                      {% for service in category.services %}
+                      <button class="artisan-trade-service{% if service.is_active %} is-selected{% endif %}" type="button" data-service-select="{{ service.name }}" data-service-category="{{ category.name }}">
+                        <span>{{ service.name }}</span>
+                        <span class="artisan-trade-check" aria-hidden="true">✓</span>
+                      </button>
+                      {% endfor %}
+                      {% if not category.services %}
+                      <p class="artisan-trade-empty">No services listed under this category yet.</p>
+                      {% endif %}
+                    </div>
+                  </div>
+                </li>
+                {% empty %}
+                <li class="artisan-trade-empty">No categories are available in the marketplace catalogue yet.</li>
+                {% endfor %}
+              </ul>
+              <p class="artisan-filter-empty" data-trade-empty hidden>No categories or services match that search.</p>
+            </section>
+
+            <div class="artisan-filter-divider" aria-hidden="true"></div>
+
+            <div class="artisan-filter-rows">
+              <section class="artisan-filter-row" data-filter-row data-filter-key="country">
+                <button class="artisan-filter-row-head" type="button" data-filter-row-toggle aria-expanded="false" aria-controls="artisan-filter-country">
+                  <span class="artisan-filter-row-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.6 12h16.8M12 3.6c2.4 2.3 3.7 5.2 3.7 8.4s-1.3 6.1-3.7 8.4c-2.4-2.3-3.7-5.2-3.7-8.4S9.6 5.9 12 3.6Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+                  <span class="artisan-filter-row-label">Country</span>
+                  <span class="artisan-filter-row-value{% if not params.country %} is-placeholder{% endif %}" data-filter-value>{% if params.country %}{{ params.country }}{% else %}All countries{% endif %}</span>
+                  <span class="artisan-filter-chevron" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+                </button>
+                <div class="artisan-filter-row-body" id="artisan-filter-country" data-filter-body hidden>
+                  <div class="artisan-filter-options" role="listbox" aria-label="Country" data-filter-options="country">
+                    <button class="artisan-filter-option{% if not params.country %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if not params.country %}true{% else %}false{% endif %}" data-value="">All countries</button>
+                    {% for country in country_options %}
+                    <button class="artisan-filter-option{% if params.country == country %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if params.country == country %}true{% else %}false{% endif %}" data-value="{{ country }}">{{ country }}</button>
+                    {% endfor %}
+                  </div>
+                </div>
+              </section>
+
+              <section class="artisan-filter-row" data-filter-row data-filter-key="state">
+                <button class="artisan-filter-row-head" type="button" data-filter-row-toggle aria-expanded="false" aria-controls="artisan-filter-state">
+                  <span class="artisan-filter-row-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="M9 4.5 3.8 6.7v12.8L9 17.3l6 2.2 5.2-2.2V4.5L15 6.7 9 4.5Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/><path d="M9 4.5v12.8M15 6.7v12.8" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+                  <span class="artisan-filter-row-label">State or region</span>
+                  <span class="artisan-filter-row-value{% if not params.state %} is-placeholder{% endif %}" data-filter-value>{% if params.state %}{{ params.state }}{% else %}All states{% endif %}</span>
+                  <span class="artisan-filter-chevron" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+                </button>
+                <div class="artisan-filter-row-body" id="artisan-filter-state" data-filter-body hidden>
+                  <div class="artisan-filter-options" role="listbox" aria-label="State or region" data-filter-options="state">
+                    <button class="artisan-filter-option{% if not params.state %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if not params.state %}true{% else %}false{% endif %}" data-value="">All states</button>
+                    {% for state in state_options %}
+                    <button class="artisan-filter-option{% if params.state == state %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if params.state == state %}true{% else %}false{% endif %}" data-value="{{ state }}">{{ state }}</button>
+                    {% endfor %}
+                  </div>
+                </div>
+              </section>
+
+              <section class="artisan-filter-row" data-filter-row data-filter-key="area">
+                <button class="artisan-filter-row-head" type="button" data-filter-row-toggle aria-expanded="false" aria-controls="artisan-filter-area">
+                  <span class="artisan-filter-row-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="M12 21s6.4-5.6 6.4-10.2A6.4 6.4 0 0 0 5.6 10.8C5.6 15.4 12 21 12 21Z" fill="none" stroke="currentColor" stroke-linejoin="round" stroke-width="1.6"/><circle cx="12" cy="10.6" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg></span>
+                  <span class="artisan-filter-row-label">Area or locality</span>
+                  <span class="artisan-filter-row-value{% if not params.area %} is-placeholder{% endif %}" data-filter-value>{% if params.area %}{{ params.area }}{% else %}All areas{% endif %}</span>
+                  <span class="artisan-filter-chevron" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+                </button>
+                <div class="artisan-filter-row-body" id="artisan-filter-area" data-filter-body hidden>
+                  <div class="artisan-filter-options" role="listbox" aria-label="Area or locality" data-filter-options="area">
+                    <button class="artisan-filter-option{% if not params.area %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if not params.area %}true{% else %}false{% endif %}" data-value="">All areas</button>
+                    {% for area in area_options %}
+                    <button class="artisan-filter-option{% if params.area == area %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if params.area == area %}true{% else %}false{% endif %}" data-value="{{ area }}">{{ area }}</button>
+                    {% endfor %}
+                  </div>
+                </div>
+              </section>
+
+              <section class="artisan-filter-row" data-filter-row data-filter-key="institution_id" data-institution-search-url="{% url 'institution-catalogue' %}">
+                <button class="artisan-filter-row-head" type="button" data-filter-row-toggle aria-expanded="false" aria-controls="artisan-filter-institution">
+                  <span class="artisan-filter-row-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="M4 20.4h16M6.2 20.4V9.6M17.8 20.4V9.6M3.4 9.6 12 4l8.6 5.6M9.4 20.4v-5.2h5.2v5.2" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/></svg></span>
+                  <span class="artisan-filter-row-label">Closest institution</span>
+                  <span class="artisan-filter-row-value{% if not params.institution_id %} is-placeholder{% endif %}" data-filter-value>{% if params.institution_id %}{{ params.institution_id|institution_label:institutions }}{% else %}All institutions{% endif %}</span>
+                  <span class="artisan-filter-chevron" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" focusable="false"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/></svg></span>
+                </button>
+                <div class="artisan-filter-row-body" id="artisan-filter-institution" data-filter-body hidden>
+                  <div class="institution-scope" aria-label="Institution search scope"><button type="button" class="institution-scope-button" data-institution-scope="all" aria-pressed="true">All institutions</button><button type="button" class="institution-scope-button" data-institution-scope="local" aria-pressed="false">Use selected location</button></div>
+                  <p class="institution-picker-help">Search worldwide without choosing a location first. Selecting an institution fills its country, state and area.</p>
+                  <input type="search" class="institution-search-input" data-institution-search placeholder="Search name or abbreviation…" aria-label="Search institutions worldwide" autocomplete="off">
+                  <div class="artisan-filter-options" role="listbox" aria-label="Closest institution" data-filter-options="institution_id">
+                    <button class="artisan-filter-option{% if not params.institution_id %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if not params.institution_id %}true{% else %}false{% endif %}" data-value="" data-label="All institutions" data-country="" data-state="">All institutions</button>
+                    {% for institution in institutions %}
+                    <button class="artisan-filter-option{% if params.institution_id == institution.id %} is-selected{% endif %}" type="button" role="option" aria-selected="{% if params.institution_id == institution.id %}true{% else %}false{% endif %}" data-value="{{ institution.id }}" data-country="{{ institution.country }}" data-state="{{ institution.state }}" data-area="{{ institution.area }}" data-label="{{ institution.name }}{% if institution.abbreviation %} ({{ institution.abbreviation }}){% endif %}">{{ institution.name }}{% if institution.abbreviation %} ({{ institution.abbreviation }}){% endif %}{% if institution.area %} · {{ institution.area }}{% endif %}{% if institution.state %}, {{ institution.state }}{% endif %}</button>
+                    {% endfor %}
+                  </div>
+                  <p class="institution-picker-help" data-institution-status role="status" aria-live="polite"></p>
+                  <button type="button" class="institution-more" data-institution-more hidden>Load more institutions</button>
+                  <p class="artisan-filter-empty" data-institution-empty {% if institutions %}hidden{% endif %}>No institutions match this search. Try All institutions or another name.</p>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <footer class="artisan-filter-foot">
+            <button class="artisan-filter-action artisan-filter-action--quiet" type="button" data-filter-close>Close</button>
+            <button class="artisan-filter-action artisan-filter-action--primary" type="submit" data-filter-apply>Apply filters</button>
+          </footer>
+        </div>
+
+        <input type="hidden" name="country" value="{{ params.country }}" data-filter-input="country">
+        <input type="hidden" name="state" value="{{ params.state }}" data-filter-input="state">
+        <input type="hidden" name="area" value="{{ params.area }}" data-filter-input="area">
+        <input type="hidden" name="institution_id" value="{{ params.institution_id }}" data-filter-input="institution_id">
+      </div>
+    </div>
+
+    <div class="artisan-discovery-applied" data-applied-filters{% if not has_active_filters %} hidden{% endif %}>
+      <span class="artisan-discovery-applied-label">Active filters</span>
+      <div class="artisan-discovery-applied-list">
+        {% if params.q %}<a class="artisan-filter-tag" href="{% discovery_url params 'q' %}" aria-label="Remove the search term"><span class="artisan-filter-tag-label">Search: “{{ params.q }}”</span><span class="artisan-filter-tag-remove" aria-hidden="true">×</span></a>{% endif %}
+        {% if params.category_name %}<a class="artisan-filter-tag" href="{% discovery_url params 'category_name' 'service_name' %}" aria-label="Remove the category filter"><span class="artisan-filter-tag-label">{{ params.category_name }}</span><span class="artisan-filter-tag-remove" aria-hidden="true">×</span></a>{% endif %}
+        {% if params.service_name %}<a class="artisan-filter-tag" href="{% discovery_url params 'service_name' %}" aria-label="Remove the service filter"><span class="artisan-filter-tag-label">{{ params.service_name }}</span><span class="artisan-filter-tag-remove" aria-hidden="true">×</span></a>{% endif %}
+        {% if params.country %}<a class="artisan-filter-tag" href="{% discovery_url params 'country' %}" aria-label="Remove the country filter"><span class="artisan-filter-tag-label">Country: {{ params.country }}</span><span class="artisan-filter-tag-remove" aria-hidden="true">×</span></a>{% endif %}
+        {% if params.state %}<a class="artisan-filter-tag" href="{% discovery_url params 'state' %}" aria-label="Remove the state filter"><span class="artisan-filter-tag-label">State: {{ params.state }}</span><span class="artisan-filter-tag-remove" aria-hidden="true">×</span></a>{% endif %}
+        {% if params.area %}<a class="artisan-filter-tag" href="{% discovery_url params 'area' %}" aria-label="Remove the area filter"><span class="artisan-filter-tag-label">Area: {{ params.area }}</span><span class="artisan-filter-tag-remove" aria-hidden="true">×</span></a>{% endif %}
+        {% if params.institution_id %}<a class="artisan-filter-tag" href="{% discovery_url params 'institution_id' %}" aria-label="Remove the institution filter"><span class="artisan-filter-tag-label">{{ params.institution_id|institution_label:institutions }}</span><span class="artisan-filter-tag-remove" aria-hidden="true">×</span></a>{% endif %}
+      </div>
+      <a class="artisan-discovery-clear-all" href="{% url 'artisans' %}" data-discovery-clear-all>Clear all</a>
+    </div>
+
+    <p class="artisan-discovery-hint">Location filters match each artisan’s registered base as well as the areas their services cover.</p>
+  </form>
+
+  {{ locations|json_script:"discovery-location-catalogue" }}
+  {{ discovery_geography|json_script:"discovery-geography-data" }}
+
+  <section class="artisan-discovery-results" aria-label="Matching artisans">
+    {% if promoted_items %}
+    <section class="artisan-discovery-sponsored" aria-labelledby="artisan-discovery-sponsored-title">
+      <div class="artisan-discovery-sponsored-heading">
+        <div><span class="artisan-panel-kicker">Paid placements · separate from organic results</span><h2 id="artisan-discovery-sponsored-title">Promoted for this search</h2></div>
+        <p>These eligible paid results match your selected service and location filters. Ordinary discovery results follow below.</p>
+      </div>
+      <div class="artisan-discovery-sponsored-grid">
+        {% for artisan in promoted_items %}
+        <article class="panel artisan-discovery-card artisan-discovery-card--sponsored" data-promotion-impression-token="{{ artisan.impression_token }}" data-promotion-campaign-id="{{ artisan.campaign_id }}" data-promotion-artisan-id="{{ artisan.artisan_id }}">
+          <header class="artisan-discovery-card-head">
+            <div class="artisan-discovery-avatar">
+              <span class="artisan-discovery-avatar-fallback" data-profile-photo-fallback {% if artisan.profile_photo_url %}hidden{% endif %} aria-hidden="true">{{ artisan.name|default:'A'|slice:':1'|upper }}</span>
+              {% if artisan.profile_photo_url %}<img class="artisan-discovery-photo" src="{{ artisan.profile_photo_url }}" alt="" data-profile-photo-image loading="lazy" referrerpolicy="no-referrer">{% endif %}
+            </div>
+            <div class="artisan-discovery-identity">
+              <div class="artisan-discovery-card-badges"><span class="artisan-discovery-sponsored-badge">Promoted</span></div>
+              <h2>{{ artisan.business_name|default:artisan.name }}</h2>
+              <p class="artisan-discovery-based-in"><span>Promotion target</span><strong>{{ artisan.target_label }}</strong></p>
+            </div>
+          </header>
+          <div class="artisan-discovery-card-services">
+            <div class="artisan-discovery-card-section-title">Service matching this search</div>
+            <ul>
+              {% for service in artisan.services %}
+                <li><div><strong>{{ service.service_name }}</strong><small>{{ service.category_name }}</small></div><span class="artisan-discovery-service-location">{% if service.location %}{{ service.location.area }}{% if service.location.state %}, {{ service.location.state }}{% endif %}{% else %}Serves clients anywhere{% endif %}</span></li>
+              {% empty %}<li><div><strong>{{ artisan.main_service|default:'Current service offering' }}</strong><small>Open the profile for details.</small></div></li>{% endfor %}
+            </ul>
+          </div>
+          <div class="artisan-discovery-card-summary">
+            {% if artisan.review_count %}<div class="artisan-discovery-rating"><span aria-hidden="true">★</span><strong>{{ artisan.average_rating }}</strong><small>{{ artisan.review_count }} review{{ artisan.review_count|pluralize }}</small></div>{% endif %}
+            {% if artisan.description %}<p class="artisan-discovery-sponsored-description">{{ artisan.description|truncatechars:160 }}</p>{% endif %}
+          </div>
+          <a class="button button-secondary full artisan-discovery-view" href="{{ artisan.artisan_url }}" data-artisan-action>View full profile <span aria-hidden="true">↗</span></a>
+          <a class="artisan-discovery-report-promotion" href="{% url 'support-cases' %}?promotion_campaign={{ artisan.campaign_id }}">Report this promoted result</a>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <div class="artisan-discovery-results-toolbar" data-artisan-reveal data-motion="left">
+      <div>
+        <h2>Artisans to explore</h2>
+        <p role="status" aria-live="polite">{% if total_count %}Showing {{ first_result }}–{{ last_result }} of {{ total_count }} artisan{{ total_count|pluralize }}{% else %}No artisans match the current filters{% endif %}</p>
+      </div>
+      {% if has_active_filters %}<a class="artisan-discovery-toolbar-clear" href="{% url 'artisans' %}" data-discovery-clear-all>Reset search</a>{% endif %}
+    </div>
+
+    <div class="artisan-discovery-grid">
+      {% for artisan in items %}
+        <article class="panel artisan-discovery-card" data-discovery-card data-artisan-reveal data-motion="up">
+          <header class="artisan-discovery-card-head">
+            <div class="artisan-discovery-avatar">
+              <span class="artisan-discovery-avatar-fallback" data-profile-photo-fallback {% if artisan.profile_photo %}hidden{% endif %} aria-hidden="true">{{ artisan.name|default:'A'|slice:':1'|upper }}</span>
+              {% if artisan.profile_photo %}<img class="artisan-discovery-photo" src="{{ artisan.profile_photo }}" alt="" data-profile-photo-image loading="lazy" referrerpolicy="no-referrer">{% endif %}
+            </div>
+            <div class="artisan-discovery-identity">
+              <div class="artisan-discovery-card-badges">
+                {% if artisan.verification_status == 'VERIFIED' %}<span class="status-pill {{ artisan.verification_status|status_class }}">Identity verified</span>{% endif %}
+              </div>
+              <h2>{{ artisan.business_name|default:artisan.name }}</h2>
+              <p class="artisan-discovery-based-in"><span>Registered base</span><strong>{% if artisan.area or artisan.state or artisan.country %}{% if artisan.area %}{{ artisan.area }}{% endif %}{% if artisan.state %}{% if artisan.area %}, {% endif %}{{ artisan.state }}{% endif %}{% if artisan.country %}{% if artisan.area or artisan.state %}, {% endif %}{{ artisan.country }}{% endif %}{% else %}Location not listed{% endif %}</strong></p>
+            </div>
+            {% if artisan.years_experience %}<span class="artisan-discovery-experience" title="{{ artisan.years_experience }} years of experience"><strong>{{ artisan.years_experience }}</strong><small>yrs</small><span class="visually-hidden"> years of experience</span></span>{% endif %}
+          </header>
+
+          <div class="artisan-discovery-card-services">
+            <div class="artisan-discovery-card-section-title">Services matching this search</div>
+            <ul>
+              {% for service in artisan.services %}
+                <li><div><strong>{{ service.service_name }}</strong><small>{{ service.category_name }}</small></div><span class="artisan-discovery-service-location">{% if service.location %}{{ service.location.area }}{% if service.location.state %}, {{ service.location.state }}{% endif %}{% else %}Serves clients anywhere{% endif %}</span></li>
+              {% empty %}<li><div><strong>Service details</strong><small>Open the profile to learn more.</small></div></li>{% endfor %}
+            </ul>
+          </div>
+
+          <div class="artisan-discovery-card-summary">
+            {% if artisan.has_rating %}<div class="artisan-discovery-rating"><span aria-hidden="true">★</span><strong>{{ artisan.average_rating }}</strong>{% if artisan.review_count %}<small>{{ artisan.review_count }} review{{ artisan.review_count|pluralize }}</small>{% endif %}</div>{% endif %}
+            <span class="artisan-discovery-availability">{% if artisan.available_anywhere %}Serves clients anywhere{% else %}Serves listed areas{% endif %}</span>
+          </div>
+
+          <a class="button button-secondary full artisan-discovery-view" href="{% url 'artisan-detail' pk=artisan.id %}" data-artisan-action>View full profile <span aria-hidden="true">↗</span></a>
+        </article>
+      {% empty %}
+        {% if directory_unavailable %}
+        <div class="empty artisan-discovery-empty" data-artisan-reveal data-motion="scale">
+          <strong>We couldn’t load the directory just now.</strong>
+          <span>The marketplace service did not answer, so these results are incomplete — not empty.</span>
+          <a class="button button-secondary" href="{{ request.get_full_path }}">Try again</a>
+        </div>
+        {% else %}
+        <div class="empty artisan-discovery-empty" data-artisan-reveal data-motion="scale">
+          <strong>No artisans matched these filters.</strong>
+          <span>Try a broader search, or clear one or more filters.</span>
+          <a class="button button-secondary" href="{% url 'artisans' %}">Clear all filters</a>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+
+    {% if previous_url or next_url %}
+    <nav class="artisan-discovery-pagination" aria-label="Artisan results pages">
+      {% if previous_url %}<a class="button button-secondary" href="{{ previous_url }}" rel="prev">← Previous</a>{% else %}<span></span>{% endif %}
+      <span>Page {{ current_page }}</span>
+      {% if next_url %}<a class="button button-secondary" href="{{ next_url }}" rel="next">Next →</a>{% else %}<span></span>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% asset 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

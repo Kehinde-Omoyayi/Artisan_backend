@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}{{ title }} · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page support-refund-request-page">
+  <a class="support-back-link" href="{{ cancel_url }}"><span aria-hidden="true">←</span> Back to case</a>
+  <header class="support-page-hero support-page-hero--compact" data-artisan-reveal data-motion="left">
+    <div><span class="support-eyebrow">CASE {{ pk }} · FINANCIAL WORKFLOW</span><h1>Request a refund</h1><p>Select a verified payment linked to this case. The request is recorded first; a different authorized teammate must approve it before finance can submit it.</p></div>
+  </header>
+  <div class="support-action-layout">
+    <article class="support-panel support-action-form-panel" data-artisan-reveal data-motion="up">
+      <div class="support-panel-heading"><div><span class="support-eyebrow">NEW REFUND REQUEST</span><h2>Request details</h2></div><span class="support-panel-icon" aria-hidden="true">₦</span></div>
+      {% if eligible_payments %}
+      <form method="post" class="support-stacked-form" data-support-refund-form>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="form-field {% if form.payment_id.errors %}has-error{% endif %}">
+          <label for="id_payment_id">{{ form.payment_id.label }}</label>
+          <select name="{{ form.payment_id.html_name }}" id="id_payment_id" class="field-input" required data-support-payment-select>
+            <option value="">Choose a verified payment</option>
+            {% for payment in eligible_payments %}
+            <option value="{{ payment.id }}" data-remaining="{{ payment.remaining_amount }}" {% if form.payment_id.value == payment.id|stringformat:'s' %}selected{% endif %}>{{ payment.reference }} · {{ payment.status|title }} · {{ payment.remaining_amount|ngn }} refundable</option>
+            {% endfor %}
+          </select>
+          {% if form.payment_id.help_text %}<small class="help">{{ form.payment_id.help_text }}</small>{% endif %}
+          {% if form.payment_id.errors %}<div class="field-error" role="alert">{{ form.payment_id.errors|striptags }}</div>{% endif %}
+        </div>
+        <div class="support-eligible-payment-note" data-payment-balance-note role="status">Choose a payment to see its currently refundable balance.</div>
+        {% for field in form %}
+          {% if field.name != 'payment_id' %}
+          <div class="form-field {% if field.errors %}has-error{% endif %}">
+            {{ field.label_tag }}{{ field }}
+            {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+            {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+          </div>
+          {% endif %}
+        {% endfor %}
+        <div class="support-form-actions"><button class="button button-primary" type="submit">Submit refund request <span aria-hidden="true">→</span></button><a class="button button-secondary" href="{{ cancel_url }}">Cancel</a></div>
+      </form>
+      {% else %}
+      <div class="support-empty support-refund-empty"><span class="support-empty-icon" aria-hidden="true">✓</span><strong>No eligible payment is available</strong><p>This case has no verified held or disputed booking payment with a refundable balance. Check the case and payment record before continuing.</p><a class="button button-secondary" href="{{ cancel_url }}">Return to case</a></div>
+      {% endif %}
+    </article>
+
+    <aside class="support-panel support-action-guidance">
+      <span class="support-eyebrow">TWO-PERSON CONTROL</span><h2>Request → approve → execute</h2>
+      <ol class="support-refund-steps">
+        <li><span>01</span><div><strong>Request</strong><p>Record the amount and reason against an eligible case payment.</p></div></li>
+        <li><span>02</span><div><strong>Independent approval</strong><p>A support supervisor or admin reviews the request; the requester cannot approve their own.</p></div></li>
+        <li><span>03</span><div><strong>Finance execution</strong><p>Finance submits the approved refund and reconciles any uncertain provider result.</p></div></li>
+      </ol>
+      <p class="support-guidance-note">The API rechecks the payment balance, role, separation of duties, and provider state when each action is submitted.</p>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/support-workspace.js' %}"></script><script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

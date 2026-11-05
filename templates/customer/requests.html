@@ -1,0 +1,78 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Service requests · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% asset 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% asset 'css/request-actions.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page workflow-page request-workflow-page request-list-page" data-artisan-page="request-list">
+  <header class="page-heading artisan-page-heading workflow-heading" data-artisan-reveal data-motion="left">
+    <div class="workflow-heading-copy">
+      <span class="workflow-kicker"><span class="workflow-kicker-mark" aria-hidden="true">✦</span> Customer workspace</span>
+      <h1 data-text-motion>Start with what you need.</h1>
+      <p>Share your service details and preferred timing, then compare responses and talk with the artisans you choose.</p>
+    </div>
+    <div class="workflow-heading-side" aria-label="{{ request_total }} service request{{ request_total|pluralize }} listed">
+      <div class="workflow-orbit workflow-orbit-request" aria-hidden="true"><span class="workflow-orbit-ring workflow-orbit-ring-one"></span><span class="workflow-orbit-ring workflow-orbit-ring-two"></span><span class="workflow-orbit-core">SR</span><span class="workflow-orbit-spark">✦</span></div>
+      <div class="workflow-heading-count"><strong>{{ request_total }}</strong><span>request{{ request_total|pluralize }} listed</span></div>
+    </div>
+  </header>
+
+  <div class="workflow-layout request-list-layout">
+    <article class="panel workflow-panel workflow-form-panel" id="create-request" aria-labelledby="create-request-title" data-artisan-reveal data-motion="left">
+      <div class="workflow-panel-head">
+        <div><span class="artisan-panel-kicker">Tell us what you need</span><h2 id="create-request-title">Create a request</h2></div>
+        <span class="workflow-panel-icon workflow-panel-icon-request" aria-hidden="true">＋</span>
+      </div>
+      <p class="workflow-panel-intro">Choose a service and a location worldwide. Available artisans serving that area can respond.</p>
+      {% if not catalog_ready %}<div class="workflow-empty-catalog-note" role="status">The service catalogue is currently empty. Requests can be submitted once services are configured.</div>{% endif %}
+      <form method="post" class="workflow-form js-submit-form" data-artisan-form data-tour-target="transactions">
+        {% csrf_token %}
+        {% include 'partials/request_form_fields.html' %}
+        <button class="button button-primary workflow-submit" type="submit" data-artisan-action>Send request <span aria-hidden="true">→</span></button>
+      </form>
+      <div class="workflow-form-footnote"><span aria-hidden="true">◎</span><span>Your request is submitted through the marketplace API under your account.</span></div>
+    </article>
+
+    <section class="panel workflow-panel workflow-list-panel" aria-labelledby="request-list-title" data-artisan-reveal data-motion="right">
+      <div class="workflow-panel-head workflow-list-head">
+        <div><span class="artisan-panel-kicker">Your activity</span><h2 id="request-list-title">Your requests</h2></div>
+        <span class="workflow-count-badge workflow-count-badge-request" aria-label="{{ request_total }} request{{ request_total|pluralize }}">{{ request_total }}</span>
+      </div>
+      <p class="workflow-list-intro">Open a request to review its details, see artisan responses, or make an update.</p>
+      <div class="workflow-list-items">
+        {% for item in requests %}
+          <article class="workflow-list-card request-list-card" data-artisan-reveal data-motion="up">
+            <a class="request-list-open" href="{% url 'service-request-detail' pk=item.id %}" aria-label="Open request {{ item.id }}">
+              <span class="workflow-list-index workflow-list-index-request" aria-hidden="true">{{ forloop.counter|stringformat:'02d' }}</span>
+              <span class="workflow-list-main">
+                <span class="workflow-status-line"><span class="workflow-category-label">{{ item.category_name|default:'Service request' }}</span><span class="workflow-urgency-label">{{ item.urgency|default:'Urgency not set'|title }}</span></span>
+                <strong>{{ item.description|default:'Service request'|truncatechars:82 }}</strong>
+                <span class="workflow-list-meta">{{ item.service_name|default:'Service details' }} <span aria-hidden="true">·</span> {{ item.preferred_date|human_date|default:'Preferred date not set' }}</span>
+              </span>
+              <span class="workflow-list-price">{% if item.budget != None %}₦{{ item.budget|floatformat:"2g" }}{% else %}Open budget{% endif %}<small>budget</small></span>
+              <span class="workflow-list-arrow" aria-hidden="true">↗</span>
+            </a>
+            <div class="request-list-actions">
+              <a class="button button-secondary" href="{% url 'service-request-detail' pk=item.id %}#request-editor">Edit request</a>
+              <form method="post" class="js-confirm-form" data-confirm="Delete request #{{ item.id }}? It will be removed from your list and kept on record for your history.">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="request_id" value="{{ item.id }}">
+                <button class="button button-danger" type="submit" data-artisan-action>Delete</button>
+              </form>
+            </div>
+          </article>
+        {% empty %}
+          <div class="workflow-empty" data-artisan-reveal data-motion="scale">
+            <span class="workflow-empty-symbol workflow-empty-symbol-request" aria-hidden="true">＋</span>
+            <strong>No service requests yet</strong>
+            <p>When you create a request, you can return here to compare responses and continue your conversations.</p>
+            <a class="workflow-empty-link" href="#create-request">Create a request <span aria-hidden="true">↓</span></a>
+          </div>
+        {% endfor %}
+      </div>
+      {% if previous_url or next_url %}<nav class="artisan-request-pagination" aria-label="Your request pages">{% if previous_url %}<a href="{{ previous_url }}">← Previous</a>{% endif %}<span>Showing {{ requests|length }} of {{ request_total }}</span>{% if next_url %}<a href="{{ next_url }}">More requests →</a>{% endif %}</nav>{% endif %}
+    </section>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% page_script 'js/request-pickers.js' %}{% endblock %}

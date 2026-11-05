@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Bookings · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page workflow-page booking-workflow-page booking-list-page" data-artisan-page="booking-list">
+  <header class="page-heading artisan-page-heading workflow-heading" data-artisan-reveal data-motion="left">
+    <div class="workflow-heading-copy">
+      <span class="workflow-kicker"><span class="workflow-kicker-mark" aria-hidden="true">✦</span> Marketplace workflow</span>
+      <h1 data-text-motion>Bookings, made clear.</h1>
+      <p>Bookings are created from an accepted offer in its service conversation. Review your transaction records here or open the related conversation.</p>
+    </div>
+    <div class="workflow-heading-side" aria-label="{{ bookings|length }} booking{{ bookings|length|pluralize }} listed">
+      <div class="workflow-orbit" aria-hidden="true"><span class="workflow-orbit-ring workflow-orbit-ring-one"></span><span class="workflow-orbit-ring workflow-orbit-ring-two"></span><span class="workflow-orbit-core">BM</span><span class="workflow-orbit-spark">✦</span></div>
+      <div class="workflow-heading-count"><strong>{{ bookings|length }}</strong><span>booking{{ bookings|length|pluralize }} listed</span></div>
+    </div>
+  </header>
+
+  <section class="panel workflow-panel workflow-list-panel" aria-labelledby="booking-list-title" data-artisan-reveal data-motion="up">
+    <div class="workflow-panel-head workflow-list-head">
+      <div><span class="artisan-panel-kicker">Your activity</span><h2 id="booking-list-title">Your bookings</h2></div>
+      <span class="workflow-count-badge" aria-label="{{ bookings|length }} booking{{ bookings|length|pluralize }}">{{ bookings|length }}</span>
+    </div>
+    <p class="workflow-list-intro">Select an artisan booking for its transaction details, or continue a customer-side transaction in its conversation.</p>
+    <div class="workflow-list-items">
+      {% for item in bookings %}
+        <a class="workflow-list-card booking-list-card" href="{% if item.viewer_role == 'customer' and item.conversation_id %}{% url 'conversation-detail' conversation_id=item.conversation_id %}{% else %}{% url 'booking-detail' pk=item.id %}{% endif %}" data-artisan-reveal data-motion="up">
+          <span class="workflow-list-index" aria-hidden="true">{{ forloop.counter|stringformat:'02d' }}</span>
+          <span class="workflow-list-main">
+            <span class="workflow-status-line"><span class="status-pill {{ item.status|status_class }}"><span class="workflow-status-dot" aria-hidden="true"></span>{{ item.status|default:'Status unavailable'|title }}</span><span class="workflow-list-reference">{% if item.service_name %}{{ item.service_name }}{% elif item.viewer_role == 'customer' %}Customer-side transaction{% else %}Your service{% endif %}</span></span>
+            <strong>{% if item.viewer_role == 'customer' %}Booking with {{ item.artisan_name|default:'your artisan' }}{% else %}Booking for {{ item.customer_name|default:'your customer' }}{% endif %}</strong>
+            <span class="workflow-list-meta">{{ item.scheduled_time_start|human_datetime }} <span aria-hidden="true">→</span> {{ item.scheduled_time_end|human_datetime }}</span>
+          </span>
+          <span class="workflow-list-price">{{ item.price_agreed|ngn }}<small>agreed price</small></span>
+          <span class="workflow-list-arrow" aria-hidden="true">↗</span>
+        </a>
+      {% empty %}
+        <div class="workflow-empty" data-artisan-reveal data-motion="scale">
+          <span class="workflow-empty-symbol" aria-hidden="true">◌</span>
+          <strong>No bookings yet</strong>
+          <p>When an offer is accepted in a service conversation, its booking and escrow state will appear here.</p>
+          <a class="workflow-empty-link" href="{% url 'conversation-inbox' %}">Open messages <span aria-hidden="true">→</span></a>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

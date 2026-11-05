@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="page-heading"><div><div class="eyebrow">Artisan Market</div><h1>{{ title }}</h1><p>{{ intro }}</p></div></section>
+<section class="content-grid one"><article class="panel form-panel"><form method="post" {% if form.is_multipart %}enctype="multipart/form-data"{% endif %} class="js-submit-form">{% include 'partials/form.html' %}<div class="actions"><button class="button button-primary" type="submit">{{ submit_label|default:'Continue' }}</button><a class="button button-secondary" href="{{ cancel_url|default:'/' }}">Cancel</a></div></form>{% if extra_links %}<div class="form-links">{% for href,label in extra_links %}<a href="{{ href }}">{{ label }}</a>{% endfor %}</div>{% endif %}</article></section>
+{% endblock %}

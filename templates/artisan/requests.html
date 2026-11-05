@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Matching service requests · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% asset 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% asset 'css/matched-request-filters.css' %}">{% endblock %}
+{% block content %}
+<section class="artisan-motion-page workflow-page artisan-request-inbox-page" data-artisan-page="artisan-requests">
+  <header class="page-heading artisan-page-heading workflow-heading" data-artisan-reveal data-motion="left">
+    <div class="workflow-heading-copy"><span class="workflow-kicker"><span class="workflow-kicker-mark" aria-hidden="true">✦</span> Artisan workspace</span><h1 data-text-motion>Requests matched to you.</h1><p>Only requests matching your active, verified service offerings and saved service locations appear here. Anywhere offerings match across locations.</p></div>
+    <div class="workflow-heading-side" aria-label="{{ request_total }} matching service request{{ request_total|pluralize }}"><div class="workflow-orbit" aria-hidden="true"><span class="workflow-orbit-ring workflow-orbit-ring-one"></span><span class="workflow-orbit-ring workflow-orbit-ring-two"></span><span class="workflow-orbit-core">RQ</span><span class="workflow-orbit-spark">✦</span></div><div class="workflow-heading-count"><strong>{{ request_total }}</strong><span>matched request{{ request_total|pluralize }}</span></div></div>
+  </header>
+
+  <div class="artisan-request-inbox-toolbar" data-artisan-reveal data-motion="up">
+    <a class="workflow-back-link" href="{% url 'dashboard' %}"><span aria-hidden="true">←</span> Dashboard</a>
+    <nav aria-label="Request inbox links"><a href="{% url 'artisan-services' %}">Manage services <span aria-hidden="true">↗</span></a><a href="{% url 'conversation-inbox' %}">Conversations <span aria-hidden="true">↗</span></a><a href="{% url 'notifications-page' %}">Notifications <span aria-hidden="true">↗</span></a></nav>
+  </div>
+
+  <section class="panel workflow-panel artisan-request-inbox-panel" aria-labelledby="artisan-request-inbox-title" data-artisan-reveal data-motion="scale">
+    <header class="workflow-panel-head workflow-list-head"><div><span class="artisan-panel-kicker">Service demand</span><h2 id="artisan-request-inbox-title">Matching requests</h2></div><span class="workflow-count-badge">{{ request_total }}</span></header>
+    <p class="workflow-list-intro">Match eligibility is checked by the API on every request. Personal contact details are never exposed on this board. Filter by the details that matter to your work.</p>
+
+    {% include 'partials/matched_request_filters.html' %}
+
+    <div class="artisan-request-inbox-list">
+      {% for item in requests %}
+        <article class="artisan-matched-request-card" data-artisan-reveal data-motion="up">
+          <div class="artisan-matched-request-topline"><span class="artisan-matched-request-index" aria-hidden="true">{{ forloop.counter|stringformat:'02d' }}</span><div><span class="artisan-request-category">{{ item.category_name|default:'Service request' }}</span><h3>{{ item.service_name|default:'Service details' }}</h3></div><span class="workflow-urgency-label">{{ item.urgency|default:'Urgency not set'|title }}</span></div>
+          <div class="request-age-line"><span class="request-age-dot" aria-hidden="true"></span><span>{% if item.request_age_label == 'Time unavailable' %}Posting time unavailable{% else %}Posted <time data-request-age data-age-seconds="{{ item.age_seconds }}" datetime="{{ item.created_at }}" aria-live="off">{{ item.request_age_label }}</time> ago{% endif %}</span><span class="request-age-note">No automatic expiry</span></div>
+          <p class="artisan-matched-request-description">{{ item.description|default:'No description provided.' }}</p>
+          {% if item.additional_details %}<p class="artisan-matched-request-description"><strong>Additional job details:</strong> {{ item.additional_details }}</p>{% endif %}
+          <dl class="artisan-matched-request-facts"><div><dt>Request</dt><dd>#{{ item.id }}</dd></div><div><dt>Preferred date</dt><dd><time datetime="{{ item.preferred_date }}">{{ item.preferred_date|human_date|default:'Not set' }}</time></dd></div>{% if item.preferred_time_start or item.preferred_time_end or item.preferred_time_note %}<div><dt>Preferred time</dt><dd>{% if item.preferred_time_start %}{{ item.preferred_time_start|slice:':5' }}{% endif %}{% if item.preferred_time_start and item.preferred_time_end %}–{% endif %}{% if item.preferred_time_end %}{{ item.preferred_time_end|slice:':5' }}{% endif %}{% if item.preferred_time_note %}{% if item.preferred_time_start or item.preferred_time_end %} · {% endif %}{{ item.preferred_time_note }}{% endif %}</dd></div>{% endif %}<div><dt>Request location</dt><dd>{% if item.location.area %}{{ item.location.area }}{% endif %}{% if item.location.state %}{% if item.location.area %}, {% endif %}{{ item.location.state }}{% endif %}{% if item.location.country %}{% if item.location.area or item.location.state %}, {% endif %}{{ item.location.country }}{% endif %}{% if not item.location.area and not item.location.state and not item.location.country %}Location not provided{% endif %}</dd></div><div><dt>Budget</dt><dd>{% if item.budget != None %}₦{{ item.budget|floatformat:"2g" }}{% else %}Open budget{% endif %}</dd></div></dl>
+          <footer class="artisan-request-card-actions">
+            {% if item.response_status == 'INTERESTED' %}
+              <span class="responder-status-pill responder-status-interested">Response sent</span>
+              <form method="post" class="js-confirm-form" data-confirm="Withdraw your response to request #{{ item.id }}? The customer will no longer see your active response.">
+                {% csrf_token %}<input type="hidden" name="action" value="withdraw"><input type="hidden" name="request_id" value="{{ item.id }}"><input type="hidden" name="return_to" value="{{ return_to }}">
+                <button class="button button-secondary button-small" type="submit">Withdraw response</button>
+              </form>
+            {% elif item.response_status == 'BOOKED' %}
+              <span class="responder-status-pill responder-status-booked">Customer selected you</span><a class="button button-primary button-small" href="{% url 'conversation-inbox' %}">Open conversations <span aria-hidden="true">→</span></a>
+            {% elif item.response_status == 'CLOSED' %}
+              <span class="responder-status-pill responder-status-closed">Request closed after a booking</span>
+            {% else %}
+              {% if item.response_status == 'WITHDRAWN' %}<span class="responder-status-pill responder-status-withdrawn">Response withdrawn</span>{% endif %}
+              <form method="post">
+                {% csrf_token %}<input type="hidden" name="action" value="respond"><input type="hidden" name="request_id" value="{{ item.id }}"><input type="hidden" name="return_to" value="{{ return_to }}">
+                <button class="button button-primary button-small" type="submit">Respond to this request <span aria-hidden="true">→</span></button>
+              </form>
+            {% endif %}
+            {% if item.response_status != 'BOOKED' and item.response_status != 'CLOSED' %}
+              <form method="post" class="js-confirm-form request-dismiss-form" data-confirm="Not interested in request #{{ item.id }}? This hides it only from your matches. The customer and other eligible artisans keep access.">
+                {% csrf_token %}<input type="hidden" name="action" value="dismiss"><input type="hidden" name="request_id" value="{{ item.id }}"><input type="hidden" name="return_to" value="{{ return_to }}">
+                <button class="button button-secondary button-small request-dismiss-button" type="submit">Not interested <span aria-hidden="true">×</span></button>
+              </form>
+            {% endif %}
+          </footer>
+        </article>
+      {% empty %}
+        <div class="workflow-empty" data-artisan-reveal data-motion="scale"><span class="workflow-empty-symbol" aria-hidden="true">⌕</span><strong>No matching requests found</strong><p>{% if has_active_filters %}Try widening or clearing some filters. Otherwise, new requests matching your eligible services and saved service locations—including Anywhere—will appear here.{% else %}New requests matching your active, verified services and saved locations—including Anywhere offerings—will appear here. Check that your service offerings and locations are up to date.{% endif %}</p>{% if has_active_filters %}<a class="workflow-empty-link" href="{% url 'artisan-requests' %}?clear=1">Clear filters <span aria-hidden="true">→</span></a>{% else %}<a class="workflow-empty-link" href="{% url 'artisan-services' %}">Review service offerings <span aria-hidden="true">→</span></a>{% endif %}</div>
+      {% endfor %}
+    </div>
+    {% if previous_url or next_url %}<nav class="artisan-request-pagination" aria-label="Request pages">{% if previous_url %}<a href="{{ previous_url }}">← Previous</a>{% endif %}<span>Showing {{ requests|length }} of {{ request_total }}</span>{% if next_url %}<a href="{{ next_url }}">More requests →</a>{% endif %}</nav>{% endif %}
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}{% page_script 'js/matched-request-filters.js' %}{% page_script 'js/request-age.js' %}{% page_script 'js/pages/artisan-ui.js' %}{% endblock %}

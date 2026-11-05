@@ -33,15 +33,14 @@ class GuidanceTests(SimpleTestCase):
         self.assertEqual(self.guide()['stage'],'DRAFT_REVIEW')
         self.assertFalse(self.room.request_submitted)
 
-    def test_quote_requires_description_confirmation_first(self):
+    def test_quoting_never_waits_on_a_description_confirmation(self):
         self.room.request_submitted=True
         self.room._description_confirmed=False
-        self.assertEqual(self.guide()['stage'],'CLARIFY_DESCRIPTION')
-        artisan_guide=self.guide(self.artisan,actions=['CONFIRM_DESCRIPTION'])
-        self.assertEqual(artisan_guide['stage'],'CLARIFY_DESCRIPTION')
-        self.assertEqual(artisan_guide['action']['code'],'CONFIRM_DESCRIPTION')
-        self.room._description_confirmed=True
+        # The chat itself is the description, so the guide goes straight to quoting.
         self.assertEqual(self.guide()['stage'],'WAITING_FOR_QUOTE')
+        artisan_guide=self.guide(self.artisan,actions=['SEND_OFFER'])
+        self.assertEqual(artisan_guide['stage'],'PREPARE_QUOTE')
+        self.assertEqual(artisan_guide['action']['code'],'SEND_OFFER')
 
     def test_quote_wait_review_revision_and_expiry(self):
         self.room.request_submitted=True

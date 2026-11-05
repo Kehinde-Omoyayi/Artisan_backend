@@ -4,6 +4,15 @@ class NotificationEvent:
     SERVICE_REQUEST_WITHDRAWN = "service_request_withdrawn"
     SERVICE_REQUEST_NO_MATCH = "service_request_no_match"
 
+    OFFER_RECEIVED = "offer_received"
+    COUNTER_OFFER_RECEIVED = "counter_offer_received"
+    # Confirmation for the person who priced the work, so both sides see an
+    # immediate popup the moment a request is itemised.
+    OFFER_SENT = "offer_sent"
+    OFFER_ACCEPTED = "offer_accepted"
+    OFFER_DECLINED = "offer_declined"
+    OFFER_REVISION_REQUESTED = "offer_revision_requested"
+
     BOOKING_CREATED = "booking_created"
     BOOKING_ACCEPTED = "booking_accepted"
     BOOKING_REJECTED = "booking_rejected"

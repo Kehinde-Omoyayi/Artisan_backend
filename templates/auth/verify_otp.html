@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Verify email · Artisan Market{% endblock %}
+{% block content %}
+{% include 'partials/auth_flow_page.html' with flow_kind='email-verification' title='Verify your email' intro='Enter the six-digit code sent to your email to verify the address linked to this account.' page_eyebrow='Email verification' flow_kicker='ACCOUNT VERIFICATION' flow_side_title='One quick check, then you can continue.' flow_side_copy='Your verification code confirms access to this email address. The API checks the code before it activates the account.' active_step=2 step_total=2 step_one='Create account' step_two='Verify email' submit_label='Verify account' cancel_url='/' extra_href='/auth/request-otp/' extra_label='Did not receive a code? Request another' %}
+{% endblock %}

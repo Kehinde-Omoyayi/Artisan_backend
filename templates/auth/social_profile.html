@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Finish creating your account · Artisan Market{% endblock %}
+{% block content %}
+{% include 'partials/auth_flow_page.html' with flow_kind='social-profile' title='Finish your profile' intro='Your provider did not share all the name details needed for your account. Add the missing information to continue.' page_eyebrow='Social sign-up · one last step' flow_kicker='PROFILE DETAILS' flow_side_title='You are nearly ready to join.' flow_side_copy='Add the name details missing from your provider profile. We will continue with the existing email-verification step.' active_step=1 step_total=2 step_one='Complete profile' step_two='Verify email' submit_label='Finish registration' cancel_url='/auth/register/' account_hint=social_email %}
+{% endblock %}

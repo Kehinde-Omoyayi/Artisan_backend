@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}{% if support_mode %}Case queue{% else %}Support cases{% endif %} · Artisan Market{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">
+<link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">
+{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page support-queue-page" data-artisan-page="support-cases" data-tour-target="support">
+  <header class="support-page-hero" data-artisan-reveal data-motion="left">
+    <div>
+      <a class="support-back-link" href="{% if support_mode %}{% url 'dashboard' %}{% else %}{% url 'home' %}{% endif %}"><span aria-hidden="true">←</span> {% if support_mode %}Operations{% else %}Dashboard{% endif %}</a>
+      <span class="support-eyebrow">{% if support_mode %}CUSTOMER CARE · CASE MANAGEMENT{% else %}HELP CENTRE{% endif %}</span>
+      <h1>{% if support_mode %}Case queue{% else %}Support cases{% endif %}</h1>
+      <p>{% if support_mode %}Triage incoming issues, keep the public conversation moving, and take action from the case record.{% else %}Open a case or follow an existing issue. Messages you send from the case thread go directly to customer support.{% endif %}</p>
+    </div>
+    <div class="support-page-actions">
+      {% if support_mode %}
+        {% if support_capabilities.can_view_refunds %}<a class="button button-secondary" href="{% url 'support-refunds' %}">Refund queue <span aria-hidden="true">↗</span></a>{% endif %}
+        {% if support_capabilities.can_manage_staff %}<a class="button button-secondary" href="{% url 'support-staff' %}">Support team</a>{% endif %}
+      {% elif form %}<a class="button button-primary" href="#open-case">Open a support case <span aria-hidden="true">↓</span></a>{% endif %}
+    </div>
+  </header>
+  {% if support_mode %}{% include 'partials/support_operation_shortcut.html' %}{% endif %}
+
+  {% if support_mode %}
+  <div class="support-queue-stats" aria-label="Current queue results">
+    <div><span>Records</span><strong>{{ result_total }}</strong></div>
+    <div><span>Page</span><strong>{{ page_number }} <small>of {{ page_count }}</small></strong></div>
+    <div class="support-queue-stat-note"><span class="support-live-dot" aria-hidden="true"></span><span>API-backed queue · access scoped by support role</span></div>
+  </div>
+  <section class="support-panel support-filter-panel" data-artisan-reveal data-motion="up" aria-labelledby="case-filter-heading">
+    <div class="support-panel-heading support-panel-heading--compact"><div><span class="support-eyebrow">FIND A CASE</span><h2 id="case-filter-heading">Filter the queue</h2></div><a class="support-text-link" href="{% url 'support-cases' %}">Clear filters</a></div>
+    <form class="support-filter-form" method="get">
+      <label class="support-filter-search"><span>Search</span><input class="field-input" type="search" name="search" value="{{ filters.search }}" placeholder="Reference, subject, customer email" maxlength="100"></label>
+      <label><span>Status</span><select class="field-input" name="status"><option value="">All statuses</option><option value="OPEN" {% if filters.status == 'OPEN' %}selected{% endif %}>Open</option><option value="UNDER_REVIEW" {% if filters.status == 'UNDER_REVIEW' %}selected{% endif %}>Under review</option><option value="RESOLVED" {% if filters.status == 'RESOLVED' %}selected{% endif %}>Resolved</option><option value="CLOSED" {% if filters.status == 'CLOSED' %}selected{% endif %}>Closed</option></select></label>
+      <label><span>Priority</span><select class="field-input" name="priority"><option value="">All priorities</option><option value="URGENT" {% if filters.priority == 'URGENT' %}selected{% endif %}>Urgent</option><option value="HIGH" {% if filters.priority == 'HIGH' %}selected{% endif %}>High</option><option value="MEDIUM" {% if filters.priority == 'MEDIUM' %}selected{% endif %}>Medium</option><option value="LOW" {% if filters.priority == 'LOW' %}selected{% endif %}>Low</option></select></label>
+      <label><span>Case type</span><select class="field-input" name="case_type"><option value="">All types</option><option value="DISPUTE" {% if filters.case_type == 'DISPUTE' %}selected{% endif %}>Dispute</option><option value="PAYMENT" {% if filters.case_type == 'PAYMENT' %}selected{% endif %}>Payment</option><option value="REPORT" {% if filters.case_type == 'REPORT' %}selected{% endif %}>Report</option><option value="ACCOUNT" {% if filters.case_type == 'ACCOUNT' %}selected{% endif %}>Account</option><option value="TECHNICAL" {% if filters.case_type == 'TECHNICAL' %}selected{% endif %}>Technical</option><option value="OTHER" {% if filters.case_type == 'OTHER' %}selected{% endif %}>Other</option></select></label>
+      <label><span>Assignment</span><select class="field-input" name="assigned_to"><option value="">Everyone</option><option value="me" {% if filters.assigned_to == 'me' %}selected{% endif %}>Assigned to me</option><option value="unassigned" {% if filters.assigned_to == 'unassigned' %}selected{% endif %}>Unassigned</option></select></label>
+      <button class="button button-primary support-filter-submit" type="submit">Apply filters <span aria-hidden="true">→</span></button>
+    </form>
+  </section>
+  {% endif %}
+
+  <div class="support-queue-layout{% if not support_mode %} support-queue-layout--participant{% endif %}">
+    {% if form %}
+    <aside class="support-panel support-open-case-panel" id="open-case">
+      <div class="support-panel-heading"><div><span class="support-eyebrow">WE'RE HERE TO HELP</span><h2>Open a case</h2></div><span class="support-panel-icon" aria-hidden="true">✦</span></div>
+      <p class="support-panel-intro">Tell us what happened. For a booking dispute, open the relevant service conversation and use its dispute action; the verified booking and escrow are attached automatically. For another booking or payment issue, start from the relevant conversation or request summary. For a promotion concern, use the optional campaign reference from My Promotions or its support link.</p>
+      {% if conversation_context_id %}<a class="support-text-link support-booking-help-link" href="{% url 'conversation-detail' conversation_id=conversation_context_id %}">Return to the selected conversation <span aria-hidden="true">↗</span></a><p class="support-context-confirmation" role="status">This form is linked to the verified conversation. The server resolves its transaction; no transaction identifier is needed here.</p>{% else %}<a class="support-text-link support-booking-help-link" href="{% url 'conversation-inbox' %}">Open Messages and choose the relevant conversation <span aria-hidden="true">↗</span></a>{% endif %}
+      <form method="post" class="support-stacked-form">
+        {% csrf_token %}
+        {% include 'partials/form.html' %}
+        <button class="button button-primary full" type="submit">Send to customer support <span aria-hidden="true">→</span></button>
+      </form>
+      <p class="support-privacy-note"><span aria-hidden="true">✓</span> Never include a password, card number, payment PIN, or one-time code.</p>
+    </aside>
+    {% endif %}
+
+    <section class="support-panel support-case-list-panel" data-artisan-reveal data-motion="up" aria-labelledby="case-list-heading">
+      <div class="support-panel-heading">
+        <div><span class="support-eyebrow">{% if support_mode %}QUEUE{% else %}YOUR SUPPORT HISTORY{% endif %}</span><h2 id="case-list-heading">{% if support_mode %}Cases{% else %}Your cases{% endif %}</h2></div>
+        <span class="support-total-badge">{{ result_total }} record{{ result_total|pluralize }}</span>
+      </div>
+      {% if cases %}
+      <div class="support-table-wrap">
+        <table class="support-table support-case-table">
+          <thead><tr><th scope="col">Case</th><th scope="col">{% if support_mode %}Opened by{% else %}Related record{% endif %}</th><th scope="col">Priority</th><th scope="col">Status</th><th scope="col"><span class="visually-hidden">Open</span></th></tr></thead>
+          <tbody>
+          {% for item in cases %}
+            <tr>
+              <td><a class="support-table-primary" href="{% url 'support-case-detail' pk=item.id %}">{{ item.subject }}</a><span class="support-table-sub">{{ item.reference }} · {{ item.case_type|title }}</span></td>
+              <td>{% if support_mode %}{{ item.opened_by_name|default:'Case participant' }}{% elif item.conversation_id %}<a href="{% url 'conversation-detail' conversation_id=item.conversation_id %}">Open related conversation</a>{% elif item.booking %}Booking-linked case{% elif item.promotion_campaign %}Promotion campaign{% else %}No transaction linked{% endif %}{% if support_mode and item.assigned_to_name %}<span class="support-table-sub">Assigned: {{ item.assigned_to_name }}</span>{% endif %}</td>
+              <td><span class="support-priority support-priority--{{ item.priority|lower }}">{{ item.priority|title }}</span></td>
+              <td><span class="status-pill {{ item.status|status_class }}">{% if item.status == 'UNDER_REVIEW' %}Under review{% else %}{{ item.status|title }}{% endif %}</span></td>
+              <td><a class="support-row-arrow" href="{% url 'support-case-detail' pk=item.id %}" aria-label="Open case {{ item.reference }}">↗</a></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="support-pagination">
+        <span>Showing {{ range_start }}–{{ range_end }} of {{ result_total }}</span>
+        <div>{% if has_previous %}<a class="button button-secondary" href="{{ previous_url }}" rel="prev">← Previous</a>{% endif %}{% if has_next %}<a class="button button-secondary" href="{{ next_url }}" rel="next">Next page →</a>{% endif %}</div>
+      </div>
+      {% else %}
+      <div class="support-empty"><span class="support-empty-icon" aria-hidden="true">⌕</span><strong>{% if support_mode %}No matching cases{% else %}No cases yet{% endif %}</strong><p>{% if support_mode %}Try clearing a filter or search term. New cases from customers will appear here.{% else %}When you contact customer support, your case history and replies will appear here.{% endif %}</p>{% if support_mode %}<a class="support-text-link" href="{% url 'support-cases' %}">Clear filters</a>{% elif form %}<a class="support-text-link" href="#open-case">Open your first case</a>{% endif %}</div>
+      {% endif %}
+    </section>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

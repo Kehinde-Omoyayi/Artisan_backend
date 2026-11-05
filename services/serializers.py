@@ -680,6 +680,40 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Starting price cannot be negative.")
         return value
 
+    def _resolve_geographic_location(self, validated_data):
+        """Store the place the page sent, as one reusable record.
+
+        The artisan picks country, state and area from the frontend dropdowns;
+        the API is only responsible for keeping one row per place so discovery
+        and promotions can compare offerings. Without this the dict reached the
+        ForeignKey and Django raised
+        ``ArtisanService.location must be a "Locations" instance``.
+        """
+        location = validated_data.get("location")
+        if not isinstance(location, dict):
+            return
+        names = {
+            key: str(location[key]).strip()
+            for key in ("country", "state", "area")
+            if str(location.get(key) or "").strip()
+        }
+        if len(names) != 3:
+            raise serializers.ValidationError(
+                {"location": "Country, state and area are all required."}
+            )
+        existing = Locations.objects.filter(
+            **{f"{key}__iexact": value for key, value in names.items()}
+        ).first()
+        validated_data["location"] = existing or Locations.objects.get_or_create(**names)[0]
+
+    def create(self, validated_data):
+        self._resolve_geographic_location(validated_data)
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        self._resolve_geographic_location(validated_data)
+        return super().update(instance, validated_data)
+
 
 class ArtisanDiscoverySerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(

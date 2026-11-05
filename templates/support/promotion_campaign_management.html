@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/support-workspace.css' %}"><link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block title %}Promotion campaigns &amp; settings · Support Operations{% endblock %}
+{% block content %}
+<section class="support-workspace support-promotion-workspace support-promotion-management" data-artisan-page="promotion-campaign-management">
+  <a class="support-back-link" href="{% url 'support-operations' %}"><span aria-hidden="true">←</span> Support Operations</a>
+  <header class="support-page-hero" data-artisan-reveal data-motion="left"><div><span class="support-eyebrow">AUTHORIZED PAID CAMPAIGN OPERATIONS</span><h1>Promotion campaigns &amp; settings</h1><p>Manager-controlled product configuration and target capacity; reviewed support-case actions for paid campaign lifecycle.</p></div><div class="support-page-actions">{% if can_review_promotions %}<a class="button button-secondary" href="{% url 'support-promotion-applications' %}">Application review</a>{% endif %}<a class="button button-secondary" href="{% url 'support-cases' %}">Support cases</a></div></header>
+
+  <section class="support-access-notice support-promotion-scope-note" role="note"><span class="support-notice-mark" aria-hidden="true">i</span><div><h2>Payment and complaints are not proof</h2><p>Only verified paid campaigns can be active, scheduled or queued. Every lifecycle action must link to an open or under-review support case and include a reason. A complaint is not a confirmed violation. Temporary pause or suspension preserves remaining duration; restoration rejoins behind earlier paid queue entries. Final revocation/refund actions follow the campaign's accepted terms and the existing dual-control refund process.</p></div></section>
+  {% if can_review_promotions %}
+  <div class="promotion-mask-controls"><div><strong>Privileged promotion values are hidden by default.</strong><span data-manager-privacy-status role="status" aria-live="polite">{% if promotion_values_revealed %}Values are present only for this authorized request. Hide or reload to return to masked mode.{% else %}Masked values are not embedded in this page. Reveal requires an authorized, one-use request.{% endif %}</span></div>
+    {% if promotion_values_revealed %}
+    <form method="post" action="{% url 'frontend-manager-values-reveal' %}">{% csrf_token %}<input type="hidden" name="scope" value="hide"><input type="hidden" name="next" value="{{ reveal_return_path }}"><button class="button button-secondary" type="submit" data-manager-privacy-hide>Hide values</button></form>
+    {% else %}
+    <form method="post" action="{% url 'frontend-manager-values-reveal' %}">{% csrf_token %}<input type="hidden" name="scope" value="promotion"><input type="hidden" name="next" value="{{ reveal_return_path }}"><button class="button button-secondary" type="submit">Reveal values</button></form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if can_manage_promotion_configuration %}
+  {% if manager_values_revealed %}
+  <section class="support-panel promotion-manager-section" aria-labelledby="promotion-plans-heading">
+    <div class="support-panel-heading"><div><span class="support-eyebrow">PLATFORM MANAGER · AUTHORIZED</span><h2 id="promotion-plans-heading">Prices, terms &amp; durations</h2></div><span class="support-total-badge">{{ plans|length }} plan{{ plans|length|pluralize }}</span></div>
+    <p class="support-panel-intro">Changes apply to future offers only. Campaigns already purchased retain their original price, duration, target and terms snapshot. Homepage stays unavailable until it is explicitly priced and enabled.</p>
+    {% if plans %}<div class="promotion-manager-plan-list">{% for plan in plans %}<form class="promotion-manager-plan" method="post">
+      {% csrf_token %}<input type="hidden" name="action" value="plan"><input type="hidden" name="plan_id" value="{{ plan.id }}"><input type="hidden" name="idempotency_key" value="{{ plan.management_idempotency_key }}">
+      <header><div><span class="support-eyebrow">{{ plan.promotion_type }}</span><h3>{{ plan.name }}</h3></div><span class="promotion-status-pill {% if plan.is_enabled %}promotion-status--active{% else %}promotion-status--paused{% endif %}">{% if plan.is_enabled %}Enabled{% else %}Disabled{% endif %} · v{{ plan.version }}</span></header>
+      <div class="promotion-manager-fields">
+        <label><span>Plan name</span><input type="text" name="name" maxlength="120" value="{{ plan.name }}" required></label>
+        <label><span>Price (NGN, whole naira)</span><div class="promotion-manager-input-mask" data-manager-input-mask><span data-manager-input-placeholder>***</span><input data-manager-real-input hidden type="number" name="price" min="0" step="1" value="{{ plan.price }}" required></div></label>
+        <label><span>Duration (days)</span><div class="promotion-manager-input-mask" data-manager-input-mask><span data-manager-input-placeholder>***</span><input data-manager-real-input hidden type="number" name="duration_days" min="1" max="365" step="1" value="{{ plan.duration_days }}" required></div></label>
+        <label><span>Refund policy</span><select name="refund_policy"><option value="PRO_RATA" {% if plan.refund_policy == 'PRO_RATA' %}selected{% endif %}>Pro-rata unused paid time, platform termination</option><option value="NONE" {% if plan.refund_policy == 'NONE' %}selected{% endif %}>No refund except where required by law</option></select></label>
+        <label class="promotion-manager-terms"><span>Customer-facing terms</span><textarea name="terms_text" rows="5" maxlength="10000" required>{{ plan.terms_text }}</textarea></label>
+        <label class="promotion-manager-checkbox"><input type="checkbox" name="is_enabled" {% if plan.is_enabled %}checked{% endif %}><span>Enable plan for new checkouts</span></label>
+        <label class="promotion-manager-reason"><span>Change reason (optional)</span><input type="text" name="reason" maxlength="1000" placeholder="Reason recorded in the audit trail"></label>
+      </div>
+      <div class="promotion-manager-actions"><span>Currency: {{ plan.currency }} · Updated {{ plan.updated_at }}{% if plan.updated_by_name %} by {{ plan.updated_by_name }}{% endif %}</span><button class="button button-primary" type="submit">Save plan settings</button></div>
+    </form>{% endfor %}</div>{% else %}<div class="support-empty"><strong>No promotion plans are configured</strong><p>Plan records are created by deployment migrations and their values are never reset here.</p></div>{% endif %}
+  </section>
+
+  <section class="support-panel promotion-manager-section" aria-labelledby="promotion-inventory-heading">
+    <div class="support-panel-heading"><div><span class="support-eyebrow">SEPARATE CANONICAL INVENTORIES</span><h2 id="promotion-inventory-heading">Target capacity</h2></div><span class="support-total-badge">{{ inventories|length }} target{{ inventories|length|pluralize }}</span></div>
+    <p class="support-panel-intro">Institution, area/locality, state and homepage inventories remain separate. Capacity changes are audited and the verified-payment schedule is recomputed.</p>
+    {% if inventories %}<div class="promotion-manager-inventory-list">{% for inventory in inventories %}<form class="promotion-manager-inventory" method="post">
+      {% csrf_token %}<input type="hidden" name="action" value="capacity"><input type="hidden" name="inventory_id" value="{{ inventory.id }}"><input type="hidden" name="idempotency_key" value="{{ inventory.management_idempotency_key }}">
+      <div><span class="support-eyebrow">{{ inventory.promotion_type }}</span><h3>{{ inventory.target_label }}</h3><small>Active {% private_value inventory.active_count %} · Remaining {% private_value inventory.remaining_capacity %} · Scheduled {% private_value inventory.scheduled_count %} · Queued {% private_value inventory.queued_count %}</small></div>
+      <label><span>Capacity</span><div class="promotion-manager-input-mask" data-manager-input-mask><span data-manager-input-placeholder>***</span><input data-manager-real-input hidden type="number" name="capacity" min="0" max="1000" step="1" value="{{ inventory.capacity }}" required></div></label><button class="button button-secondary" type="submit">Save capacity</button>
+      <label class="promotion-manager-capacity-reason"><span>Change reason (optional)</span><input type="text" name="reason" maxlength="1000" placeholder="Reason recorded with the capacity change"></label>
+    </form>{% endfor %}</div>{% else %}<div class="support-empty"><strong>No target inventories have been created yet</strong><p>Inventories are created as supported applications are offered; manager settings are retained.</p></div>{% endif %}
+  </section>
+
+  <section class="support-panel promotion-manager-section promotion-manager-audit-section" aria-labelledby="promotion-audit-heading">
+    <div class="support-panel-heading"><div><span class="support-eyebrow">IMMUTABLE CONFIGURATION HISTORY</span><h2 id="promotion-audit-heading">Recent price &amp; capacity changes</h2></div><span class="support-total-badge">{{ promotion_audit_events|length }} record{{ promotion_audit_events|length|pluralize }}</span></div>
+    {% if promotion_audit_events %}<ol class="promotion-manager-audit-list">{% for event in promotion_audit_events %}<li><div class="promotion-manager-audit-top"><strong>{{ event.action|humanize_code }}</strong><span>{{ event.actor_name }} · {{ event.created_at|date:'j M Y, g:i a' }}</span></div><p>{{ event.reason }}</p><details><summary>View recorded change</summary><div class="promotion-manager-audit-details">
+      {% if event.action == 'PROMOTION_PLAN_CONFIGURED' %}
+      <span><small>Plan</small><b>{{ event.details.before.name }} → {{ event.details.after.name }}</b></span>
+      <span><small>Price (NGN)</small><b>{% private_value event.details.before.price_kobo|ngn_kobo %} → {% private_value event.details.after.price_kobo|ngn_kobo %}</b></span>
+      <span><small>Duration</small><b>{% private_value event.details.before.duration_days %} → {% private_value event.details.after.duration_days %} days</b></span>
+      <span><small>Enabled</small><b>{{ event.details.before.is_enabled|yesno:'Yes,No' }} → {{ event.details.after.is_enabled|yesno:'Yes,No' }}</b></span>
+      <span><small>Refund policy</small><b>{{ event.details.before.refund_policy|default:'—'|humanize_code }} → {{ event.details.after.refund_policy|default:'—'|humanize_code }}</b></span>
+      <details class="promotion-manager-audit-terms"><summary>View customer-facing terms before and after</summary><div><p><small>Before</small>{{ event.details.before.terms_text|default:'—' }}</p><p><small>After</small>{{ event.details.after.terms_text|default:'—' }}</p></div></details>
+      {% else %}
+      <span><small>Target</small><b>{{ event.details.target_key }}</b></span>
+      <span><small>Capacity</small><b>{% private_value event.details.capacity_before %} → {% private_value event.details.capacity_after %}</b></span>
+      {% endif %}
+    </div></details></li>{% endfor %}</ol>{% else %}<div class="support-empty support-empty--compact"><strong>No configuration changes recorded yet</strong><p>Price, duration, terms, and target-capacity updates will appear here with actor, time and reason.</p></div>{% endif %}
+  </section>
+  {% else %}
+  <section class="support-panel promotion-manager-section" aria-label="Protected promotion configuration">
+    <div class="support-panel-heading"><div><span class="support-eyebrow">PLATFORM MANAGER · AUTHORIZED</span><h2>Prices, terms &amp; target capacity</h2></div></div>
+    <p class="support-panel-intro">Manager-controlled plan settings, capacity figures, and audit details are not loaded into this page until you request an authorized one-use reveal.</p>
+  </section>
+  {% endif %}
+  {% endif %}
+
+  <section class="support-panel promotion-manager-section" aria-labelledby="promotion-campaigns-heading">
+    <div class="support-panel-heading"><div><span class="support-eyebrow">SUPPORT OPERATIONS</span><h2 id="promotion-campaigns-heading">Campaigns</h2></div><span class="support-total-badge">{{ campaigns|length }} result{{ campaigns|length|pluralize }}</span></div>
+    <form class="support-filter-form promotion-manager-filter" method="get"><label><span>Status</span><select name="status"><option value="">All statuses</option>{% for value,label in campaign_status_options %}<option value="{{ value }}" {% if status_filter == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label><span>Product</span><select name="promotion_type"><option value="">All products</option><option value="INSTITUTION" {% if promotion_type_filter == 'INSTITUTION' %}selected{% endif %}>Institution</option><option value="AREA" {% if promotion_type_filter == 'AREA' %}selected{% endif %}>Area / locality</option><option value="STATE" {% if promotion_type_filter == 'STATE' %}selected{% endif %}>State</option><option value="HOMEPAGE" {% if promotion_type_filter == 'HOMEPAGE' %}selected{% endif %}>Homepage</option></select></label><button class="button button-primary" type="submit">Filter campaigns</button></form>
+    {% if campaigns %}<div class="promotion-manager-campaign-list">{% for campaign in campaigns %}<article class="promotion-manager-campaign">
+      <header><div><span class="support-eyebrow">{{ campaign.promotion_type }} · {{ campaign.plan_name_snapshot }}</span><h3>{{ campaign.artisan_name }}{% if campaign.business_name %} · {{ campaign.business_name }}{% endif %}</h3><p>{{ campaign.target_label }} · {% private_value campaign.artisan_email %}</p></div><span class="promotion-status-pill promotion-status--{{ campaign.status|lower }}">{{ campaign.status_label|default:campaign.status }}</span></header>
+      <dl class="promotion-manager-campaign-summary"><div><dt>Price snapshot</dt><dd>{{ campaign.currency }} {% private_value campaign.price %}</dd></div><div><dt>Provider reference</dt><dd>{% if campaign.payment_reference %}{% private_value campaign.payment_reference %}{% else %}Not verified{% endif %}</dd></div><div><dt>Payment verified</dt><dd>{{ campaign.payment_verified_at|default:"—" }}</dd></div><div><dt>Schedule</dt><dd>{% if campaign.scheduled_start_at %}{{ campaign.scheduled_start_at }}{% elif campaign.started_at %}Started {{ campaign.started_at }}{% else %}Not scheduled{% endif %}{% if campaign.expires_at %}<br>Until {{ campaign.expires_at }}{% endif %}</dd></div><div><dt>Performance</dt><dd>{% if campaign.performance_data_available %}{% private_value campaign.impressions %} impressions · {% private_value campaign.profile_visits %} profile visits{% if campaign.profile_visit_rate_percent != None %} · {% private_value campaign.profile_visit_rate_percent %}% useful rate{% endif %}{% else %}Not available{% endif %} · {% private_value campaign.enquiries %} enquiries</dd></div></dl>
+      {% if campaign.last_action_reason %}<p class="promotion-row-feedback"><strong>Latest reason:</strong> {{ campaign.last_action_reason }}</p>{% endif %}
+      {% if campaign.actions %}<details class="promotion-manager-history"><summary>Immutable campaign history · {{ campaign.actions|length }} event{{ campaign.actions|length|pluralize }}</summary><ol>{% for event in campaign.actions %}<li><div><strong>{{ event.action_label }}</strong><span>{{ event.actor_name }} · {{ event.created_at|date:'j M Y, g:i a' }}</span></div><small>{% if event.status_before %}{{ event.status_before|humanize_code }} → {{ event.status_after|humanize_code }} · {% endif %}{% if event.support_case_id %}Support case #{{ event.support_case_id }} · {% endif %}{{ event.reason }}</small>{% if event.evidence_summary %}<small><b>Evidence summary:</b> {{ event.evidence_summary }}</small>{% endif %}{% if event.metadata.scheduled_start_at %}<small>Scheduled start {{ event.metadata.scheduled_start_at }}{% if event.metadata.scheduled_end_at %} · end {{ event.metadata.scheduled_end_at }}{% endif %}</small>{% endif %}</li>{% endfor %}</ol></details>{% endif %}
+      {% if can_review_promotions %}<details class="promotion-manager-action-details"><summary>Review a support case and manage this campaign</summary><div class="promotion-manager-action-body">
+        {% if campaign.open_support_cases %}<form method="post" class="promotion-manager-action-form">
+          {% csrf_token %}<input type="hidden" name="action" value="campaign"><input type="hidden" name="campaign_id" value="{{ campaign.id }}"><input type="hidden" name="idempotency_key" value="{{ campaign.management_idempotency_key }}">
+          <label><span>Open linked support case</span><select name="support_case_id" required><option value="">Choose a case</option>{% for case in campaign.open_support_cases %}<option value="{{ case.id }}">{{ case.reference }} · {{ case.status }} · {{ case.subject }}</option>{% endfor %}</select></label>
+          <label><span>Action</span><select name="campaign_action" required><option value="PAUSE">Pause temporarily</option><option value="SUSPEND">Suspend pending investigation</option>{% if can_supervise_campaign_actions %}<option value="RESTORE">Restore to paid schedule</option><option value="REVOKE">Revoke campaign</option>{% endif %}</select></label>
+          <label><span>Reason (required)</span><textarea name="reason" minlength="10" maxlength="2000" rows="3" required placeholder="Explain the authorized action and case context."></textarea></label>
+          <label><span>Evidence review summary</span><textarea name="evidence_summary" maxlength="5000" rows="3" placeholder="Summarize evidence reviewed; a complaint alone is not proof."></textarea></label>
+          {% if can_supervise_campaign_actions %}<label class="promotion-manager-checkbox"><input type="checkbox" name="confirmed_violation"><span>Formal review confirmed a violation (only select with evidence and an under-review case)</span></label>{% endif %}
+          <div class="promotion-manager-action-note">A confirmed-violation revocation requires a formally under-review case and substantive evidence. If a complaint is unproven, use a temporary pause/suspension and continue the case review.</div>
+          <button class="button button-primary" type="submit">Record campaign action</button>
+        </form>{% else %}<div class="support-empty support-empty--compact"><strong>No open support case is linked to this campaign</strong><p>Ask the artisan or public reporter to open a campaign-linked case through the existing Support flow before taking action.</p></div>{% endif %}
+        {% if campaign.support_cases %}<div class="promotion-manager-case-history"><h4>Linked support-case history</h4><ul>{% for case in campaign.support_cases %}<li><a href="{% url 'support-cases' %}?promotion_campaign={{ campaign.id }}">{{ case.reference }} · {{ case.status }} · {{ case.subject }}</a></li>{% endfor %}</ul></div>{% endif %}
+      </div></details>{% endif %}
+    </article>{% endfor %}</div>{% else %}<div class="support-empty"><span class="support-empty-icon" aria-hidden="true">✦</span><strong>No promotion campaigns match these filters</strong><p>Applications without verified payments do not receive queue priority and do not appear as paid campaigns.</p></div>{% endif %}
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script><script src="{% static 'js/pages/manager-privacy.js' %}"></script>{% endblock %}

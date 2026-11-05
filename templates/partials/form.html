@@ -1,0 +1,24 @@
+{% csrf_token %}
+{% if form.non_field_errors %}<div class="form-error">{{ form.non_field_errors }}</div>{% endif %}
+{% for field in form %}
+  {% if field.is_hidden %}
+    {{ field }}
+    {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+  {% else %}
+    {% if field.name == 'social_media_1_platform' %}
+      <details class="artisan-profile-links-editor" {% if form.social_media_1_platform.errors or form.social_media_2_platform.errors or form.social_media_1_url.errors or form.social_media_2_url.errors or form.portfolio_url.errors %}open{% endif %}>
+        <summary>Professional links <span>Optional · add links to your work</span></summary>
+        <div class="artisan-profile-links-fields">
+    {% endif %}
+    <div class="form-field {% if field.errors %}has-error{% endif %}">
+      {{ field.label_tag }}
+      {{ field }}
+      {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+      {% if field.errors %}<div class="field-error">{{ field.errors|striptags }}</div>{% endif %}
+    </div>
+    {% if field.name == 'portfolio_url' %}
+        </div>
+      </details>
+    {% endif %}
+  {% endif %}
+{% endfor %}

@@ -1,0 +1,38 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Management insights · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>What the data shows</h2>
+  <p class="console-muted">{{ payload.method }}</p>
+  {% for insight in payload.insights %}
+    <article class="insight">
+      <header>
+        <h3>{{ insight.title }}</h3>
+        <span class="tag tag--{{ insight.severity|lower }}">{{ insight.severity }}</span>
+      </header>
+      <p class="insight__observed">{{ insight.observed }}</p>
+      <dl class="definition-list">
+        <dt>Change</dt>
+        <dd>{% if insight.change_percent is not None %}{{ insight.change_percent|delta_label }}{% elif insight.previous is not None and not insight.previous %}no activity in the comparison period, so no percentage change exists{% else %}not comparable with the previous period{% endif %}</dd>
+        {% if insight.previous is not None %}<dt>Previous period</dt><dd>{{ insight.previous }}</dd>{% endif %}
+        <dt>Segment</dt><dd>{{ insight.segment }}</dd>
+        <dt>Compared</dt><dd>{{ insight.comparison_period }}</dd>
+        <dt>Method</dt><dd>{{ insight.method }}</dd>
+        <dt>Suggested action</dt><dd>{{ insight.suggested_action }}</dd>
+      </dl>
+      <div class="insight__actions">
+        {% if insight.evidence_link %}<a class="console-link" href="{{ insight.evidence_link }}">Open the supporting page</a>{% endif %}
+        <form method="post" action="{% url 'console-insight-action' %}">
+          {% csrf_token %}
+          <input type="hidden" name="key" value="{{ insight.key }}">
+          <button class="console-button console-button--quiet" name="action" value="acknowledge" type="submit">Acknowledge</button>
+          <button class="console-button console-button--quiet" name="action" value="dismiss" type="submit">Dismiss</button>
+        </form>
+      </div>
+    </article>
+  {% empty %}
+    <p class="console-empty">No insight rule fired for this range. That means the measured values did not cross any documented threshold.</p>
+  {% endfor %}
+</section>
+{% endblock %}

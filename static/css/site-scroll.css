@@ -1,0 +1,11 @@
+/* One shared owner for viewport motion; old page-specific ready classes may remain. */
+.experience-scroll-managed :is([data-reveal],[data-artisan-reveal],[data-text-motion],[data-auth-reveal],[data-login-reveal],[data-register-reveal]){opacity:1!important;transform:none!important;translate:none!important;animation:none!important}
+.experience-scroll-managed .artisan-text-char{opacity:1!important;transform:none!important;animation:none!important}
+html.experience-scroll-managed [data-experience-reveal]{opacity:0!important;transform:none!important;translate:0 var(--experience-entry-y,22px)!important;transition:opacity .48s ease,translate .55s cubic-bezier(.2,.7,.25,1)!important;animation:none!important}
+html.experience-scroll-managed [data-experience-reveal].experience-in-view,html.experience-scroll-managed [data-experience-reveal]:focus-within{opacity:1!important;translate:0 0!important}
+html.experience-motion-off.experience-scroll-managed [data-experience-reveal],html.experience-print.experience-scroll-managed [data-experience-reveal]{opacity:1!important;translate:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){html.experience-scroll-managed [data-experience-reveal]{opacity:1!important;translate:none!important;transition:none!important}}
+@media print{html.experience-scroll-managed [data-experience-reveal]{opacity:1!important;translate:none!important;transition:none!important}.experience-background,.experience-motion-toggle{display:none!important}}
+html.experience-scroll-managed [data-experience-reveal]:focus-within{transition:none!important}
+/* Do not establish a translated containing block around fixed-position custom menus. */
+html.experience-scroll-managed [data-experience-reveal]:has([role="dialog"],[role="menu"],[role="listbox"]){translate:none!important}

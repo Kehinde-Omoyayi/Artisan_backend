@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Refund operations · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page support-refund-queue-page" data-artisan-page="support-refunds">
+  <header class="support-page-hero" data-artisan-reveal data-motion="left">
+    <div><a class="support-back-link" href="{% url 'dashboard' %}"><span aria-hidden="true">←</span> Operations</a><span class="support-eyebrow">CUSTOMER CARE · FINANCIAL CONTROLS</span><h1>Refund operations</h1><p>Track requests from independent approval through provider execution and reconciliation. Action buttons appear only for the matching support role.</p></div>
+    <div class="support-page-actions"><a class="button button-secondary" href="{% url 'support-cases' %}">Case queue</a>{% if support_capabilities.can_manage_staff %}<a class="button button-secondary" href="{% url 'support-staff' %}">Support team</a>{% endif %}</div>
+  </header>
+  {% include 'partials/support_operation_shortcut.html' %}
+
+  <section class="support-panel support-filter-panel" data-artisan-reveal data-motion="up" aria-labelledby="refund-filter-heading">
+    <div class="support-panel-heading support-panel-heading--compact"><div><span class="support-eyebrow">REFUND REGISTER</span><h2 id="refund-filter-heading">Filter records</h2></div><a class="support-text-link" href="{% url 'support-refunds' %}">Clear filters</a></div>
+    <form class="support-filter-form support-refund-filter-form" method="get">
+      <label><span>Workflow status</span><select class="field-input" name="status"><option value="">All statuses</option><option value="REQUESTED" {% if filters.status == 'REQUESTED' %}selected{% endif %}>Requested</option><option value="APPROVED" {% if filters.status == 'APPROVED' %}selected{% endif %}>Approved</option><option value="PROCESSING" {% if filters.status == 'PROCESSING' %}selected{% endif %}>Processing</option><option value="PROCESSING_UNKNOWN" {% if filters.status == 'PROCESSING_UNKNOWN' %}selected{% endif %}>Outcome unknown</option><option value="SUCCEEDED" {% if filters.status == 'SUCCEEDED' %}selected{% endif %}>Succeeded</option><option value="FAILED" {% if filters.status == 'FAILED' %}selected{% endif %}>Failed</option><option value="REJECTED" {% if filters.status == 'REJECTED' %}selected{% endif %}>Rejected</option></select></label>
+      <label><span>Refund type</span><select class="field-input" name="action_type"><option value="">Full and partial</option><option value="REFUND" {% if filters.action_type == 'REFUND' %}selected{% endif %}>Full refund</option><option value="PARTIAL_REFUND" {% if filters.action_type == 'PARTIAL_REFUND' %}selected{% endif %}>Partial refund</option></select></label>
+      <label><span>Case ID</span><input class="field-input" type="number" min="1" name="case" value="{{ filters.case }}" placeholder="Optional"></label>
+      <button class="button button-primary support-filter-submit" type="submit">Apply filters <span aria-hidden="true">→</span></button>
+    </form>
+  </section>
+
+  <div class="support-register-heading"><div><span class="support-eyebrow">AUDITABLE WORKFLOW</span><h2>Refund records</h2></div><div class="support-register-count"><strong>{{ result_total }}</strong><span>record{{ result_total|pluralize }} · page {{ page_number }} of {{ page_count }}</span></div></div>
+
+  {% if refunds %}
+  <div class="support-refund-register">
+    {% for item in refunds %}
+    <a class="support-refund-record" href="{% url 'support-refund-detail' refund_id=item.id %}">
+      <div class="support-refund-record-leading"><span class="support-refund-record-icon" aria-hidden="true">₦</span><div><span class="support-eyebrow">{{ item.reference }}</span><h3>{% if item.action_type == 'PARTIAL_REFUND' %}Partial refund{% else %}Full refund{% endif %}</h3><span class="support-refund-case-meta">Case {{ item.case }} · Payment {{ item.payment|truncatechars:18 }}</span></div></div>
+      <div class="support-refund-record-amount"><span>Requested amount</span><strong>{{ item.amount|ngn }}</strong></div>
+      <div class="support-refund-record-status"><span class="status-pill {{ item.status|status_class }}">{{ item.status|humanize_code }}</span><small>{{ item.requested_at|date:'j M Y, g:i a'|default:item.requested_at }}</small></div>
+      <span class="support-row-arrow" aria-hidden="true">↗</span>
+    </a>
+    {% endfor %}
+  </div>
+  <div class="support-pagination"><span>Showing {{ range_start }}–{{ range_end }} of {{ result_total }}</span><div>{% if has_previous %}<a class="button button-secondary" href="{{ previous_url }}" rel="prev">← Previous</a>{% endif %}{% if has_next %}<a class="button button-secondary" href="{{ next_url }}" rel="next">Next page →</a>{% endif %}</div></div>
+  {% else %}
+  <div class="support-panel support-empty support-empty--register"><span class="support-empty-icon" aria-hidden="true">₦</span><strong>No refund records match these filters</strong><p>Refund requests are created from an eligible payment on an open or under-review dispute or payment case.</p><a class="button button-secondary" href="{% url 'support-cases' %}">Return to the case queue</a></div>
+  {% endif %}
+
+  <footer class="support-dashboard-footnote"><span class="support-footnote-icon" aria-hidden="true">✓</span><p>Approval, execution, and reconciliation are separate actions. Every decision and provider state is recorded by the support API.</p></footer>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

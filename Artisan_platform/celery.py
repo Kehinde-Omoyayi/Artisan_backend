@@ -57,4 +57,26 @@ app.conf.beat_schedule = {
         "task": "conversations.tasks.send_conversation_reminders",
         "schedule": 1800,
     },
+    # Manager console: operational snapshots honour the configured interval inside the
+    # task, so beat can tick every minute without ever capturing too often.
+    "manager-operational-snapshot-every-minute": {
+        "task": "manager.tasks.capture_operational_snapshot",
+        "schedule": crontab(),
+    },
+    "manager-dispatch-due-campaigns-every-minute": {
+        "task": "manager.tasks.dispatch_due_campaigns",
+        "schedule": crontab(),
+    },
+    "manager-requeue-stalled-jobs-every-five-minutes": {
+        "task": "manager.tasks.requeue_stalled_jobs",
+        "schedule": 300,
+    },
+    "manager-rebuild-daily-aggregates-hourly": {
+        "task": "manager.tasks.run_aggregation_job",
+        "schedule": crontab(minute=20),
+    },
+    "manager-purge-retention-every-day": {
+        "task": "manager.tasks.purge_manager_retention",
+        "schedule": crontab(hour=4, minute=10),
+    },
 }

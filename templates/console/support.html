@@ -1,0 +1,47 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Support and disputes · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Tickets</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.tickets.opened }}</span><small>Opened in range</small></div>
+    <div class="stat"><span>{{ payload.tickets.open }}</span><small>Open</small></div>
+    <div class="stat"><span>{{ payload.tickets.under_review }}</span><small>Under review</small></div>
+    <div class="stat"><span>{{ payload.tickets.resolved }}</span><small>Resolved</small></div>
+    <div class="stat"><span>{{ payload.tickets.escalated }}</span><small>Escalated</small></div>
+  </div>
+  <p class="console-muted">
+    Average resolution {{ payload.tickets.average_resolution_hours|default:'—' }} hours,
+    first response {{ payload.tickets.first_response_hours|default:'—' }} hours
+    (sample {{ payload.tickets.sample }}).
+  </p>
+</section>
+<section class="console-block console-grid-2">
+  <div>
+    <h2>By category</h2>
+    <table class="console-table"><thead><tr><th>Category</th><th>Tickets</th></tr></thead><tbody>
+      {% for row in payload.tickets.by_category %}<tr><td>{{ row.label|default:row.category }}</td><td>{{ row.count }}</td></tr>
+      {% empty %}<tr><td colspan="2">No tickets in range.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div>
+    <h2>By agent</h2>
+    <table class="console-table"><thead><tr><th>Agent</th><th>Tickets</th></tr></thead><tbody>
+      {% for row in payload.tickets.by_agent %}<tr><td>{{ row.label|default:row.agent }}</td><td>{{ row.count }}</td></tr>
+      {% empty %}<tr><td colspan="2">No assigned tickets in range.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+</section>
+<section class="console-block">
+  <h2>Disputes</h2>
+  <div class="stat-row">
+    <div class="stat"><span>{{ payload.disputes.opened }}</span><small>Opened</small></div>
+    <div class="stat"><span>{{ payload.disputes.open }}</span><small>Still open</small></div>
+    <div class="stat"><span>{{ payload.disputes.resolved }}</span><small>Resolved</small></div>
+    <div class="stat"><span>{{ payload.disputes.disputed_value_kobo|ngn_kobo }}</span><small>Value in dispute</small></div>
+    <div class="stat"><span>{{ payload.disputes.refunded_kobo|ngn_kobo }}</span><small>Refunded</small></div>
+  </div>
+  <p class="console-muted">{{ payload.disputes.definition }} {{ payload.definition }}</p>
+</section>
+{% endblock %}

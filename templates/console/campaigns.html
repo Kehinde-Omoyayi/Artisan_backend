@@ -1,0 +1,109 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Campaign board · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Create a campaign</h2>
+  <p class="console-muted">Creating a campaign never sends it. A different manager with approval permission must approve,
+    and dispatch is a separate action that runs on the campaigns queue in bounded batches.</p>
+  <form method="post" action="{% url 'console-campaign-create' %}" class="console-form">
+    {% csrf_token %}
+    <label class="console-field"><span>Title</span><input type="text" name="title" maxlength="140" required></label>
+    <label class="console-field"><span>Subject (email)</span><input type="text" name="subject" maxlength="160"></label>
+    <label class="console-field console-field--wide"><span>Message</span><textarea name="body" rows="4" required minlength="10"></textarea></label>
+    <label class="console-field"><span>Call-to-action text</span><input type="text" name="cta_text" maxlength="60"></label>
+    <label class="console-field"><span>Call-to-action link</span><input type="text" name="cta_url" maxlength="300" placeholder="/requests/ or https://…"></label>
+    <label class="console-field"><span>Audience</span>
+      <select name="segment">
+        <option value="all_customers">All customers</option>
+        <option value="customers_with_bookings">Customers with bookings</option>
+        <option value="customers_without_bookings">Customers without bookings</option>
+        <option value="artisans">Artisans</option>
+        <option value="artisans_verified">Verified artisans</option>
+      </select>
+    </label>
+    <fieldset class="console-field console-field--wide">
+      <legend>Channels</legend>
+      <label class="console-check"><input type="checkbox" name="channels" value="IN_APP" checked> In-app</label>
+      <label class="console-check"><input type="checkbox" name="channels" value="EMAIL"> Email</label>
+      <label class="console-check"><input type="checkbox" name="channels" value="PUSH"> Push</label>
+      <label class="console-check"><input type="checkbox" name="channels" value="SMS"> SMS</label>
+    </fieldset>
+    <label class="console-field"><span>Scheduled for (optional)</span><input type="datetime-local" name="scheduled_for"></label>
+    <button class="console-button" type="submit">Save as pending approval</button>
+  </form>
+  <form method="post" action="{% url 'console-campaign-estimate' %}" class="inline-form">
+    {% csrf_token %}
+    <select name="segment">
+      <option value="all_customers">All customers</option>
+      <option value="customers_with_bookings">Customers with bookings</option>
+      <option value="customers_without_bookings">Customers without bookings</option>
+      <option value="artisans">Artisans</option>
+    </select>
+    <button class="console-button console-button--quiet" type="submit">Estimate audience</button>
+  </form>
+  {% if estimate %}
+    <div class="estimate-card">
+      <h3>Audience estimate</h3>
+      <div class="stat-row">
+        <div class="stat"><span>{{ estimate.estimated }}</span><small>Estimated</small></div>
+        <div class="stat"><span>{{ estimate.eligible }}</span><small>Eligible</small></div>
+        <div class="stat"><span>{{ estimate.opted_out }}</span><small>Opted out</small></div>
+        <div class="stat"><span>{{ estimate.recently_contacted }}</span><small>Contacted in last 48h</small></div>
+        <div class="stat"><span>{{ estimate.invalid_contact }}</span><small>No usable contact</small></div>
+        <div class="stat"><span>{{ estimate.excluded }}</span><small>Total excluded</small></div>
+      </div>
+      {% if estimate.notes %}<ul class="console-list">{% for note in estimate.notes %}<li>{{ note }}</li>{% endfor %}</ul>{% endif %}
+    </div>
+  {% endif %}
+</section>
+
+<section class="console-block">
+  <h2>Board</h2>
+  <div class="table-scroll">
+  <table class="console-table console-table--wide">
+      <thead><tr><th>Campaign</th><th>Status</th>
+        <th title="Eligible recipients when the campaign was created.">Audience</th>
+        <th title="Recipients excluded by consent or the frequency cap.">Suppressed</th>
+        <th title="Messages sent, counted per channel: a recipient on two channels counts twice.">Sent</th>
+        <th title="Recipients who opened the in-app message. Email and SMS have no read receipt, so they never count here.">Opens</th>
+        <th title="Opens divided by messages sent.">Open rate</th>
+        <th>Clicks</th>
+        <th title="Clicks divided by messages sent, not by the whole audience.">Click rate</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for campaign in campaigns %}
+        <tr>
+          <td>{{ campaign.title }}<br><span class="console-muted">{{ campaign.channels|join:", " }}</span>
+            {% if campaign.queued or campaign.failed or campaign.skipped %}
+              <br><span class="console-muted">{{ campaign.queued }} queued · {{ campaign.failed }} failed · {{ campaign.skipped }} skipped</span>
+            {% endif %}
+            {% if campaign.status == 'SENT' and campaign.sent == 0 and campaign.suppressed_at_dispatch %}
+              <br><span class="console-muted">{{ campaign.suppressed_at_dispatch }} recipients were suppressed by the frequency cap or their contact preferences, so nothing was sent.</span>
+            {% endif %}</td>
+          <td><span class="tag {{ campaign.status|status_class }}">{{ campaign.status|humanize_code }}</span></td>
+          <td>{{ campaign.audience }}</td><td>{{ campaign.suppressed }}</td>
+          <td>{{ campaign.sent }}</td><td>{{ campaign.opens }}</td>
+          <td>{{ campaign.open_rate }}%</td><td>{{ campaign.clicks }}</td><td>{{ campaign.click_rate }}%</td>
+          <td class="console-cell-actions">
+            {% if campaign.status == 'PENDING_APPROVAL' %}
+              <form method="post" action="{% url 'console-campaign-approve' campaign.id %}">{% csrf_token %}
+                <button class="console-button console-button--quiet" type="submit">Approve</button></form>
+            {% endif %}
+            {% if campaign.status == 'APPROVED' or campaign.status == 'SCHEDULED' %}
+              <form method="post" action="{% url 'console-campaign-dispatch' campaign.id %}">{% csrf_token %}
+                <button class="console-button" type="submit">Dispatch</button></form>
+            {% endif %}
+            {% if campaign.status != 'SENT' and campaign.status != 'CANCELLED' %}
+              <form method="post" action="{% url 'console-campaign-cancel' campaign.id %}">{% csrf_token %}
+                <button class="console-button console-button--danger" type="submit">Cancel</button></form>
+            {% endif %}
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10">No campaigns yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

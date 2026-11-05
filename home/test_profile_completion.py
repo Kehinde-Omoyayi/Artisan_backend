@@ -104,12 +104,14 @@ class ProtectedProfileCompletionApiTests(TestCase):
         self.assertEqual(ServiceRequest.objects.count(), 0)
 
     def test_direct_artisan_conversation_rejects_incomplete_customer_before_creation(self):
+        # Direct artisan messaging is retired; the equivalent protected journey is
+        # starting a service-request conversation (Request Artisan).
         self.client.force_authenticate(self.customer)
         response = self.client.post(
-            f"/api/v1/conversations/direct/artisan/{self.artisan.pk}/",
-            {"initial_message": "Could you help with a leaking tap?"},
+            "/api/v1/conversations/start/",
+            {"artisan_id": str(self.artisan.pk)},
             format="json",
-            HTTP_IDEMPOTENCY_KEY="profile-incomplete-direct-message",
+            HTTP_IDEMPOTENCY_KEY="profile-incomplete-conversation-start",
         )
         self.assert_profile_incomplete(
             response,

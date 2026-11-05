@@ -27,7 +27,7 @@ Generated from the URL configuration by `scripts/generate_endpoint_docs.py` — 
 | `/api/v1/conversations/<uuid:conversation_id>/payment/initialize/` | POST | `ConversationPaymentInitializeView` | IsAuthenticated, IsConversationParticipant | payment_initialize |
 | `/api/v1/conversations/<uuid:conversation_id>/read/` | POST | `ConversationReadView` | IsAuthenticated, IsConversationParticipant | conversation_read |
 | `/api/v1/conversations/<uuid:conversation_id>/request/` | PATCH | `ConversationRequestView` | IsAuthenticated, IsConversationParticipant | conversation_request |
-| `/api/v1/conversations/direct/artisan/<uuid:artisan_id>/` | POST | `ConversationDirectArtisanView` | IsAuthenticated | conversation_start |
+| `/api/v1/conversations/<uuid:conversation_id>/description-confirm/` | POST | `ConversationDescriptionConfirmView` | IsAuthenticated, IsConversationParticipant | conversation_offer |
 | `/api/v1/conversations/inbox/` | GET | `ConversationListView` | IsAuthenticated | — |
 | `/api/v1/conversations/start/` | POST | `ConversationStartView` | IsAuthenticated | conversation_start |
 | `/api/v1/docs/` | GET | `SpectacularSwaggerView` | AllowAny | — |

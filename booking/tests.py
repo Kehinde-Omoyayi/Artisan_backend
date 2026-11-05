@@ -125,15 +125,128 @@ class BookingPaymentGuardTests(TestCase):
         self.assertIsNotNone(self.booking.artisan_completed_at)
         self.assertIsNone(self.booking.customer_completed_at)
 
-    def test_customer_cannot_cancel_booking_with_associated_payment(self):
+    def test_customer_can_cancel_accepted_booking_whose_payment_link_was_generated(
+        self,
+    ):
+        """An unpaid link (generated, opened, or just pending) never blocks cancel."""
         self.client.force_authenticate(self.customer_user)
         response = self.client.post(
             f"/api/v1/booking/{self.booking.id}/cancel/",
+            {"reason": "Plans changed before paying."},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="cancel-unpaid-1",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.CANCELLED)
+        self.assertIsNotNone(self.booking.finalized_at)
+        payment = EscrowPayment.objects.get(booking=self.booking)
+        self.assertIsNotNone(payment.link_voided_at)
+        # The reference survives so a late provider callback can still be matched.
+        self.assertEqual(payment.reference, "PAY-TEST-1")
+        self.assertFalse(response.data["payment"]["money_taken_from_customer"])
+        self.assertTrue(response.data["payment"]["link_voided"])
+        from payments.models import PaymentLedgerEntry
+
+        self.assertTrue(
+            PaymentLedgerEntry.objects.filter(
+                payment=payment, event_type="PAYMENT_LINK_VOIDED"
+            ).exists()
+        )
+
+    def test_a_second_cancel_attempt_does_not_duplicate_the_cancellation(self):
+        self.client.force_authenticate(self.customer_user)
+        first = self.client.post(
+            f"/api/v1/booking/{self.booking.id}/cancel/",
             {"reason": "Plans changed."},
             format="json",
-            HTTP_IDEMPOTENCY_KEY="cancel-paid-1",
+            HTTP_IDEMPOTENCY_KEY="cancel-twice-1",
+        )
+        self.assertEqual(first.status_code, 200, first.data)
+        replay = self.client.post(
+            f"/api/v1/booking/{self.booking.id}/cancel/",
+            {"reason": "Plans changed."},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="cancel-twice-1",
+        )
+        self.assertEqual(replay.status_code, 200, replay.data)
+        second = self.client.post(
+            f"/api/v1/booking/{self.booking.id}/cancel/",
+            {"reason": "Trying again."},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="cancel-twice-2",
+        )
+        self.assertEqual(second.status_code, 409)
+        from booking.models import BookingStatusHistory
+
+        self.assertEqual(
+            BookingStatusHistory.objects.filter(
+                booking=self.booking, status=Booking.Status.CANCELLED
+            ).count(),
+            1,
+        )
+
+    def test_cancelled_booking_cannot_prepare_another_payment(self):
+        from payments.services import prepare_booking_payment
+        from payments.models import EscrowPayment as Payment
+
+        self.client.force_authenticate(self.customer_user)
+        self.client.post(
+            f"/api/v1/booking/{self.booking.id}/cancel/",
+            {"reason": "Plans changed."},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="cancel-nopay-1",
+        )
+        self.booking.refresh_from_db()
+        with self.assertRaisesMessage(ValueError, "cancelled"):
+            prepare_booking_payment(booking=self.booking)
+        self.assertEqual(Payment.objects.filter(booking=self.booking).count(), 1)
+
+    def test_money_held_in_escrow_still_blocks_cancellation(self):
+        payment = EscrowPayment.objects.get(booking=self.booking)
+        payment.status = EscrowPayment.Status.HELD
+        payment.save(update_fields=["status", "updated_at"])
+
+        self.client.force_authenticate(self.customer_user)
+        response = self.client.post(
+            f"/api/v1/booking/{self.booking.id}/cancel/",
+            {"reason": "Please cancel."},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="cancel-held-1",
         )
         self.assertEqual(response.status_code, 409)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, Booking.Status.ACCEPTED)
+
+    def test_available_actions_follow_role_and_state(self):
+        self.client.force_authenticate(self.customer_user)
+        payload = self.client.get(f"/api/v1/booking/{self.booking.id}/").data
+        codes = [item["code"] for item in payload["available_actions"]]
+        self.assertIn("CANCEL_BOOKING", codes)
+        self.assertIn("PAY_BOOKING", codes)
+        self.assertNotIn("START_WORK", codes)
+        self.assertNotIn("CONFIRM_COMPLETION", codes)
+
+        self.client.force_authenticate(self.artisan.user)
+        payload = self.client.get(f"/api/v1/booking/{self.booking.id}/").data
+        codes = [item["code"] for item in payload["available_actions"]]
+        self.assertNotIn("START_WORK", codes)  # payment is not held yet
+        self.assertNotIn("PAY_BOOKING", codes)
+        self.assertNotIn("CANCEL_BOOKING", codes)
+
+        payment = EscrowPayment.objects.get(booking=self.booking)
+        payment.status = EscrowPayment.Status.HELD
+        payment.save(update_fields=["status", "updated_at"])
+        payload = self.client.get(f"/api/v1/booking/{self.booking.id}/").data
+        codes = [item["code"] for item in payload["available_actions"]]
+        self.assertIn("START_WORK", codes)
+
+        self.booking.status = Booking.Status.REQUESTED
+        self.booking.save(update_fields=["status", "updated_at"])
+        payload = self.client.get(f"/api/v1/booking/{self.booking.id}/").data
+        codes = [item["code"] for item in payload["available_actions"]]
+        self.assertIn("ACCEPT_BOOKING", codes)
+        self.assertIn("REJECT_BOOKING", codes)
 
     def test_customer_can_cancel_after_a_failed_payment(self):
         payment = EscrowPayment.objects.get(booking=self.booking)
@@ -185,9 +298,9 @@ class BookingPaymentGuardTests(TestCase):
         notification = InAppNotification.objects.get(
             recipient=self.artisan.user, event_key__startswith="booking_cancelled"
         )
+        # A notification must open the browser page, never the JSON API route.
         self.assertEqual(
-            notification.data["action_url"],
-            reverse("booking-detail", args=[self.booking.pk]),
+            notification.data["action_url"], f"/bookings/{self.booking.pk}/"
         )
         # The customer who cancelled is not notified about their own action.
         self.assertFalse(

@@ -1,0 +1,136 @@
+{% load static site_tags %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#faf7f1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}Artisan Marketplace{% endblock %}</title>
+  {% block base_fonts %}
+  <link rel="preload" href="{% static 'fonts/DMSans-Latin-Variable.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="{% static 'fonts/DMSerifDisplay-Regular.woff2' %}" as="font" type="font/woff2" crossorigin>
+  {% endblock %}
+  <link rel="stylesheet" href="{% asset 'css/site.css' %}">
+  {% block head %}{% endblock %}
+  <link rel="stylesheet" href="{% asset 'css/brand-overrides.css' %}">
+<link rel="stylesheet" href="{% asset 'css/site-experience.css' %}">
+<link rel="stylesheet" href="{% asset 'css/bookings.css' %}">
+</head>
+<body class="{% block body_class %}{% endblock %}" data-tour-role="{{ tour_role|default:nav_role|default:'guest' }}" data-tour-user="{{ tour_user_key|default:'guest' }}" data-tour-auto="{% if tour_auto_offer %}true{% else %}false{% endif %}" data-tour-manager="{% if platform_manager %}true{% else %}false{% endif %}" data-payment-notice-auto="{% if payment_notice_auto_offer %}true{% else %}false{% endif %}">
+<div class="experience-background" aria-hidden="true"><i></i><i></i></div>
+{% block site_header %}{% include 'partials/navbar.html' %}{% endblock %}
+
+<main id="main-content" class="{% block main_class %}page-shell{% endblock %}">
+  {% if messages %}
+  <section class="response-stack" aria-label="Page responses" data-flash-stack>
+    {% for message in messages %}
+      <div class="response-panel response-panel--{{ message.tags|default:'info' }}" data-flash-message {% if 'error' in message.tags %}role="alert" aria-live="assertive"{% else %}role="status" aria-live="polite"{% endif %} aria-atomic="true">
+        <span class="response-panel__mark" aria-hidden="true">{% if 'success' in message.tags %}✓{% elif 'error' in message.tags %}!{% elif 'warning' in message.tags %}!{% else %}i{% endif %}</span>
+        <div class="response-panel__copy">
+          <strong>{% if 'success' in message.tags %}Success{% elif 'error' in message.tags %}Action needed{% elif 'warning' in message.tags %}Please note{% else %}Update{% endif %}</strong>
+          <p>{{ message }}</p>
+        </div>
+        <button class="response-panel__dismiss" type="button" data-flash-dismiss aria-label="Dismiss message">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/></svg>
+        </button>
+      </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</main>
+
+{% block site_footer %}{% include 'partials/footer.html' %}{% endblock %}
+
+<dialog class="site-confirm-dialog" data-confirm-dialog aria-labelledby="site-confirm-title" aria-describedby="site-confirm-description">
+  <section class="site-confirm-card">
+    <span class="site-dialog-mark" aria-hidden="true">?</span>
+    <p class="site-dialog-eyebrow">Artisan Market</p>
+    <h2 id="site-confirm-title" data-confirm-title>Confirm this action</h2>
+    <p id="site-confirm-description" data-confirm-description></p>
+    <div class="site-confirm-actions">
+      <button class="site-dialog-button site-dialog-button--quiet" type="button" data-confirm-cancel>Cancel</button>
+      <button class="site-dialog-button site-dialog-button--primary" type="button" data-confirm-accept>Continue</button>
+    </div>
+  </section>
+</dialog>
+
+{% if user.is_authenticated %}
+<div class="booking-event-layer" data-booking-events
+     data-popups-url="{% url 'notification-popups' %}"
+     data-ack-url="{% url 'notification-acknowledge' pk=0 %}"
+     hidden></div>
+<div class="booking-toast-stack" data-booking-toasts aria-live="polite" aria-atomic="false"></div>
+{% endif %}
+
+<dialog class="payment-notice-dialog" data-payment-notice-dialog aria-labelledby="payment-notice-title" aria-describedby="payment-notice-description">
+  <section class="payment-notice-card">
+    <div class="payment-notice-brandline">
+      <span class="payment-notice-mark" aria-hidden="true">✓</span>
+      <p class="payment-notice-eyebrow">Payment follows agreement</p>
+    </div>
+    <h2 id="payment-notice-title">Artisans receive payout only after service completion is confirmed.</h2>
+    <p id="payment-notice-description" class="payment-notice-lead">Customer payments are verified and held in escrow while the booking is underway. Payout release starts only after the artisan submits completion and the customer confirms the work.</p>
+    <ol class="payment-notice-steps">
+      <li><span>01</span><p>Agree on scope, price and timing before payment.</p></li>
+      <li><span>02</span><p>The customer pays through the marketplace; provider verification places the funds in escrow before work starts.</p></li>
+      <li><span>03</span><p>After the service is completed and the customer confirms it, payout-release processing begins. Eligible disputes can pause the relevant funds.</p></li>
+    </ol>
+    <form class="payment-notice-actions" method="post" action="{% url 'acknowledge-payment-notice' %}">
+      {% csrf_token %}
+<input type="hidden" name="next" value="{{ request.path }}">
+      <button class="payment-notice-acknowledge" type="submit" autofocus>I understand — continue</button>
+    </form>
+  </section>
+</dialog>
+{% if payment_notice_auto_offer %}
+<noscript>
+  <section class="payment-notice-noscript" role="alert" aria-labelledby="payment-notice-noscript-title">
+    <p class="payment-notice-eyebrow">Payment follows agreement</p>
+    <h2 id="payment-notice-noscript-title">Artisans receive payout only after service completion is confirmed.</h2>
+    <p>Customer payments are verified and held in escrow while the booking is underway. Payout-release processing begins after the artisan submits completion and the customer confirms the work. Eligible disputes can pause relevant funds.</p>
+    <form method="post" action="{% url 'acknowledge-payment-notice' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}"><button class="payment-notice-acknowledge" type="submit">I understand — continue</button></form>
+  </section>
+</noscript>
+{% endif %}
+
+<dialog class="site-tour-dialog" id="site-onboarding-tour" data-tour-dialog aria-labelledby="site-tour-title" aria-describedby="site-tour-description">
+  <div class="site-tour-shade" aria-hidden="true">
+    <span data-tour-shade="top"></span><span data-tour-shade="left"></span>
+    <span data-tour-shade="right"></span><span data-tour-shade="bottom"></span>
+  </div>
+  <span class="site-tour-spotlight" data-tour-spotlight aria-hidden="true"></span>
+  <section class="site-tour-card" data-tour-card>
+    <div class="site-tour-card__topline">
+      <p class="site-dialog-eyebrow">Artisan Market · Quick tour</p>
+      <span class="site-tour-progress" data-tour-progress role="status" aria-live="polite">Step 1 of 5</span>
+    </div>
+    <h2 id="site-tour-title" data-tour-title tabindex="-1">Explore the marketplace</h2>
+    <p id="site-tour-description" data-tour-description></p>
+    <div class="site-tour-actions">
+      <button class="site-dialog-button site-dialog-button--quiet" type="button" data-tour-skip>Skip tour</button>
+      <div class="site-tour-actions__navigation">
+        <button class="site-dialog-button site-dialog-button--quiet" type="button" data-tour-previous hidden>Previous</button>
+        <button class="site-dialog-button site-dialog-button--primary" type="button" data-tour-next>Next</button>
+        <button class="site-dialog-button site-dialog-button--primary" type="button" data-tour-finish hidden>Finish</button>
+      </div>
+    </div>
+  </section>
+</dialog>
+
+<script src="{% asset 'js/site-experience.js' %}"></script>
+<script src="{% asset 'js/api-errors.js' %}"></script>
+{% if include_geography %}
+<script src="{% asset 'js/data/geography.js' %}"></script>
+{% if include_phone_fields %}<script src="{% static 'js/vendor/libphonenumber-js-1.13.15.max.js' %}"></script>{% endif %}
+<script src="{% asset 'js/geography-controls.js' %}"></script>
+{% endif %}
+<script src="{% asset 'js/site.js' %}"></script>
+<script src="{% asset 'js/booking-events.js' %}"></script>
+<script src="{% asset 'js/promotion-tracking.js' %}" defer></script>
+{% page_script page_js_path %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

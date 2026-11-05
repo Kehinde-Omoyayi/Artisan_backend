@@ -1,0 +1,1073 @@
+{
+  "schema_version": 1,
+  "source": "ROR v2.15, 2026-10-20",
+  "license": "CC0-1.0",
+  "coverage": "Active education-type organizations with country/state/locality. Not exhaustive.",
+  "countries": [
+    {
+      "country": "Afghanistan",
+      "file": "country-5dbddf911f9e5652.json",
+      "count": 59
+    },
+    {
+      "country": "Aland Islands",
+      "file": "country-6fc656b17a3b7e54.json",
+      "count": 1
+    },
+    {
+      "country": "Albania",
+      "file": "country-1af00b874ff31830.json",
+      "count": 35
+    },
+    {
+      "country": "Algeria",
+      "file": "country-30e230229746a0c6.json",
+      "count": 125
+    },
+    {
+      "country": "American Samoa",
+      "file": "country-1eb48c03805a936f.json",
+      "count": 2
+    },
+    {
+      "country": "Andorra",
+      "file": "country-3e340be4de18e6f6.json",
+      "count": 2
+    },
+    {
+      "country": "Angola",
+      "file": "country-22b9653281793ae7.json",
+      "count": 34
+    },
+    {
+      "country": "Anguilla",
+      "file": "country-a4a0c7e7b76ddfca.json",
+      "count": 1
+    },
+    {
+      "country": "Antigua and Barbuda",
+      "file": "country-100c4768d37d3b03.json",
+      "count": 3
+    },
+    {
+      "country": "Argentina",
+      "file": "country-ea0b937ea317101e.json",
+      "count": 172
+    },
+    {
+      "country": "Armenia",
+      "file": "country-2ddc5634ff5e06c5.json",
+      "count": 22
+    },
+    {
+      "country": "Australia",
+      "file": "country-c1ef40ce0484c698.json",
+      "count": 147
+    },
+    {
+      "country": "Austria",
+      "file": "country-c9cab0238debc6e5.json",
+      "count": 104
+    },
+    {
+      "country": "Azerbaijan",
+      "file": "country-efa9150afdeaa69f.json",
+      "count": 54
+    },
+    {
+      "country": "Bahrain",
+      "file": "country-94b2859b913c9e2c.json",
+      "count": 14
+    },
+    {
+      "country": "Bangladesh",
+      "file": "country-2f1d47eb679bb05e.json",
+      "count": 218
+    },
+    {
+      "country": "Barbados",
+      "file": "country-8e8dfae9b7521209.json",
+      "count": 6
+    },
+    {
+      "country": "Belarus",
+      "file": "country-4bef16df1755bca9.json",
+      "count": 54
+    },
+    {
+      "country": "Belgium",
+      "file": "country-348841ef53dbd5a6.json",
+      "count": 92
+    },
+    {
+      "country": "Belize",
+      "file": "country-71dc81f13c2d66fa.json",
+      "count": 3
+    },
+    {
+      "country": "Benin",
+      "file": "country-69d0a7b84cd1d5d0.json",
+      "count": 23
+    },
+    {
+      "country": "Bermuda",
+      "file": "country-79c89fd457dcc1b1.json",
+      "count": 1
+    },
+    {
+      "country": "Bhutan",
+      "file": "country-d889e2172a211a1d.json",
+      "count": 5
+    },
+    {
+      "country": "Bolivia",
+      "file": "country-9621c07364400953.json",
+      "count": 53
+    },
+    {
+      "country": "Bonaire, Sint Eustatius and Saba",
+      "file": "country-c90faa1100d73fb1.json",
+      "count": 2
+    },
+    {
+      "country": "Bosnia and Herzegovina",
+      "file": "country-b0772b9c5500c4f5.json",
+      "count": 27
+    },
+    {
+      "country": "Botswana",
+      "file": "country-1672f60c3a9ae94f.json",
+      "count": 14
+    },
+    {
+      "country": "Brazil",
+      "file": "country-07f62b021771d3cf.json",
+      "count": 611
+    },
+    {
+      "country": "Brunei",
+      "file": "country-99ebf7d91200600c.json",
+      "count": 14
+    },
+    {
+      "country": "Bulgaria",
+      "file": "country-66b86bf0f0459474.json",
+      "count": 58
+    },
+    {
+      "country": "Burkina Faso",
+      "file": "country-a564371ac0f23840.json",
+      "count": 18
+    },
+    {
+      "country": "Burundi",
+      "file": "country-c835bd1c4578817f.json",
+      "count": 15
+    },
+    {
+      "country": "Cambodia",
+      "file": "country-0c2cb01a2da18155.json",
+      "count": 59
+    },
+    {
+      "country": "Cameroon",
+      "file": "country-085807f22f69d2c9.json",
+      "count": 53
+    },
+    {
+      "country": "Canada",
+      "file": "country-be55ef3f4c4e6c2d.json",
+      "count": 411
+    },
+    {
+      "country": "Cape Verde",
+      "file": "country-9fa6f2daa56776af.json",
+      "count": 5
+    },
+    {
+      "country": "Cayman Islands",
+      "file": "country-83f2b333646edb6e.json",
+      "count": 3
+    },
+    {
+      "country": "Central African Republic",
+      "file": "country-e509cda4c4469cb8.json",
+      "count": 3
+    },
+    {
+      "country": "Chad",
+      "file": "country-4256e512fcfb03ca.json",
+      "count": 9
+    },
+    {
+      "country": "Chile",
+      "file": "country-f5273e236d498c35.json",
+      "count": 98
+    },
+    {
+      "country": "China",
+      "file": "country-10436829032f361a.json",
+      "count": 3254
+    },
+    {
+      "country": "Colombia",
+      "file": "country-6b615adb1300c116.json",
+      "count": 225
+    },
+    {
+      "country": "Comoros",
+      "file": "country-e814fdb45fd481e7.json",
+      "count": 1
+    },
+    {
+      "country": "Congo",
+      "file": "country-0bbfeb155e2239ce.json",
+      "count": 4
+    },
+    {
+      "country": "Costa Rica",
+      "file": "country-e26742d7cdd9fb28.json",
+      "count": 56
+    },
+    {
+      "country": "Croatia",
+      "file": "country-7328d3f829b7b340.json",
+      "count": 62
+    },
+    {
+      "country": "Cuba",
+      "file": "country-0d0b4e41022259f0.json",
+      "count": 39
+    },
+    {
+      "country": "Cyprus",
+      "file": "country-5f1162c57ecf9981.json",
+      "count": 50
+    },
+    {
+      "country": "Czech Republic",
+      "file": "country-1c769ecb9e80202f.json",
+      "count": 108
+    },
+    {
+      "country": "Democratic Republic of the Congo",
+      "file": "country-098c6424557a7811.json",
+      "count": 68
+    },
+    {
+      "country": "Denmark",
+      "file": "country-c527097577600a67.json",
+      "count": 57
+    },
+    {
+      "country": "Djibouti",
+      "file": "country-4678a57b30912b23.json",
+      "count": 1
+    },
+    {
+      "country": "Dominica",
+      "file": "country-be2a7f5684fdd2ed.json",
+      "count": 5
+    },
+    {
+      "country": "Dominican Republic",
+      "file": "country-81e884cb2e857fdd.json",
+      "count": 38
+    },
+    {
+      "country": "Ecuador",
+      "file": "country-2ca26c60fe0238a7.json",
+      "count": 111
+    },
+    {
+      "country": "Egypt",
+      "file": "country-557c1599d9a04895.json",
+      "count": 125
+    },
+    {
+      "country": "El Salvador",
+      "file": "country-c408d26c1ec1301a.json",
+      "count": 28
+    },
+    {
+      "country": "Equatorial Guinea",
+      "file": "country-8994687843a38376.json",
+      "count": 2
+    },
+    {
+      "country": "Eritrea",
+      "file": "country-01bc4009390083a7.json",
+      "count": 1
+    },
+    {
+      "country": "Estonia",
+      "file": "country-10aeba697f6ba830.json",
+      "count": 27
+    },
+    {
+      "country": "Eswatini",
+      "file": "country-e0568e4ce9cb8d1e.json",
+      "count": 2
+    },
+    {
+      "country": "Ethiopia",
+      "file": "country-7d94977e033dee63.json",
+      "count": 68
+    },
+    {
+      "country": "Faroe Islands",
+      "file": "country-773ca4d618097a21.json",
+      "count": 1
+    },
+    {
+      "country": "Fiji Islands",
+      "file": "country-e03e901bdb616fdb.json",
+      "count": 4
+    },
+    {
+      "country": "Finland",
+      "file": "country-aed8f531aa7e785b.json",
+      "count": 51
+    },
+    {
+      "country": "France",
+      "file": "country-7a1ca4ef7515f727.json",
+      "count": 511
+    },
+    {
+      "country": "French Guiana",
+      "file": "country-2b457cd87edb3758.json",
+      "count": 1
+    },
+    {
+      "country": "French Polynesia",
+      "file": "country-0b6e276f2d4fd2a6.json",
+      "count": 1
+    },
+    {
+      "country": "Gabon",
+      "file": "country-7e222a78e771f1b9.json",
+      "count": 4
+    },
+    {
+      "country": "Georgia",
+      "file": "country-4691492179d22089.json",
+      "count": 67
+    },
+    {
+      "country": "Germany",
+      "file": "country-80db4ccdca106d37.json",
+      "count": 626
+    },
+    {
+      "country": "Ghana",
+      "file": "country-583201c1efbf30eb.json",
+      "count": 126
+    },
+    {
+      "country": "Greece",
+      "file": "country-9c93ad439373b4ee.json",
+      "count": 65
+    },
+    {
+      "country": "Greenland",
+      "file": "country-48e10296ae1f79b6.json",
+      "count": 2
+    },
+    {
+      "country": "Grenada",
+      "file": "country-0593aa0c8ed587bb.json",
+      "count": 1
+    },
+    {
+      "country": "Guadeloupe",
+      "file": "country-35c9de3c639a54f1.json",
+      "count": 3
+    },
+    {
+      "country": "Guam",
+      "file": "country-5c4b321ecb42cd23.json",
+      "count": 3
+    },
+    {
+      "country": "Guatemala",
+      "file": "country-45a15a2470e1d182.json",
+      "count": 14
+    },
+    {
+      "country": "Guinea",
+      "file": "country-dd591d77ea53db0b.json",
+      "count": 12
+    },
+    {
+      "country": "Guinea-Bissau",
+      "file": "country-75e8f462f9dae90e.json",
+      "count": 2
+    },
+    {
+      "country": "Guyana",
+      "file": "country-ea3bfc26fa5ca39f.json",
+      "count": 4
+    },
+    {
+      "country": "Haiti",
+      "file": "country-d090b87e4a3bbce3.json",
+      "count": 17
+    },
+    {
+      "country": "Honduras",
+      "file": "country-b79b5f97bc67a30a.json",
+      "count": 13
+    },
+    {
+      "country": "Hong Kong S.A.R.",
+      "file": "country-21f2e0a0afb6f459.json",
+      "count": 7
+    },
+    {
+      "country": "Hungary",
+      "file": "country-504be3084f44d3e7.json",
+      "count": 74
+    },
+    {
+      "country": "Iceland",
+      "file": "country-595d6d914950b8a2.json",
+      "count": 10
+    },
+    {
+      "country": "India",
+      "file": "country-abd149214539d9f2.json",
+      "count": 2284
+    },
+    {
+      "country": "Indonesia",
+      "file": "country-dbc74a36d8e7439c.json",
+      "count": 2223
+    },
+    {
+      "country": "Iran",
+      "file": "country-18d4e170765cc488.json",
+      "count": 369
+    },
+    {
+      "country": "Iraq",
+      "file": "country-de5008d194a73211.json",
+      "count": 130
+    },
+    {
+      "country": "Ireland",
+      "file": "country-02bf1dfa9a0365a8.json",
+      "count": 44
+    },
+    {
+      "country": "Israel",
+      "file": "country-3552ac0c032467fb.json",
+      "count": 68
+    },
+    {
+      "country": "Italy",
+      "file": "country-5a9cf672c8be6b5a.json",
+      "count": 261
+    },
+    {
+      "country": "Ivory Coast",
+      "file": "country-d9b67dbdfbf1cf29.json",
+      "count": 18
+    },
+    {
+      "country": "Jamaica",
+      "file": "country-42c298ba17fed5da.json",
+      "count": 9
+    },
+    {
+      "country": "Japan",
+      "file": "country-647294383b2cbc24.json",
+      "count": 1683
+    },
+    {
+      "country": "Jordan",
+      "file": "country-e8bfe1ed69351057.json",
+      "count": 31
+    },
+    {
+      "country": "Kazakhstan",
+      "file": "country-75c02b8d2f91ba67.json",
+      "count": 97
+    },
+    {
+      "country": "Kenya",
+      "file": "country-74e1891dc615b22f.json",
+      "count": 91
+    },
+    {
+      "country": "Kosovo",
+      "file": "country-4a867424c728c2ce.json",
+      "count": 12
+    },
+    {
+      "country": "Kuwait",
+      "file": "country-10c3c2e2edc1f1f0.json",
+      "count": 14
+    },
+    {
+      "country": "Kyrgyzstan",
+      "file": "country-6f189bf077b6247d.json",
+      "count": 38
+    },
+    {
+      "country": "Laos",
+      "file": "country-98e18f46684be4fe.json",
+      "count": 10
+    },
+    {
+      "country": "Latvia",
+      "file": "country-988c8160b754c01d.json",
+      "count": 45
+    },
+    {
+      "country": "Lebanon",
+      "file": "country-e34dd616b94ba254.json",
+      "count": 38
+    },
+    {
+      "country": "Lesotho",
+      "file": "country-5c2e4745c608d719.json",
+      "count": 1
+    },
+    {
+      "country": "Liberia",
+      "file": "country-c9d2604dd5187b6a.json",
+      "count": 7
+    },
+    {
+      "country": "Libya",
+      "file": "country-2aa2fcef50db47e7.json",
+      "count": 59
+    },
+    {
+      "country": "Liechtenstein",
+      "file": "country-6ff080c07894909d.json",
+      "count": 3
+    },
+    {
+      "country": "Lithuania",
+      "file": "country-5c83a631bce2bffe.json",
+      "count": 40
+    },
+    {
+      "country": "Luxembourg",
+      "file": "country-ed76f191621cf6ed.json",
+      "count": 10
+    },
+    {
+      "country": "Macau S.A.R.",
+      "file": "country-7aec26ff3075ffca.json",
+      "count": 8
+    },
+    {
+      "country": "Madagascar",
+      "file": "country-d6804464c5f44de8.json",
+      "count": 17
+    },
+    {
+      "country": "Malawi",
+      "file": "country-611025cdde0afeea.json",
+      "count": 16
+    },
+    {
+      "country": "Malaysia",
+      "file": "country-084504165b077587.json",
+      "count": 665
+    },
+    {
+      "country": "Maldives",
+      "file": "country-8fb54471a4b8bc78.json",
+      "count": 6
+    },
+    {
+      "country": "Mali",
+      "file": "country-ee5721a5a60b7625.json",
+      "count": 11
+    },
+    {
+      "country": "Malta",
+      "file": "country-71e9eb10755c8232.json",
+      "count": 11
+    },
+    {
+      "country": "Martinique",
+      "file": "country-c65906dc7ccb2496.json",
+      "count": 1
+    },
+    {
+      "country": "Mauritius",
+      "file": "country-aa8057ecb40b1361.json",
+      "count": 6
+    },
+    {
+      "country": "Mayotte",
+      "file": "country-d08b4a0f0dcdef11.json",
+      "count": 1
+    },
+    {
+      "country": "Mexico",
+      "file": "country-a7d355b26bda6bf1.json",
+      "count": 710
+    },
+    {
+      "country": "Micronesia",
+      "file": "country-d70835b5644add43.json",
+      "count": 2
+    },
+    {
+      "country": "Moldova",
+      "file": "country-14ad63a1c63f01d7.json",
+      "count": 22
+    },
+    {
+      "country": "Mongolia",
+      "file": "country-99a7c065a730fdac.json",
+      "count": 28
+    },
+    {
+      "country": "Montenegro",
+      "file": "country-7ab597e1b5cc23df.json",
+      "count": 7
+    },
+    {
+      "country": "Montserrat",
+      "file": "country-127bcfe9766058c9.json",
+      "count": 1
+    },
+    {
+      "country": "Morocco",
+      "file": "country-b675f5df5fe68da1.json",
+      "count": 106
+    },
+    {
+      "country": "Mozambique",
+      "file": "country-c9054826f71c23b8.json",
+      "count": 28
+    },
+    {
+      "country": "Myanmar",
+      "file": "country-ba2039a4cf69defd.json",
+      "count": 128
+    },
+    {
+      "country": "Namibia",
+      "file": "country-ea5bd39848d8ae8b.json",
+      "count": 5
+    },
+    {
+      "country": "Nepal",
+      "file": "country-e15a18aadcac09e6.json",
+      "count": 76
+    },
+    {
+      "country": "Netherlands",
+      "file": "country-3a386c13d283dc2e.json",
+      "count": 135
+    },
+    {
+      "country": "New Caledonia",
+      "file": "country-be60011f5621d4fd.json",
+      "count": 3
+    },
+    {
+      "country": "New Zealand",
+      "file": "country-2898e16d4e4ee2ae.json",
+      "count": 41
+    },
+    {
+      "country": "Nicaragua",
+      "file": "country-94e6bd574b6e3c55.json",
+      "count": 43
+    },
+    {
+      "country": "Niger",
+      "file": "country-2cbebc541f98c7a7.json",
+      "count": 10
+    },
+    {
+      "country": "Nigeria",
+      "file": "country-04952a0f984dccfa.json",
+      "count": 342
+    },
+    {
+      "country": "North Korea",
+      "file": "country-ae6175f1ccf6d810.json",
+      "count": 12
+    },
+    {
+      "country": "North Macedonia",
+      "file": "country-cd84722648feda21.json",
+      "count": 22
+    },
+    {
+      "country": "Northern Mariana Islands",
+      "file": "country-66545d35b3df5fa3.json",
+      "count": 3
+    },
+    {
+      "country": "Norway",
+      "file": "country-bea54a349795017d.json",
+      "count": 69
+    },
+    {
+      "country": "Oman",
+      "file": "country-c3ce4bf88db5e7b6.json",
+      "count": 37
+    },
+    {
+      "country": "Pakistan",
+      "file": "country-e2567312ec53232b.json",
+      "count": 273
+    },
+    {
+      "country": "Palau",
+      "file": "country-7fa64773dcd67bd0.json",
+      "count": 1
+    },
+    {
+      "country": "Palestine",
+      "file": "country-f189744591c24b72.json",
+      "count": 24
+    },
+    {
+      "country": "Panama",
+      "file": "country-c3668f581289444e.json",
+      "count": 32
+    },
+    {
+      "country": "Papua New Guinea",
+      "file": "country-c65742ceb289d67f.json",
+      "count": 8
+    },
+    {
+      "country": "Paraguay",
+      "file": "country-7fb4d179ec62f241.json",
+      "count": 41
+    },
+    {
+      "country": "Peru",
+      "file": "country-508731a3c5d375cb.json",
+      "count": 137
+    },
+    {
+      "country": "Philippines",
+      "file": "country-c3782c86d8099f3f.json",
+      "count": 880
+    },
+    {
+      "country": "Poland",
+      "file": "country-7f69649ad70496d4.json",
+      "count": 325
+    },
+    {
+      "country": "Portugal",
+      "file": "country-4c7de2c3da6dc0ae.json",
+      "count": 415
+    },
+    {
+      "country": "Puerto Rico",
+      "file": "country-d9aa43ead5f13974.json",
+      "count": 41
+    },
+    {
+      "country": "Qatar",
+      "file": "country-55ccc5014f2a6d4c.json",
+      "count": 33
+    },
+    {
+      "country": "Reunion",
+      "file": "country-c4ffb4577963b707.json",
+      "count": 3
+    },
+    {
+      "country": "Romania",
+      "file": "country-ea23726dd0fd4e4d.json",
+      "count": 109
+    },
+    {
+      "country": "Russia",
+      "file": "country-33a3d8ed92b0709b.json",
+      "count": 834
+    },
+    {
+      "country": "Rwanda",
+      "file": "country-12c8f8f4912cbdb3.json",
+      "count": 23
+    },
+    {
+      "country": "Saint Kitts and Nevis",
+      "file": "country-0e89123f46fcba83.json",
+      "count": 4
+    },
+    {
+      "country": "Saint Lucia",
+      "file": "country-abe06aae4495f3cf.json",
+      "count": 5
+    },
+    {
+      "country": "Saint Vincent and the Grenadines",
+      "file": "country-b225fd33cd531270.json",
+      "count": 2
+    },
+    {
+      "country": "Samoa",
+      "file": "country-0ea781cd42b6d548.json",
+      "count": 3
+    },
+    {
+      "country": "San Marino",
+      "file": "country-230450a2499dfe9d.json",
+      "count": 1
+    },
+    {
+      "country": "Sao Tome and Principe",
+      "file": "country-822041757fc756e5.json",
+      "count": 1
+    },
+    {
+      "country": "Saudi Arabia",
+      "file": "country-ed9ad13611d71648.json",
+      "count": 69
+    },
+    {
+      "country": "Senegal",
+      "file": "country-364e5f6525c75b81.json",
+      "count": 28
+    },
+    {
+      "country": "Serbia",
+      "file": "country-e8739c839576f7ac.json",
+      "count": 51
+    },
+    {
+      "country": "Seychelles",
+      "file": "country-d1d6332085114485.json",
+      "count": 1
+    },
+    {
+      "country": "Sierra Leone",
+      "file": "country-f405b98d5ffcfb05.json",
+      "count": 7
+    },
+    {
+      "country": "Singapore",
+      "file": "country-c96dd81db196cca5.json",
+      "count": 34
+    },
+    {
+      "country": "Slovakia",
+      "file": "country-a2ea3384e02f917a.json",
+      "count": 48
+    },
+    {
+      "country": "Slovenia",
+      "file": "country-56059e7fb4e9ddfa.json",
+      "count": 67
+    },
+    {
+      "country": "Solomon Islands",
+      "file": "country-cff4c58de0baa100.json",
+      "count": 2
+    },
+    {
+      "country": "Somalia",
+      "file": "country-bd05d324d8a3dfad.json",
+      "count": 48
+    },
+    {
+      "country": "South Africa",
+      "file": "country-3e049d78d958038a.json",
+      "count": 71
+    },
+    {
+      "country": "South Korea",
+      "file": "country-c85329e3779e4096.json",
+      "count": 380
+    },
+    {
+      "country": "South Sudan",
+      "file": "country-8fe5a93113d728e6.json",
+      "count": 10
+    },
+    {
+      "country": "Spain",
+      "file": "country-8ef41e6f4b07432a.json",
+      "count": 224
+    },
+    {
+      "country": "Sri Lanka",
+      "file": "country-07f8d1144a39d456.json",
+      "count": 41
+    },
+    {
+      "country": "Sudan",
+      "file": "country-ed68d4def1af578d.json",
+      "count": 59
+    },
+    {
+      "country": "Suriname",
+      "file": "country-b1cb8eac5b3197a6.json",
+      "count": 2
+    },
+    {
+      "country": "Svalbard and Jan Mayen Islands",
+      "file": "country-f5960c8a03bbd27f.json",
+      "count": 1
+    },
+    {
+      "country": "Sweden",
+      "file": "country-853637136575897a.json",
+      "count": 69
+    },
+    {
+      "country": "Switzerland",
+      "file": "country-2275583196d79140.json",
+      "count": 173
+    },
+    {
+      "country": "Syria",
+      "file": "country-cf6ac29be1f71a01.json",
+      "count": 38
+    },
+    {
+      "country": "Taiwan",
+      "file": "country-dd76af196e2c7794.json",
+      "count": 150
+    },
+    {
+      "country": "Tajikistan",
+      "file": "country-066b02130b7e0ece.json",
+      "count": 23
+    },
+    {
+      "country": "Tanzania",
+      "file": "country-9555664fcf433126.json",
+      "count": 61
+    },
+    {
+      "country": "Thailand",
+      "file": "country-6e49e65081b2bcb5.json",
+      "count": 228
+    },
+    {
+      "country": "The Bahamas",
+      "file": "country-5518a67a6fc026c0.json",
+      "count": 4
+    },
+    {
+      "country": "The Gambia",
+      "file": "country-d4359fd40e8e6839.json",
+      "count": 7
+    },
+    {
+      "country": "Timor-Leste",
+      "file": "country-6303e847182509df.json",
+      "count": 12
+    },
+    {
+      "country": "Togo",
+      "file": "country-4080343ee0fe2dc3.json",
+      "count": 7
+    },
+    {
+      "country": "Tonga",
+      "file": "country-310bc32509797773.json",
+      "count": 1
+    },
+    {
+      "country": "Trinidad and Tobago",
+      "file": "country-0c0177b537471c75.json",
+      "count": 6
+    },
+    {
+      "country": "Tunisia",
+      "file": "country-4609682a2f3d7a64.json",
+      "count": 71
+    },
+    {
+      "country": "Turkey",
+      "file": "country-07c67d76ef92ac98.json",
+      "count": 241
+    },
+    {
+      "country": "Turkmenistan",
+      "file": "country-b3dfc8505d59e324.json",
+      "count": 12
+    },
+    {
+      "country": "Uganda",
+      "file": "country-893d538563bcd9ac.json",
+      "count": 60
+    },
+    {
+      "country": "Ukraine",
+      "file": "country-580eedc669f3b989.json",
+      "count": 307
+    },
+    {
+      "country": "United Arab Emirates",
+      "file": "country-dd64913c8b91d76c.json",
+      "count": 69
+    },
+    {
+      "country": "United Kingdom",
+      "file": "country-8d23a6e37e0a6431.json",
+      "count": 602
+    },
+    {
+      "country": "United States",
+      "file": "country-49dca65f362fee40.json",
+      "count": 4443
+    },
+    {
+      "country": "Uruguay",
+      "file": "country-fe2403f25e8f398e.json",
+      "count": 18
+    },
+    {
+      "country": "Uzbekistan",
+      "file": "country-4bc2f1c23b3d2f7e.json",
+      "count": 133
+    },
+    {
+      "country": "Vanuatu",
+      "file": "country-c5b2a6de9d5ae20a.json",
+      "count": 1
+    },
+    {
+      "country": "Venezuela",
+      "file": "country-020e438bafc3a786.json",
+      "count": 60
+    },
+    {
+      "country": "Vietnam",
+      "file": "country-2e5e81066a29cd66.json",
+      "count": 267
+    },
+    {
+      "country": "Virgin Islands (US)",
+      "file": "country-8ce73531fa8785af.json",
+      "count": 1
+    },
+    {
+      "country": "Yemen",
+      "file": "country-21c1903af25470c6.json",
+      "count": 60
+    },
+    {
+      "country": "Zambia",
+      "file": "country-b5f9221ae041a8f8.json",
+      "count": 30
+    },
+    {
+      "country": "Zimbabwe",
+      "file": "country-c72199a85b5423d2.json",
+      "count": 26
+    }
+  ]
+}

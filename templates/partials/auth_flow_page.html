@@ -1,0 +1,82 @@
+{% load static %}
+<section class="auth-wrap auth-flow-wrap" data-auth-flow-page data-auth-flow-kind="{{ flow_kind|default:'account' }}" data-auth-step="{{ active_step }}" data-auth-step-total="{{ step_total }}">
+  <article class="auth-flow-shell" aria-labelledby="auth-flow-title">
+    <aside class="auth-flow-aside" data-auth-reveal>
+      <div class="auth-flow-brand">
+        <svg class="auth-flow-brand-mark" viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+          <path d="M20 3.5 36 12.7v14.6L20 36.5 4 27.3V12.7L20 3.5Z" fill="currentColor"/>
+          <path d="M12.3 25.9 20 12.8l7.7 13.1M15.6 20.3h8.8" fill="none" stroke="#f9f5ee" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.1"/>
+        </svg>
+        <span>Artisan <span class="auth-flow-brand-light">Market</span></span>
+      </div>
+
+      <div class="auth-flow-aside-copy">
+        <span class="auth-flow-overline">{{ flow_kicker }}</span>
+        <h2>{{ flow_side_title }}</h2>
+        <p>{{ flow_side_copy }}</p>
+      </div>
+
+      <div class="auth-flow-progress" aria-label="{{ flow_progress_label|default:'Account security steps' }}" data-auth-reveal>
+        <div class="auth-flow-progress-track" aria-hidden="true"><span class="auth-flow-progress-fill"></span></div>
+        <ol>
+          <li class="{% if active_step > 1 %}is-complete{% elif active_step == 1 %}is-current{% endif %}">
+            <span class="auth-flow-step-mark">{% if active_step > 1 %}✓{% else %}01{% endif %}</span>
+            <span>{{ step_one }}</span>
+          </li>
+          <li class="{% if active_step > 2 %}is-complete{% elif active_step == 2 %}is-current{% endif %}">
+            <span class="auth-flow-step-mark">{% if active_step > 2 %}✓{% else %}02{% endif %}</span>
+            <span>{{ step_two }}</span>
+          </li>
+          {% if step_three %}
+            <li class="{% if active_step > 3 %}is-complete{% elif active_step == 3 %}is-current{% endif %}">
+              <span class="auth-flow-step-mark">{% if active_step > 3 %}✓{% else %}03{% endif %}</span>
+              <span>{{ step_three }}</span>
+            </li>
+          {% endif %}
+        </ol>
+      </div>
+
+      <span class="auth-flow-orbit auth-flow-orbit-one" aria-hidden="true"></span>
+      <span class="auth-flow-orbit auth-flow-orbit-two" aria-hidden="true"></span>
+    </aside>
+
+    <div class="auth-flow-content">
+      <header class="auth-flow-heading" data-auth-reveal>
+        <div class="auth-flow-heading-meta">
+          <span class="eyebrow">{{ page_eyebrow|default:'Account security' }}</span>
+          <span class="auth-flow-step-count">Step {{ active_step }} of {{ step_total }}</span>
+        </div>
+        <h1 id="auth-flow-title">{{ title }}</h1>
+        <p>{{ intro }}</p>
+        {% if account_hint %}<p class="auth-flow-account-hint">Account <strong>{{ account_hint }}</strong></p>{% endif %}
+      </header>
+
+      <form method="post" {% if form.is_multipart %}enctype="multipart/form-data"{% endif %} class="js-submit-form auth-flow-form" data-auth-submit-form>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="form-error auth-flow-form-error" role="alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+        {% for field in form.hidden_fields %}
+          {{ field }}
+          {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+        {% endfor %}
+        {% for field in form.visible_fields %}
+          <div class="form-field auth-flow-field {% if field.errors %}has-error{% endif %}" data-auth-reveal>
+            {{ field.label_tag }}
+            {{ field }}
+            {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+            {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+          </div>
+        {% endfor %}
+        <div class="auth-flow-actions" data-auth-reveal>
+          <button class="button button-primary auth-flow-submit" type="submit" data-auth-submit-button>{{ submit_label|default:'Continue' }}</button>
+          <a class="button button-secondary auth-flow-back" href="{{ cancel_url|default:'/auth/login/' }}">Back</a>
+        </div>
+      </form>
+
+      {% if extra_href and extra_label %}
+        <p class="auth-flow-extra-link" data-auth-reveal><a href="{{ extra_href }}">{{ extra_label }}</a></p>
+      {% endif %}
+      <p class="auth-flow-help" data-auth-reveal>Need help? Return to <a href="{% url 'login' %}">sign in</a>.</p>
+    </div>
+  </article>
+</section>
+<script src="{% static 'js/pages/auth-flow.js' %}"></script>

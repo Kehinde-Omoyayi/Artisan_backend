@@ -1,0 +1,39 @@
+/* Shared customer/artisan profile pickers; request forms and discovery remain unchanged. */
+:is(.customer-profile-form,.artisan-profile-form) [hidden] { display: none !important; }
+.profile-pick { position: relative; min-width: 0; }
+:is(.customer-profile-form,.artisan-profile-form) .profile-pick-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 42px; padding: 10px 13px; border: 1px solid #dec7b4; border-radius: 9px; background: #fffdf9; color: #513829; font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.profile-pick-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-pick-chevron { flex: 0 0 auto; color: #8c644c; transition: transform .2s ease; }
+.profile-pick-toggle[aria-expanded="true"] { border-color: #a66f4e; box-shadow: 0 0 0 3px #b8875b16; }
+.profile-pick-toggle[aria-expanded="true"] .profile-pick-chevron { transform: rotate(180deg); }
+.profile-pick-panel { position: relative; z-index: 3; margin-top: 7px; padding: 12px; border: 1px solid #dfcdbd; border-radius: 13px; background: linear-gradient(135deg,#fffdf9ed,#f6eee5ed); box-shadow: 0 12px 28px #603e2612; backdrop-filter: blur(16px); animation: profile-picker-open .18s ease both; }
+:is(.customer-profile-form,.artisan-profile-form) .profile-pick-search { width: 100%; margin: 0 0 8px; padding: 9px 11px; border: 1px solid #dfcdbd; border-radius: 8px; background: #fffdfb; font: inherit; font-size: 12px; }
+.profile-pick-options { display: grid; gap: 3px; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
+.profile-pick-option { width: 100%; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: #513829; font: inherit; font-size: 12px; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.profile-pick-option:hover, .profile-pick-option[aria-pressed="true"] { background: #eadbcd; }
+.profile-pick-status { margin: 7px 0; color: #806954; font-size: 11px; line-height: 1.5; }
+.profile-pick-status:empty { display: none; }
+.profile-pick-clear, .profile-pick-more { margin: 8px 10px 0 0; padding: 6px 0; border: 0; border-bottom: 1px solid #c6a68e; background: transparent; color: #845638; font: inherit; font-size: 11px; cursor: pointer; }
+.profile-calendar { max-width: 360px; margin: auto; }
+.profile-calendar-head { display: grid; grid-template-columns: 30px 1fr 65px 30px; align-items: center; gap: 5px; margin-bottom: 12px; }
+.profile-calendar button { min-height: 32px; padding: 5px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #573b28; font: inherit; font-size: 12px; cursor: pointer; }
+.profile-calendar-head button { background: #f0e4d8; font-weight: 700; }
+.profile-calendar-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); gap: 3px; }
+.profile-calendar-weekday { padding: 5px 0; text-align: center; color: #96765b; font-size: 10px; }
+.profile-calendar-choices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+.profile-calendar button:hover:not(:disabled) { background: #eadbcd; }
+.profile-calendar button[aria-pressed="true"] { background: #794a32; color: #fff; }
+.profile-calendar button[aria-current="date"] { border-color: #b17b51; }
+.profile-calendar button:disabled { color: #b9aea3; cursor: not-allowed; }
+.profile-pick button:focus-visible, .profile-pick input:focus-visible { outline: 2px solid #a37150; outline-offset: 2px; }
+@keyframes profile-picker-open { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .profile-pick-panel { animation: none; } .profile-pick-chevron { transition: none; } }
+
+.artisan-profile-form .profile-pick-toggle { min-width: 0; }
+.artisan-profile-form .artisan-profile-links-fields { grid-template-columns: minmax(0,1fr); }
+/* Off-screen horizontal reveal motion must not widen the mobile profile. */
+@media (max-width: 720px) { .artisan-profile-page { overflow-x: clip; } }
+.artisan-profile-form .artisan-profile-links-editor > summary { position: relative; padding-right: 34px; }
+.artisan-profile-form .artisan-profile-links-editor > summary::after { content: '⌄'; position: absolute; right: 13px; top: 12px; color: #8c644c; transition: transform .2s ease; }
+.artisan-profile-form .artisan-profile-links-editor[open] > summary::after { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { .artisan-profile-form .artisan-profile-links-editor > summary::after { transition: none; } }

@@ -6,6 +6,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from .permissions import IsConversationParticipant
 from .services import get_conversation_for_user
 from .models import ConversationAttachment
+from .media_scan import scan_blocked
 from .private_media import attachment_storage
 from .retention import access_blocked
 
@@ -21,14 +22,10 @@ class ConversationMediaView(APIView):
         )
         item = (
             ConversationAttachment.objects.select_related("message__conversation")
-            .filter(
-                pk=attachment_id,
-                message__conversation=conversation,
-                scan_status="CLEAN",
-            )
+            .filter(pk=attachment_id, message__conversation=conversation)
             .first()
         )
-        if not item or access_blocked(item):
+        if not item or scan_blocked(item) or access_blocked(item):
             raise NotFound("Media is not available.")
         store = attachment_storage(item)
         try:

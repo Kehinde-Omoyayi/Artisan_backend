@@ -12,30 +12,37 @@ from django.urls import NoReverseMatch, reverse
 logger = logging.getLogger(__name__)
 
 
+# Browser routes, keyed by the same names the frontend uses. These are checked
+# first: the API registers several of the same names (``booking-detail``,
+# ``conversation-detail``), and a notification that opens a JSON endpoint is a
+# broken notification.
+_FRONTEND_ROUTES = {
+    "booking-detail": "/bookings/{}/",
+    "payment-detail": "/payments/{}/",
+    "conversation-detail": "/discover/conversations/{}/",
+}
+
+_FALLBACK_ROUTES = {
+    "support-case-detail": "/support/cases/{}/",
+    "service-request-detail": "/requests/{}/",
+    "verification": "/account/artisan/verification/",
+    "cancellation-risk": "/account/risk/cancellation/",
+    "promotion-applications": "/account/artisan/promotions/",
+    "my-promotions": "/account/artisan/promotions/me/",
+    "home": "/",
+}
+
+
 def _path(name, *args):
+    from urllib.parse import quote
+
+    route = _FRONTEND_ROUTES.get(name) or _FALLBACK_ROUTES.get(name)
+    if route:
+        return route.format(*(quote(str(x), safe="") for x in args))
     try:
         return reverse(name, args=args)
     except NoReverseMatch:
-        # API and browser UI are separate projects; these are the frontend's
-        # existing route contracts, not invented backend views.
-        routes = {
-            "booking-detail": "/bookings/{}/",
-            "payment-detail": "/payments/{}/",
-            "conversation-detail": "/discover/conversations/{}/",
-            "support-case-detail": "/support/cases/{}/",
-            "service-request-detail": "/requests/{}/",
-            "verification": "/account/artisan/verification/",
-            "cancellation-risk": "/account/risk/cancellation/",
-            "promotion-applications": "/account/artisan/promotions/",
-            "my-promotions": "/account/artisan/promotions/me/",
-            "home": "/",
-        }
-        route = routes.get(name)
-        if route is None:
-            return None
-        from urllib.parse import quote
-
-        return route.format(*(quote(str(x), safe="") for x in args))
+        return None
 
 
 def absolute_url(path):

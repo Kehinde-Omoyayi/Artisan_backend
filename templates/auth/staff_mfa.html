@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Staff verification · Artisan Market{% endblock %}
+{% block content %}
+<section class="auth-wrap" aria-labelledby="staff-mfa-title">
+  <article class="auth-card">
+    <span class="eyebrow">Additional verification</span>
+    <h1 id="staff-mfa-title">Verify your staff sign-in</h1>
+    <p>Enter the six-digit code sent to your registered staff email{% if request.session.staff_mfa_masked_email %} ({{ request.session.staff_mfa_masked_email }}){% endif %}. The code expires in five minutes and can be used once.</p>
+    <form method="post" class="js-submit-form" autocomplete="on">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors|striptags }}</div>{% endif %}
+      {% for field in form %}
+        <div class="form-field {% if field.errors %}has-error{% endif %}">
+          {{ field.label_tag }}{{ field }}
+          {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+        </div>
+      {% endfor %}
+      <button class="button button-primary" type="submit" name="action" value="verify">Verify and continue</button>
+    </form>
+    <form method="post" class="staff-mfa-resend-form">
+      {% csrf_token %}
+      <button class="button" type="submit" name="action" value="resend">Resend code</button>
+    </form>
+    <p class="help">If you did not try to sign in, do not share any code and contact your platform manager.</p>
+    <p><a href="{% url 'login' %}">Cancel and return to sign in</a></p>
+  </article>
+</section>
+{% endblock %}

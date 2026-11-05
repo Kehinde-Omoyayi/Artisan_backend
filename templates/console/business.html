@@ -1,0 +1,42 @@
+{% extends 'console/base_console.html' %}
+{% load site_tags %}
+{% block title %}Business intelligence · Manager Console{% endblock %}
+{% block console_body %}
+<section class="console-block">
+  <h2>Growth versus the previous period</h2>
+  {% include 'console/partials/metrics.html' with metrics=payload.growth %}
+</section>
+<section class="console-block">
+  <h2>Customer and booking quality</h2>
+  {% include 'console/partials/metrics.html' with metrics=payload.quality %}
+</section>
+<section class="console-block console-grid-2">
+  <div>
+    <h2>Supply and demand by category</h2>
+    <table class="console-table">
+      <thead><tr><th>Category</th><th>Requests</th><th>Artisans</th><th>Balance</th></tr></thead>
+      <tbody>
+      {% for row in payload.supply_demand.categories %}
+        <tr><td>{{ row.name }}</td><td>{{ row.requests }}</td><td>{{ row.artisans }}</td><td>{{ row.balance }}</td></tr>
+      {% empty %}
+        <tr><td colspan="4">No categories returned.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <p class="console-muted">{{ payload.supply_demand.definition }}</p>
+  </div>
+  <div>
+    <h2>Customer cohorts</h2>
+    <table class="console-table">
+      <thead><tr><th>Cohort</th><th>New</th><th>Returned</th><th>Retention</th></tr></thead>
+      <tbody>
+      {% for row in payload.retention %}
+        <tr><td>{{ row.cohort }}</td><td>{{ row.new_customers }}</td><td>{{ row.returned }}</td><td>{{ row.retention_percent }}%</td></tr>
+      {% empty %}
+        <tr><td colspan="4">No cohort data in this range.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

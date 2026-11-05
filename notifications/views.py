@@ -52,6 +52,31 @@ class NotificationUnreadCountView(APIView):
         return Response({"unread_count": InAppNotification.objects.filter(recipient=request.user, read_at__isnull=True).count()})
 
 
+class NotificationPopupsView(APIView):
+    """Undelivered popup events for the current user.
+
+    A popup is an unread in-app notification that was flagged at creation time
+    as either a decision ("modal") or a confirmation ("toast"). Acknowledging it
+    marks the same durable notification as read, so a refresh never shows it
+    again while it stays findable in the notification list.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "notification_read"
+
+    @extend_schema(tags=["Notifications"], responses={200: NotificationSerializer(many=True)})
+    def get(self, request):
+        queryset = (
+            InAppNotification.objects.filter(
+                recipient=request.user, read_at__isnull=True
+            )
+            .exclude(data__popup__isnull=True)
+            .order_by("created_at")[:5]
+        )
+        return Response(NotificationSerializer(queryset, many=True).data)
+
+
 class NotificationReadAllView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]

@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% block title %}Staff security questions · Artisan Market{% endblock %}
+{% block content %}
+{% if registered %}
+  {% include 'partials/auth_flow_page.html' with flow_kind='staff-security-questions' title='Update your staff recovery questions' intro='Confirm your current password and all three registered answers, then choose three different new questions and answers.' page_eyebrow='Staff account security' flow_kicker='RECOVERY QUESTIONS' flow_side_title='All three existing answers are required.' flow_side_copy='Answers are normalized and stored as one-way hashes. They are never returned by the API or displayed after saving.' active_step=2 step_total=2 step_one='Verify current identity' step_two='Save new questions' submit_label='Update security questions' cancel_url='/dashboard/' %}
+{% else %}
+  {% include 'partials/auth_flow_page.html' with flow_kind='staff-security-questions' title='Set up your staff recovery questions' intro='Confirm your current password, then register three different questions and answers. This setup does not invent or substitute answers.' page_eyebrow='Staff account security' flow_kicker='RECOVERY QUESTIONS' flow_side_title='Choose answers you can remember.' flow_side_copy='A manager can also authorize recovery setup by email if you cannot sign in. All three registered answers are required for future resets.' active_step=2 step_total=2 step_one='Verify current password' step_two='Register three answers' submit_label='Save security questions' cancel_url='/dashboard/' %}
+{% endif %}
+{% endblock %}

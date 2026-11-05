@@ -1,0 +1,710 @@
+/* Itemised pricing form, booking event popups, and booking card actions.
+   Everything here obeys the same rule: one thing per line, no sideways scroll. */
+
+/* ---------------------------------------------------------------- pricing form */
+
+.offer-pricing-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.materials-panel {
+  border: 1px solid rgba(31, 41, 55, 0.12);
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: rgba(255, 253, 249, 0.72);
+  display: grid;
+  gap: 0.7rem;
+}
+
+.materials-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.materials-panel-head strong {
+  font-size: 0.98rem;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.86rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.check-row input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #1f6f5c;
+}
+
+.materials-table-scroll {
+  overflow: visible;
+}
+
+.materials-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.materials-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7280;
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.12);
+  font-weight: 600;
+}
+
+.materials-table td {
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.07);
+  vertical-align: middle;
+}
+
+.materials-table tfoot td {
+  border-bottom: 0;
+  font-weight: 600;
+  padding-top: 0.6rem;
+}
+
+.materials-table .field-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.materials-table td[data-label="Qty"] .field-input,
+.materials-table td[data-label="Unit price (₦)"] .field-input {
+  max-width: 8rem;
+}
+
+.materials-subtotal {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.materials-subtotal strong {
+  font-weight: 700;
+}
+
+.offer-summary-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem 1rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(31, 111, 92, 0.08);
+  font-size: 0.86rem;
+}
+
+.offer-summary-strip span {
+  color: #4b5563;
+}
+
+.offer-summary-strip strong {
+  color: #111827;
+  margin-left: 0.25rem;
+}
+
+/* Duration value sits directly above Duration unit, as in the reference form. */
+.duration-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.offer-facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.35rem 0.9rem;
+  margin: 0.4rem 0 0.8rem;
+  font-size: 0.9rem;
+}
+
+.offer-facts dt {
+  color: #6b7280;
+}
+
+.offer-facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Stacked cards on narrow screens: no horizontal scrolling. */
+@media (max-width: 680px) {
+  .materials-table thead {
+    display: none;
+  }
+
+  .materials-table,
+  .materials-table tbody,
+  .materials-table tfoot,
+  .materials-table tr,
+  .materials-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .materials-table tr {
+    border: 1px solid rgba(31, 41, 55, 0.1);
+    border-radius: 12px;
+    padding: 0.5rem;
+    margin-bottom: 0.55rem;
+    background: #fffdf9;
+  }
+
+  .materials-table td {
+    border-bottom: 0;
+    padding: 0.25rem 0;
+    display: grid;
+    grid-template-columns: 6.75rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .materials-table td[data-label="Line total (₦)"],
+  .materials-table td[data-label="Unit price (₦)"] {
+    white-space: nowrap;
+  }
+
+  /* One grid item, so the currency symbol cannot wrap onto its own row. */
+  .material-line-value {
+    display: inline-block;
+    white-space: nowrap;
+  }
+
+  .materials-table td::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+  }
+
+  .materials-table td[data-label="Qty"] .field-input,
+  .materials-table td[data-label="Unit price (₦)"] .field-input {
+    max-width: none;
+  }
+
+  .duration-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ------------------------------------------------------------- alerts + errors */
+
+.inline-alert {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(31, 111, 92, 0.25);
+  background: rgba(31, 111, 92, 0.07);
+  font-size: 0.88rem;
+}
+
+.inline-alert strong {
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.inline-alert-error {
+  border-color: rgba(176, 42, 42, 0.35);
+  background: rgba(176, 42, 42, 0.07);
+}
+
+.inline-alert form {
+  justify-self: start;
+}
+
+.field-error-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.2rem;
+  color: #8a1f1f;
+}
+
+.field-error {
+  margin: 0.15rem 0 0;
+  font-size: 0.78rem;
+  color: #8a1f1f;
+}
+
+.field-invalid,
+input.field-invalid,
+select.field-invalid,
+textarea.field-invalid {
+  border-color: #b02a2a !important;
+  box-shadow: 0 0 0 2px rgba(176, 42, 42, 0.12);
+}
+
+/* ----------------------------------------------------------- booking event popups */
+
+.booking-event-layer[hidden] {
+  display: none;
+}
+
+.booking-event-dialog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  max-width: min(30rem, calc(100vw - 2rem));
+  width: 100%;
+}
+
+.booking-event-dialog::backdrop {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.booking-event-card {
+  background: #fffdf9;
+  border-radius: 18px;
+  padding: 1.3rem 1.25rem 1.1rem;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  display: grid;
+  gap: 0.55rem;
+}
+
+.booking-event-eyebrow {
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #1f6f5c;
+  font-weight: 700;
+}
+
+.booking-event-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.3;
+}
+
+.booking-event-message {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #374151;
+}
+
+.booking-event-next {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #6b7280;
+}
+
+.booking-event-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+
+.booking-event-actions > .button,
+.booking-event-actions > form {
+  display: flex;
+  margin: 0;
+}
+
+.booking-event-actions > .button {
+  justify-content: center;
+}
+
+.booking-event-actions > .booking-event-accept {
+  grid-column: 1 / -1;
+  order: -1;
+}
+
+.booking-event-actions > .booking-event-accept .button {
+  width: 100%;
+  justify-content: center;
+}
+
+.booking-toast-stack {
+  position: fixed;
+  inset-inline: 1rem;
+  bottom: 1rem;
+  z-index: 80;
+  display: grid;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+@media (min-width: 720px) {
+  .booking-toast-stack {
+    inset-inline: auto 1.5rem;
+    width: 22rem;
+  }
+}
+
+.booking-toast {
+  pointer-events: auto;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  background: #14322a;
+  color: #f8fafc;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.28);
+  font-size: 0.85rem;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.booking-toast strong {
+  font-size: 0.88rem;
+}
+
+.booking-toast span {
+  color: rgba(248, 250, 252, 0.82);
+}
+
+.booking-toast a {
+  color: #8ee0c6;
+  font-weight: 600;
+  text-decoration: none;
+  justify-self: start;
+}
+
+.booking-toast.is-leaving {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* ----------------------------------------------------------------- navbar badge */
+
+.nav-badge-message {
+  background: #1f6f5c;
+}
+
+/* ------------------------------------------------------------- booking card actions */
+
+/* The customer dashboard card carries real buttons, so its grid gets a full
+   row for them instead of the single arrow column used elsewhere. */
+.customer-bookings-page .workflow-list-card {
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  row-gap: 10px;
+}
+
+.customer-bookings-page .booking-card-actions {
+  grid-column: 2 / -1;
+}
+
+.booking-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.booking-card-actions .button-small,
+.button-small {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 680px) {
+  .customer-bookings-page .workflow-list-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .customer-bookings-page .booking-card-actions {
+    grid-column: 1 / -1;
+  }
+
+  .customer-bookings-page .workflow-list-price {
+    grid-column: 2 / -1;
+    justify-items: start;
+  }
+
+  .booking-card-actions {
+    width: 100%;
+  }
+
+  .booking-card-actions .button-small {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+}
+
+.booking-event-inline-action {
+  display: inline-flex;
+  margin: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   The review. Five stars and one optional sentence — no ids, no form grid.
+   The improvement note underneath is about us, so it is visibly a different,
+   quieter thing, and it can be dismissed with one small word.
+   ------------------------------------------------------------------------- */
+.review-shell { max-width: 560px; margin: 26px auto 0; display: grid; gap: 14px; }
+.review-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.review-card {
+  background: var(--surface, #fffdf9);
+  border: 1px solid var(--line, #e5dacf);
+  border-radius: 24px;
+  padding: 22px 26px 24px;
+  box-shadow: 0 20px 54px rgba(54, 39, 29, .10);
+  text-align: center;
+  animation: review-in .4s cubic-bezier(.22, .9, .28, 1) both;
+}
+@keyframes review-in { from { opacity: 0; transform: translateY(12px) scale(.99); } to { opacity: 1; transform: none; } }
+
+.review-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-bottom: 14px; border-bottom: 1px solid var(--line, #e5dacf);
+  text-align: left;
+}
+.review-eyebrow {
+  font-size: 10px; font-weight: 800; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--muted, #75665a);
+}
+.review-state {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 999px; padding: 4px 11px;
+  background: #e8f6ee; color: #1d7a48;
+  font-size: 11.5px; font-weight: 800; letter-spacing: .01em;
+}
+.review-state::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+}
+
+.review-title {
+  margin: 18px 0 6px; font: 400 27px/1.15 "DM Serif Display", Georgia, serif;
+  letter-spacing: -.03em; color: var(--ink, #2d211b);
+}
+.review-sub { margin: 0 auto 4px; max-width: 390px; font-size: 13px; color: var(--muted, #75665a); }
+
+.review-stars {
+  display: flex; justify-content: center; gap: 8px;
+  border: 0; margin: 16px 0 2px; padding: 0;
+}
+.review-star-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.review-star {
+  cursor: pointer; display: inline-flex; padding: 3px;
+  color: #e6dbcd; transition: transform .16s cubic-bezier(.22, .9, .28, 1), color .16s ease;
+}
+.review-star svg { width: 44px; height: 44px; fill: currentColor; }
+.review-star.is-on { color: #f6b52b; transform: translateY(-2px) scale(1.04); filter: drop-shadow(0 5px 10px rgba(246, 181, 43, .28)); }
+.review-star-input:checked + .review-star { animation: review-star-pop .3s cubic-bezier(.22, .9, .28, 1) both; }
+@keyframes review-star-pop { 0% { transform: translateY(-2px) scale(1.04); } 45% { transform: translateY(-3px) scale(1.16); } 100% { transform: translateY(-2px) scale(1.04); } }
+.review-star-input:focus-visible + .review-star { outline: 2px solid var(--accent, #965237); outline-offset: 4px; border-radius: 10px; }
+
+.review-stars-copy {
+  margin: 8px 0 16px; min-height: 16px;
+  font-size: 12.5px; font-weight: 700; color: var(--muted, #75665a);
+  transition: color .18s ease;
+}
+.review-stars-copy[data-filled="true"] { color: var(--brand, #74432f); }
+
+.review-field { display: grid; gap: 6px; text-align: left; }
+.review-field span { font-size: 12px; font-weight: 700; color: var(--ink, #2d211b); }
+.review-field em { font-style: normal; font-weight: 500; color: var(--muted, #75665a); }
+.review-field textarea {
+  width: 100%; border: 1px solid var(--line, #e5dacf); border-radius: 14px;
+  padding: 11px 13px; background: #fff; color: var(--ink, #2d211b); font: inherit; font-size: 13.5px;
+  resize: vertical; transition: border-color .18s ease, box-shadow .18s ease;
+}
+.review-field textarea:focus,
+.review-pop-field textarea:focus {
+  outline: none; border-color: var(--accent, #965237);
+  box-shadow: 0 0 0 3px rgba(150, 82, 55, .14);
+}
+.review-error { margin: 8px 0 0; color: var(--danger, #b42318); font-size: 12px; font-weight: 700; }
+
+.review-submit {
+  width: 100%; justify-content: center; margin-top: 16px;
+  padding: 13px 18px; font-size: 14.5px; border-radius: 14px;
+}
+.review-skip {
+  display: inline-block; margin-top: 12px;
+  font-size: 12.5px; font-weight: 700; color: var(--muted, #75665a);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+
+/* Success: the review is in, and the only thing left is one optional line about us. */
+.review-card-done { padding-bottom: 26px; }
+.review-done-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 54px; height: 54px; margin: 22px auto 0; border-radius: 50%;
+  background: #e8f6ee; color: #1d7a48;
+  animation: review-mark-in .46s cubic-bezier(.22, .9, .28, 1) both;
+}
+.review-done-mark svg { width: 26px; height: 26px; }
+@keyframes review-mark-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+.review-done-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+  width: 100%; margin-top: 20px; padding: 13px 18px; border-radius: 14px;
+  background: #1d7a48; color: #fff; font-size: 14.5px; font-weight: 800;
+  text-decoration: none; box-shadow: 0 12px 26px rgba(29, 122, 72, .22);
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+}
+.review-done-button:hover { background: #17663b; transform: translateY(-1px); }
+.review-done-button svg { width: 17px; height: 17px; }
+
+/* The improvement note asks once, over the page, and a tiny Cancel removes it. */
+.review-pop {
+  position: fixed; inset: 0; z-index: 60;
+  display: none; align-items: center; justify-content: center;
+  padding: 18px;
+}
+.review-pop.is-open { display: flex; }
+.review-pop-scrim {
+  position: absolute; inset: 0; background: rgba(45, 33, 27, .42);
+  backdrop-filter: blur(2px); animation: review-fade .22s ease both;
+}
+@keyframes review-fade { from { opacity: 0; } to { opacity: 1; } }
+.review-pop-card {
+  position: relative; width: min(430px, 100%);
+  background: var(--surface, #fffdf9);
+  border: 1px solid var(--line, #e5dacf);
+  border-radius: 20px; padding: 20px 20px 16px;
+  box-shadow: 0 28px 70px rgba(38, 27, 20, .28);
+  display: grid; gap: 8px;
+  animation: review-pop-in .34s cubic-bezier(.22, .9, .28, 1) both;
+}
+@keyframes review-pop-in { from { opacity: 0; transform: translateY(18px) scale(.97); } to { opacity: 1; transform: none; } }
+.review-pop-eyebrow {
+  margin: 0; font-size: 9.5px; font-weight: 800; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--muted, #75665a);
+}
+.review-pop-title {
+  margin: 0; font: 400 20px/1.2 "DM Serif Display", Georgia, serif;
+  letter-spacing: -.02em; color: var(--ink, #2d211b);
+}
+.review-pop-field { display: grid; margin-top: 4px; }
+.review-pop-field textarea {
+  width: 100%; border: 1px solid var(--line, #e5dacf); border-radius: 13px;
+  padding: 10px 12px; background: #fff; color: var(--ink, #2d211b);
+  font: inherit; font-size: 13px; resize: vertical;
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.review-pop-actions { display: flex; align-items: center; gap: 14px; margin-top: 4px; }
+.review-pop-send { padding: 9px 16px; font-size: 13px; border-radius: 11px; }
+.review-pop-cancel {
+  border: 0; background: transparent; cursor: pointer;
+  font-size: 11.5px; font-weight: 700; color: var(--muted, #75665a);
+  text-decoration: underline; text-underline-offset: 3px; padding: 2px 2px;
+}
+.review-pop-cancel:hover { color: var(--danger, #b42318); }
+body.review-pop-open { overflow: hidden; }
+
+@media (max-width: 520px) {
+  .review-shell { margin-top: 12px; }
+  .review-card { padding: 18px 16px 18px; border-radius: 20px; }
+  .review-title { font-size: 23px; margin-top: 14px; }
+  .review-star svg { width: 38px; height: 38px; }
+  .review-pop { padding: 0; align-items: flex-end; }
+  .review-pop-card { width: 100%; border-radius: 20px 20px 0 0; padding: 18px 16px 20px; }
+  @keyframes review-pop-in { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .review-card, .review-pop-card, .review-pop-scrim, .review-done-mark, .review-star-input:checked + .review-star { animation: none; }
+  .review-star, .review-done-button { transition: none; }
+}
+
+/* ---------------- Receipt ---------------- */
+.receipt-page { max-width: 620px; margin: 26px auto 40px; }
+.receipt-sheet {
+  background: #fff;
+  border: 1px solid var(--line, #e5dacf);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 20px 54px rgba(54, 39, 29, .10);
+  animation: review-in .4s cubic-bezier(.22, .9, .28, 1) both;
+}
+.receipt-band {
+  background: var(--brand, #74432f); color: #fff;
+  padding: 22px 26px 20px;
+}
+.receipt-brand {
+  display: block; font-size: 10px; font-weight: 800;
+  letter-spacing: .16em; text-transform: uppercase; opacity: .82;
+}
+.receipt-band h1 {
+  margin: 8px 0 4px; font: 400 27px/1.1 "DM Serif Display", Georgia, serif;
+  letter-spacing: -.02em; color: #fff;
+}
+.receipt-band small { font-size: 11.5px; color: rgba(255, 255, 255, .78); }
+.receipt-amount { padding: 22px 26px 20px; border-bottom: 1px solid var(--line, #e5dacf); }
+.receipt-status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase; color: #1d7a48;
+}
+.receipt-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.receipt-amount strong {
+  display: block; margin: 8px 0 4px;
+  font: 400 34px/1 "DM Serif Display", Georgia, serif; letter-spacing: -.02em;
+  color: var(--ink, #2d211b);
+}
+.receipt-amount p { margin: 0; font-size: 12.5px; color: var(--muted, #75665a); }
+.receipt-block { padding: 18px 26px 6px; border-bottom: 1px solid var(--line, #e5dacf); }
+.receipt-kicker {
+  display: block; margin-bottom: 10px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--muted, #75665a);
+}
+.receipt-rows { margin: 0; padding: 0; display: grid; gap: 0; }
+.receipt-rows > div {
+  display: grid; grid-template-columns: 42% minmax(0, 1fr); gap: 12px;
+  padding: 9px 0; border-top: 1px solid rgba(229, 218, 207, .55);
+}
+.receipt-rows > div:first-child { border-top: 0; }
+.receipt-rows dt { font-size: 12px; color: var(--muted, #75665a); }
+.receipt-rows dd { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--ink, #2d211b); overflow-wrap: anywhere; }
+.receipt-rows .is-strong dd { font-weight: 800; }
+.receipt-mono { font-family: "SFMono-Regular", Consolas, monospace; font-size: 11.5px; letter-spacing: -.01em; }
+.receipt-foot { padding: 18px 26px 4px; }
+.receipt-foot strong { font-size: 12.5px; color: var(--ink, #2d211b); }
+.receipt-foot p { margin: 5px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted, #75665a); }
+.receipt-actions {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 20px 26px 24px;
+}
+.receipt-actions .button { padding: 11px 18px; font-size: 13px; border-radius: 12px; }
+.receipt-back {
+  font-size: 12px; font-weight: 700; color: var(--muted, #75665a);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.receipt-inline {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  margin: 16px 0; padding: 14px 16px;
+  border: 1px solid var(--line, #e5dacf); border-radius: 14px;
+  background: var(--surface-soft, #f4ede3);
+}
+.receipt-inline strong { display: block; font-size: 13px; color: var(--ink, #2d211b); }
+.receipt-inline span { font-size: 11.5px; color: var(--muted, #75665a); }
+.receipt-inline-actions { display: flex; gap: 8px; }
+.chat-quiet-link.receipt-link { display: inline-flex; align-items: center; gap: 6px; }
+.chat-quiet-link.receipt-link svg { width: 14px; height: 14px; }
+
+@media (max-width: 520px) {
+  .receipt-page { margin-top: 12px; }
+  .receipt-band, .receipt-amount, .receipt-block, .receipt-foot, .receipt-actions { padding-left: 18px; padding-right: 18px; }
+  .receipt-rows > div { grid-template-columns: 100%; gap: 2px; }
+  .receipt-actions { gap: 10px; }
+  .receipt-actions .button { width: 100%; justify-content: center; }
+  .receipt-inline-actions { width: 100%; }
+}
+@media print {
+  @page { margin: 14mm; }
+  body { background: #fff !important; }
+  .site-header, .site-footer, .topbar, .flash-stack, .site-nav, [data-print-hide] { display: none !important; }
+  .receipt-page { margin: 0; max-width: none; }
+  .receipt-sheet { border: 0; box-shadow: none; border-radius: 0; animation: none; }
+  .receipt-band { background: #fff !important; color: #000 !important; padding-left: 0; padding-right: 0; border-bottom: 2px solid #000; }
+  .receipt-band h1, .receipt-band small, .receipt-brand { color: #000 !important; }
+}

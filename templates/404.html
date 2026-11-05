@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Page not found · Artisan Marketplace{% endblock %}
+{% block content %}
+<section class="auth-wrap" role="alert">
+  <div class="auth-card">
+    <div class="eyebrow">Artisan Market</div>
+    <h1>Page not found</h1>
+    <p>The page you are looking for does not exist or has moved.</p>
+    <a class="button button-primary full" href="{% url 'home' %}">Back to home</a>
+  </div>
+</section>
+{% endblock %}

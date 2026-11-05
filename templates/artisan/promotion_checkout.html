@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block title %}Promotion Offer · Artisan Market{% endblock %}
+{% block content %}
+<section class="artisan-motion-page promotion-page" data-artisan-page="promotion-checkout">
+  <header class="page-heading artisan-page-heading promotion-page-heading" data-artisan-reveal data-motion="left">
+    <div><div class="eyebrow">Artisan account · Promotion offer</div><h1 data-text-motion>Review your offer</h1><p>Pricing, terms and availability are fetched from the current approved application and manager configuration.</p></div>
+    <div class="promotion-page-heading-actions"><a class="button button-secondary" href="{% url 'my-promotions' %}">My Promotions</a><a class="button button-secondary" href="{% url 'promotion-applications' %}?application={{ application.id }}">Application record</a></div>
+  </header>
+
+  <section class="promotion-scope-notice" role="note">
+    <span class="promotion-scope-icon" aria-hidden="true">i</span>
+    <div><strong>Approval is not payment or activation</strong><p>This offer is for the exact approved product, revision and canonical target shown below. Your campaign joins the paid schedule only after Flutterwave payment is verified server-side. A provider redirect, browser message or button click is not confirmation.</p></div>
+  </section>
+
+  <section class="promotion-checkout-offer panel" aria-labelledby="promotion-offer-title">
+    <div class="promotion-section-heading"><div><span class="artisan-panel-kicker">{{ offer.promotion_type_label|default:application.promotion_type_label }}</span><h2 id="promotion-offer-title">{{ offer.plan_name|default:'Promotion plan' }}</h2></div><span class="promotion-availability-pill {% if offer.availability == 'AVAILABLE' %}is-available{% else %}is-unavailable{% endif %}">{% if offer.availability == 'AVAILABLE' %}Available to purchase{% else %}Not currently available{% endif %}</span></div>
+    <dl class="promotion-summary-grid">
+      <div><dt>Approved target</dt><dd>{% if offer.target.label %}{{ offer.target.label }}{% elif application.target.name %}{{ application.target.name }}{% if application.target.campus %} — {{ application.target.campus }}{% endif %}{% elif application.target.area %}{{ application.target.area }}, {{ application.target.state }}, {{ application.target.country }}{% elif application.target.state %}{{ application.target.state }}, {{ application.target.country }}{% else %}Homepage Feature{% endif %}</dd></div>
+      <div><dt>Price</dt><dd>{% if offer.price %}{{ offer.currency }} {{ offer.price }}{% else %}Not configured{% endif %}</dd></div>
+      <div><dt>Duration</dt><dd>{% if offer.duration_days %}{{ offer.duration_days }} day{{ offer.duration_days|pluralize }}{% else %}Not configured{% endif %}</dd></div>
+      <div><dt>Estimated earliest start</dt><dd>{% if offer.earliest_start_at %}<time>{{ offer.earliest_start_at }}</time>{% else %}Not currently estimable{% endif %}</dd></div>
+      <div><dt>Target capacity</dt><dd>{{ offer.paid_campaigns_in_inventory|default:'0' }} paid campaign{{ offer.paid_campaigns_in_inventory|pluralize }} of {{ offer.capacity|default:'0' }}</dd></div>
+      <div><dt>Estimated wait</dt><dd>{% if offer.estimated_wait == 'NOW' %}Earliest slot is now, subject to verification and live capacity{% elif offer.estimated_wait == 'WAITING' %}A later paid slot is estimated{% else %}No start date can be estimated{% endif %}</dd></div>
+    </dl>
+
+    {% if offer.schedule_note %}<p class="promotion-privacy-note">{{ offer.schedule_note }}</p>{% endif %}
+    {% if offer.availability_reason %}<div class="promotion-form-warning" role="status">{{ offer.availability_reason }}</div>{% endif %}
+    {% if offer.terms_text %}
+      <div class="promotion-description-block"><span>Promotion terms · version {{ offer.terms_version }}</span><p>{{ offer.terms_text }}</p></div>
+    {% else %}<div class="promotion-form-warning" role="status">No active terms are configured for this plan. Payment cannot proceed until an authorized manager enables a valid offer.</div>{% endif %}
+
+    {% if offer.availability == 'AVAILABLE' and offer.quote_token and offer.terms_text %}
+    <form method="post" class="promotion-checkout-form">
+      {% csrf_token %}
+      <input type="hidden" name="quote_token" value="{{ offer.quote_token }}">
+      <input type="hidden" name="terms_version" value="{{ offer.terms_version }}">
+      <input type="hidden" name="idempotency_key" value="{{ checkout_idempotency_key }}">
+      <label class="promotion-terms-accept"><input type="checkbox" name="accepted_terms" required><span>I have read and accept the promotion terms shown above for this exact application, product, target and duration.</span></label>
+      <div class="promotion-form-actions"><button class="button button-primary" type="submit">Accept terms &amp; prepare secure payment <span aria-hidden="true">→</span></button><a class="button button-secondary" href="{% url 'my-promotions' %}">Cancel</a></div>
+      <p class="promotion-footer-note">Payment initialization is handled by the server. After you continue to Flutterwave, only a validated callback/webhook or trusted transaction verification can mark the campaign as paid.</p>
+    </form>
+    {% else %}
+      <div class="promotion-empty-state"><span aria-hidden="true">⌛</span><strong>Checkout is unavailable right now</strong><p>Refresh this page after the plan or target availability changes. Do not attempt to pay through another link.</p></div>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

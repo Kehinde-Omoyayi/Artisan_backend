@@ -1,12 +1,58 @@
 """Bounded, local media validation. No AI, transcription or network decoder input."""
 
-import json, math, subprocess, tempfile
+import json, logging, math, shutil, subprocess, tempfile
 from pathlib import Path
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
 
 EXTENSIONS = {".webm", ".ogg", ".wav", ".mp3", ".m4a", ".mp4"}
 
+logger = logging.getLogger(__name__)
+
+
+def _audio_limit_bytes():
+    return int(getattr(settings, "CONVERSATION_ATTACHMENT_MAX_BYTES", 30 * 1024 * 1024))
+
+
+def _max_seconds(video):
+    return int(
+        getattr(
+            settings,
+            "CONVERSATION_VIDEO_MAX_SECONDS" if video else "CONVERSATION_AUDIO_MAX_SECONDS",
+            300 if video else 600,
+        )
+    )
+
+
+
+def _mime_for(suffix, video):
+    if video:
+        return {".webm": "video/webm", ".mp4": "video/mp4"}.get(suffix, "video/mp4")
+    return {
+        ".webm": "audio/webm",
+        ".ogg": "audio/ogg",
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".m4a": "audio/mp4",
+        ".mp4": "audio/mp4",
+    }[suffix]
+
+
+def _decoder_available(binary):
+    """True only when the configured ffmpeg/ffprobe binary can actually run."""
+    target = str(binary or "").strip()
+    if not target:
+        return False
+    found = shutil.which(target)
+    if not found and not Path(target).is_file():
+        return False
+    return True
+
+
+def _decoder_pair():
+    probe = getattr(settings, "FFPROBE_BINARY", "ffprobe")
+    decode = getattr(settings, "FFMPEG_BINARY", "ffmpeg")
+    return _decoder_available(probe) and _decoder_available(decode)
 
 def validate_recording(upload, suffix):
     if getattr(settings, "ENVIRONMENT", "") == "production":
@@ -27,9 +73,10 @@ def validate_recording(upload, suffix):
         raise ValidationError(
             "Recording deployment is not ready: restore protection is unavailable."
         ) from None
-    if upload.size > 10 * 1024 * 1024:
+    limit = _audio_limit_bytes()
+    if upload.size > limit:
         raise ValidationError(
-            "Video must be 10 MB or smaller; audio must be 5 MB or smaller."
+            f"Audio and video must be {limit // (1024 * 1024)} MB or smaller."
         )
     upload.seek(0)
     header = upload.read(32)
@@ -49,6 +96,17 @@ def validate_recording(upload, suffix):
     )
     if not valid:
         raise ValidationError("Recording signature does not match its extension.")
+    if not _decoder_pair():
+        # No ffmpeg/ffprobe on this deployment (a local Windows checkout, for
+        # example). Uploads must still work: the file size, extension and
+        # container signature were already checked, so the recording is accepted
+        # without the duration probe instead of being rejected outright.
+        logger.warning(
+            "recording_decoder_unavailable: accepting %s after signature and size checks",
+            suffix,
+        )
+        upload.seek(0)
+        return _mime_for(suffix, suffix in (".mp4", ".webm"))
     try:
         with tempfile.TemporaryDirectory(prefix="artisan-media-") as directory:
             path = Path(directory) / ("recording" + suffix)
@@ -69,7 +127,7 @@ def validate_recording(upload, suffix):
                     str(path),
                 ],
                 capture_output=True,
-                timeout=8,
+                timeout=30,
                 check=True,
             )
             info = json.loads(probe.stdout)
@@ -79,9 +137,7 @@ def validate_recording(upload, suffix):
             video = "video" in types
             if video and suffix not in (".mp4", ".webm"):
                 raise ValueError("Invalid video container")
-            if not video and upload.size > 5 * 1024 * 1024:
-                raise ValidationError("Voice notes and audio must be 5 MB or smaller.")
-            maximum = 60 if video else 90
+            maximum = _max_seconds(video)
             # Decode to validate content AND live WebM recordings lacking duration metadata.
             decode = subprocess.run(
                 [
@@ -102,7 +158,7 @@ def validate_recording(upload, suffix):
                     "-",
                 ],
                 capture_output=True,
-                timeout=20,
+                timeout=180,
                 check=True,
             )
             times = [
@@ -116,7 +172,11 @@ def validate_recording(upload, suffix):
                 or duration <= 0
                 or duration > maximum + 0.05
             ):
-                raise ValidationError(f"Recording must be at most {maximum} seconds.")
+                kind = "Video" if video else "Audio"
+                raise ValidationError(
+                    f"{kind} must be at most {maximum // 60} minutes "
+                    f"({maximum} seconds)."
+                )
             mime = (".webm" if suffix == ".webm" else ".mp4") if video else suffix
             return (
                 {".webm": "video/webm", ".mp4": "video/mp4"}

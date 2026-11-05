@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Payout account · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% asset 'css/payout-account.css' %}">{% endblock %}
+{% block content %}
+<section class="payout-workspace" data-payout-page>
+  <header class="payout-heading">
+    <span class="eyebrow">Artisan finance</span>
+    <h1>Payout account</h1>
+    <p>Choose a supported bank and securely submit your payout details. Account names are checked against your verified identity and artisan profile.</p>
+    <span class="payout-security-note"><span aria-hidden="true">◇</span> Account checks via Flutterwave</span>
+  </header>
+  <div class="payout-grid">
+    <article class="panel payout-editor">
+      <header class="payout-card-heading"><div><span class="eyebrow">Bank details</span><h2>Your payout destination</h2></div><span class="payout-card-icon" aria-hidden="true">↗</span></header>
+      <p class="payout-intro">Use an account held in your verified name.</p>
+      <form method="post" autocomplete="off" data-payout-form>
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+        {% for field in form %}
+        <div class="form-field{% if field.errors %} has-error{% endif %}">
+          {{ field.label_tag }}{{ field }}
+          {% if field.name == 'bank_code' %}
+          <div class="payout-bank-picker" data-bank-picker hidden>
+            <button type="button" class="payout-bank-toggle" data-bank-toggle aria-expanded="false" aria-controls="payout-bank-panel"><span data-bank-label>Choose a supported bank</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></button>
+            <div id="payout-bank-panel" class="payout-bank-panel" data-bank-panel hidden>
+              <input type="search" class="payout-bank-search" data-payout-bank-search placeholder="Search supported banks…" aria-label="Search supported banks" autocomplete="off">
+              <div class="payout-bank-options" data-bank-options aria-label="Supported banks"></div>
+              <p class="payout-bank-status" data-bank-status role="status" aria-live="polite"></p>
+            </div>
+            <p class="field-error" data-bank-error role="alert" hidden>Choose a supported bank before continuing.</p>
+          </div>
+          {% endif %}
+          {% if field.help_text %}<small class="help">{{ field.help_text }}</small>{% endif %}
+          {% if field.errors %}<div class="field-error" role="alert">{{ field.errors|striptags }}</div>{% endif %}
+        </div>
+        {% endfor %}
+        <div class="payout-form-footer">
+          {% if payout_locked %}
+          <div class="payout-lock-banner" role="status"><span aria-hidden="true">&#128274;</span><span>Payout details are locked for your protection. You can change them again from {{ locked_until|date:"j M Y, H:i" }}.</span></div>
+          {% endif %}
+          <p>Bank confirmation does not by itself enable payouts. Protected finance verification is still required.</p>
+          {% if change_mode %}
+          <input type="hidden" name="change_mode" value="1">
+          <button class="button button-primary payout-save" type="submit">Verify and save new payout details <span aria-hidden="true">→</span></button>
+          <div class="payout-secondary-actions">
+            <button type="submit" name="action" value="request_code" formnovalidate class="payout-secondary-action">Resend security code</button>
+            <button type="submit" name="action" value="cancel_change" formnovalidate class="payout-secondary-action">Cancel change</button>
+          </div>
+          {% elif has_saved_account %}
+          {% if payout_locked %}
+          <button class="button button-primary payout-save" type="submit" name="action" value="request_code" disabled>Locked until {{ locked_until|date:"j M Y" }} <span aria-hidden="true">&#128274;</span></button>
+          {% else %}
+          <button class="button button-primary payout-save" type="submit" name="action" value="request_code">Change payout details — email me a code <span aria-hidden="true">→</span></button>
+          {% endif %}
+          {% else %}
+          <button class="button button-primary payout-save" type="submit">Verify and save payout details <span aria-hidden="true">→</span></button>
+          {% endif %}
+        </div>
+      </form>
+    </article>
+    <aside class="payout-sidebar">
+      <article class="panel payout-account-summary" aria-labelledby="payout-account-summary-title">
+        <header class="payout-card-heading"><div><span class="eyebrow">Payout details</span><h2 id="payout-account-summary-title">Saved account</h2></div><span class="payout-card-icon" aria-hidden="true">◇</span></header>
+        {% if account.account_name %}
+        <div class="detail-list">
+          <div><span>Account Name</span><strong>{{ account.account_name }}</strong></div>
+          <div><span>Bank</span><strong>{{ account.bank_name|default:account.bank_code|default:'—' }}</strong></div>
+          <div><span>Account Number</span><strong>{% if account.account_number_last4 %}•••• {{ account.account_number_last4 }}{% else %}—{% endif %}</strong></div>
+          <div><span>Change lock</span><strong>{% if payout_locked %}Locked until {{ locked_until|date:"j M Y" }}{% else %}Unlocked — email code required to change{% endif %}</strong></div>
+        </div>
+        {% else %}<div class="payout-empty"><span aria-hidden="true">▤</span><h3>No saved account yet</h3><p>Your saved payout account will appear here after you submit your details.</p></div>{% endif %}
+        <p class="payout-privacy">For your privacy, only the last four account-number digits are displayed.</p>
+      </article>
+      <div class="payout-guidance"><span class="eyebrow">Before you continue</span><h3>A name that matches.</h3><p>Use the account holder name shown by your bank. Your bank, artisan profile and verified identity must agree.</p></div>
+    </aside>
+  </div>
+</section>
+{% endblock %}
+{% block scripts %}{% if page_js_path != 'js/pages/payments-payout_account.js' %}<script src="{% asset 'js/pages/payments-payout_account.js' %}"></script>{% endif %}{% endblock %}

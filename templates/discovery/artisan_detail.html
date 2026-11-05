@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}{{ artisan.business_name|default:artisan.name }} · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}">{% endblock %}
+{% block content %}
+<div hidden aria-hidden="true">{% csrf_token %}</div>
+<section class="artisan-discovery-detail artisan-motion-page" data-artisan-page="discovery-artisan-detail">
+  {% if promotion_visit_token %}<div hidden data-profile-promotion-token="{{ promotion_visit_token }}" data-profile-artisan-id="{{ artisan.id }}"></div>{% endif %}
+  <header class="artisan-discovery-profile-hero" data-artisan-reveal data-motion="up" data-tour-target="profiles-services">
+    <div class="artisan-discovery-profile-avatar">
+      <span class="artisan-discovery-avatar-fallback" data-profile-photo-fallback {% if artisan.profile_photo %}hidden{% endif %} aria-hidden="true">{{ artisan.name|default:'A'|slice:':1'|upper }}</span>
+      {% if artisan.profile_photo %}<img class="artisan-discovery-photo" src="{{ artisan.profile_photo }}" alt="" data-profile-photo-image loading="lazy" referrerpolicy="no-referrer">{% endif %}
+    </div>
+    <div class="artisan-discovery-profile-copy">
+      <div class="eyebrow">Verified artisan</div>
+      <h1 data-text-motion>{{ artisan.business_name|default:artisan.name }}</h1>
+      <p>{{ artisan.area|default:'—' }}{% if artisan.state %}, {{ artisan.state }}{% endif %}{% if artisan.country %}, {{ artisan.country }}{% endif %}</p>
+      <div class="artisan-discovery-profile-tags">
+        <span class="status-pill {{ artisan.verification_status|status_class }}">{{ artisan.verification_status|default:'Not verified' }}</span>
+        <span>{{ artisan.years_experience|default:0 }} years experience</span>
+      </div>
+    </div>
+    <a class="button button-secondary artisan-discovery-back" href="{% url 'artisans' %}">Back to artisans</a>
+  </header>
+
+  <section class="artisan-discovery-profile-metrics" aria-label="Artisan performance" data-artisan-reveal data-motion="scale">
+    <article class="panel artisan-discovery-metric"><span>Average rating</span><strong><span aria-hidden="true">★</span> {{ artisan.average_rating|default:'0.00' }}</strong><small>From customer reviews</small></article>
+    <article class="panel artisan-discovery-metric"><span>Completion rate</span><strong>{{ artisan.completion_rate|default:0|floatformat:1 }}%</strong><small>Completed service bookings</small></article>
+    <article class="panel artisan-discovery-metric"><span>Cancellation rate</span><strong>{{ artisan.cancellation_rate|default:0|floatformat:1 }}%</strong><small>Cancelled service bookings</small></article>
+  </section>
+
+  <section class="artisan-discovery-detail-grid">
+    <article class="panel artisan-discovery-about" data-artisan-reveal data-motion="left">
+      <div class="panel-head"><div><span class="artisan-panel-kicker">Artisan profile</span><h2>About</h2></div></div>
+      <p>{{ artisan.bio|default:'This artisan has not added a biography yet.' }}</p>
+      <div class="artisan-discovery-location-summary"><span>Based in</span><strong>{{ artisan.area|default:'—' }}{% if artisan.state %}, {{ artisan.state }}{% endif %}{% if artisan.country %}, {{ artisan.country }}{% endif %}</strong></div>
+    </article>
+
+    <article class="panel artisan-discovery-service-panel" data-artisan-reveal data-motion="right" data-tour-target="profiles-services">
+      <div class="panel-head"><div><span class="artisan-panel-kicker">Catalogue</span><h2>Services offered</h2></div><span class="services-list-count">{{ artisan.services|length }}</span></div>
+      <div class="artisan-discovery-offer-list">
+        {% for service in artisan.services %}
+          <article class="artisan-discovery-offer artisan-discovery-offer-detail" data-artisan-reveal data-motion="up">
+            <div class="artisan-discovery-offer-title"><span>{{ service.category_name|default:'Service category' }}</span><h3>{{ service.service_name|default:'Service' }}</h3></div>
+            <div class="artisan-discovery-offer-location"><span>Service location</span><strong>{% if service.location %}{{ service.location.area|default:'' }}{% if service.location.state %}, {{ service.location.state }}{% endif %}{% if service.location.country %}, {{ service.location.country }}{% endif %}{% else %}Anywhere{% endif %}</strong></div>
+            <div class="artisan-discovery-offer-price"><span>Starting budget</span><strong>{% if service.starting_price == 0 or service.starting_price %}₦{{ service.starting_price|floatformat:2 }}{% else %}On request{% endif %}</strong></div>
+            {% if service.service_id %}
+              {% if role == 'customer' or role == 'artisan' or not authenticated %}
+              <form class="artisan-discovery-service-request" method="post" action="{% url 'start-conversation' pk=artisan.id %}">
+                {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><input type="hidden" name="service_id" value="{{ service.service_id }}">
+                <button class="button button-primary" type="submit">{% if authenticated %}Request {{ service.service_name }}{% else %}Sign in to request {{ service.service_name }}{% endif %}</button>
+              </form>
+              {% endif %}
+            {% endif %}
+          </article>
+        {% empty %}
+          <div class="empty">No listed services.</div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  {% if artisan.social_media_1_url or artisan.social_media_2_url or artisan.portfolio_url %}
+  <section class="panel artisan-discovery-links" aria-labelledby="artisan-discovery-links-title" data-artisan-reveal data-motion="up">
+    <div class="panel-head"><div><span class="artisan-panel-kicker">Professional links</span><h2 id="artisan-discovery-links-title">Connect With This Artisan</h2></div></div>
+    <div class="artisan-discovery-links-list">
+      {% if artisan.social_media_1_url %}<a class="artisan-discovery-link" href="{{ artisan.social_media_1_url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{{ artisan.social_media_1_platform_label|default:'Professional profile' }}</span><strong>Open profile <span aria-hidden="true">↗</span></strong></a>{% endif %}
+      {% if artisan.social_media_2_url %}<a class="artisan-discovery-link" href="{{ artisan.social_media_2_url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>{{ artisan.social_media_2_platform_label|default:'Professional profile' }}</span><strong>Open profile <span aria-hidden="true">↗</span></strong></a>{% endif %}
+      {% if artisan.portfolio_url %}<a class="artisan-discovery-link" href="{{ artisan.portfolio_url }}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer"><span>Portfolio or Website</span><strong>View work <span aria-hidden="true">↗</span></strong></a>{% endif %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if role == 'customer' or not authenticated %}
+  <section class="panel conversation-cta artisan-discovery-conversation" data-artisan-reveal data-motion="up">
+    <div>
+      <div class="eyebrow">Service request</div>
+      <h2>{% if role == 'customer' %}Ready to explain what you need?{% else %}Want to hire this artisan?{% endif %}</h2>
+      <p>{% if not authenticated %}Browse profiles and services publicly. Sign in to request this artisan.{% else %}Start a request-linked conversation. Describe the work, clarify it in chat, and the artisan will confirm the description before sending an itemized quote. Quotes, booking and payment remain separate confirmed actions.{% endif %}</p>
+    </div>
+    <div class="artisan-discovery-conversation-actions">
+      <form method="post" action="{% url 'start-conversation' pk=artisan.id %}">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="button button-primary" type="submit">Request Artisan</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}

@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% load static site_tags %}
+{% block title %}Support team · Artisan Market{% endblock %}
+{% block head %}<link rel="stylesheet" href="{% static 'css/artisan-pages.css' %}"><link rel="stylesheet" href="{% static 'css/support-workspace.css' %}">{% endblock %}
+{% block content %}
+<section class="support-workspace artisan-motion-page support-staff-page">
+  <header class="support-page-hero" data-artisan-reveal data-motion="left"><div><a class="support-back-link" href="{% url 'dashboard' %}"><span aria-hidden="true">←</span> Operations</a><span class="support-eyebrow">SUPPORT ACCESS CONTROL</span><h1>Support team</h1><p>Review the active support roster and role assignments. Access decisions are still checked by the API on every action.</p></div><div class="support-page-actions"><a class="button button-secondary" href="{% url 'support-cases' %}">Case queue</a><a class="button button-secondary" href="{% url 'support-refunds' %}">Refund operations</a></div></header>
+  {% include 'partials/support_operation_shortcut.html' %}
+
+  <section class="support-team-summary"><div><span class="support-team-summary-mark" aria-hidden="true">◎</span><span><strong>{{ staff|length }}</strong><small>support teammate{{ staff|length|pluralize }} in this directory</small></span></div><p>Agents handle cases and requests. Supervisors review case decisions. Finance executes and reconciles refunds. Admins manage role assignments.</p></section>
+
+  <div class="support-team-grid">
+    {% for member in staff %}
+    <article class="support-team-card">
+      <div class="support-team-card-top"><span class="support-team-avatar" aria-hidden="true">{{ member.name|slice:':1'|upper }}</span><span class="support-team-id">STAFF #{{ member.id }}</span></div>
+      <h2>{{ member.name }}</h2><a class="support-team-email" href="mailto:{{ member.email }}">{{ member.email }}</a>
+      <div class="support-team-roles"><span class="support-eyebrow">ASSIGNED ROLES</span><div class="support-role-chips">{% for role in member.roles %}<span class="support-role-chip">{{ role|humanize_code }}</span>{% empty %}<span class="support-role-chip support-role-chip--empty">No support role</span>{% endfor %}</div></div>
+      {% if support_capabilities.is_superuser %}
+        <div class="support-staff-recovery">
+          {% if member.security_questions_registered %}
+            <p>Recovery questions are registered.</p>
+            <form method="post" action="{% url 'support-staff-password-reset' user_id=member.id %}">{% csrf_token %}<button class="button button-secondary full" type="submit">Send password reset code</button></form>
+          {% else %}
+            <p>Recovery questions are not registered. Authorize setup first; answers will not be invented.</p>
+            <form method="post" action="{% url 'support-staff-security-setup' user_id=member.id %}">{% csrf_token %}<button class="button button-secondary full" type="submit">Authorize security-question setup</button></form>
+          {% endif %}
+        </div>
+      {% endif %}
+      {% if support_capabilities.can_manage_roles %}<a class="button button-secondary full" href="{% url 'support-staff-roles' user_id=member.id %}">Edit support roles <span aria-hidden="true">→</span></a>{% else %}<p class="support-role-readonly">Role editing is restricted to support administrators.</p>{% endif %}
+    </article>
+    {% empty %}<div class="support-panel support-empty"><strong>No support teammates found</strong><p>The API returns active staff accounts assigned to a support group.</p></div>{% endfor %}
+  </div>
+
+  <footer class="support-dashboard-footnote"><span class="support-footnote-icon" aria-hidden="true">✓</span><p>Keep each person on the least-privilege roles they need. Changes to support groups take effect immediately at the API permission boundary.</p></footer>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/pages/artisan-ui.js' %}"></script>{% endblock %}
