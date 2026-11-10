@@ -60,8 +60,17 @@ def admin_staff_mfa(request):
                 challenge_id=challenge.pk,
                 request=request,
             )
-        except Throttled:
-            messages.warning(request, "Too many staff sign-in codes were requested. Wait before trying again.")
+        except Throttled as exc:
+            messages.warning(
+                request,
+                str(
+                    getattr(
+                        exc,
+                        "detail",
+                        "Too many staff sign-in codes were requested. Try again later.",
+                    )
+                ),
+            )
         else:
             if replacement is None:
                 clear_admin_mfa_pending(request.session)

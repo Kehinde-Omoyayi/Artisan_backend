@@ -1,35 +1,16 @@
-# Environment secrets and local virtual environments
-.env
-.env.*
-!.env.example
+
 .venv/
 venv/
-
-# Python and Django runtime artifacts
 __pycache__/
 *.py[cod]
-*.pyo
-*.log
 *.sqlite3
-*.sqlite3-journal
-frontend_sessions.sqlite3
-/staticfiles/*
-!/staticfiles/.gitkeep
-/media/*
-!/media/.gitkeep
-
-# Test/build output
-.coverage
-coverage.xml
-htmlcov/
+.env
+.env.*
+*.log
+staticfiles/
+media/
 .pytest_cache/
 .mypy_cache/
-.ruff_cache/
-/dist/
-/build/
-*.zip
-
-# Editor/OS metadata
 .DS_Store
-.idea/
-.vscode/
+
+!.env.example

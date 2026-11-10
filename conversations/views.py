@@ -94,8 +94,8 @@ def _require_key(request):
 
 class ConversationCreateView(APIView):
     permission_classes = [IsAuthenticated, RequireCompleteMarketplaceProfile]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_start"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_start"
 
     @extend_schema(
         tags=["Conversations"],
@@ -157,8 +157,8 @@ class ConversationCreateView(APIView):
 
 class ConversationDescriptionConfirmView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_offer"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
 
     @extend_schema(
         tags=["Conversations"],
@@ -222,8 +222,8 @@ class ConversationDescriptionConfirmView(APIView):
 
 class ConversationStartView(APIView):
     permission_classes = [IsAuthenticated, RequireCompleteMarketplaceProfile]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_start"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_start"
 
     @extend_schema(
         tags=["Conversations"],
@@ -325,6 +325,20 @@ class ConversationListView(generics.ListAPIView):
             )
             .order_by("-updated_at")
         )
+
+    def filter_queryset(self, queryset):
+        """Let a customer ask which conversation belongs to one service request.
+
+        The marketplace gives each request a single working room, so the request
+        page needs exactly that room rather than the whole inbox.
+        """
+        queryset = super().filter_queryset(queryset)
+        service_request = str(
+            self.request.query_params.get("service_request") or ""
+        ).strip()
+        if service_request.isdigit():
+            return queryset.filter(service_request_id=int(service_request))
+        return queryset
 
     @extend_schema(
         tags=["Conversations"], responses={200: ConversationListSerializer(many=True)}
@@ -482,8 +496,8 @@ class ConversationMessageListCreateView(APIView):
         IsConversationParticipant,
         RequireCompleteMarketplaceProfile,
     ]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_message"
+    ##throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_message"
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     @extend_schema(
@@ -587,8 +601,8 @@ class ConversationRequestView(APIView):
         IsConversationParticipant,
         RequireCompleteCustomerProfile,
     ]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_request"
+    ##throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_request"
 
     @extend_schema(
         tags=["Conversations"],
@@ -623,8 +637,8 @@ class ConversationRequestView(APIView):
 
 class ConversationOfferListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_offer"
+    ##throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
     serializer_class = OfferSerializer
     pagination_class = LimitOffsetPagination
 
@@ -681,8 +695,8 @@ class ConversationOfferListView(generics.ListAPIView):
 
 class ConversationOfferCounterView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_counter"
+    ##throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_counter"
 
     @extend_schema(
         tags=["Conversations"],
@@ -720,8 +734,8 @@ class ConversationOfferCounterView(APIView):
 
 class ConversationOfferAcceptView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_offer"
+    ##throttle_classes = [ScopedRateThrottle]
+    ##throttle_scope = "conversation_offer"
 
     @extend_schema(
         tags=["Conversations"],
@@ -790,8 +804,8 @@ class ConversationOfferAcceptView(APIView):
 
 class ConversationOfferDeclineView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_offer"
+    #throttle_classes = [ScopedRateThrottle]
+    ##throttle_scope = "conversation_offer"
 
     @extend_schema(
         tags=["Conversations"],
@@ -865,8 +879,8 @@ class ConversationOfferDeclineView(APIView):
 
 class ConversationUnreadCountView(APIView):
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_read"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_read"
 
     @extend_schema(
         tags=["Conversations"],
@@ -890,8 +904,8 @@ class ConversationOfferRenotifyView(APIView):
     """
 
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_offer"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
 
     @extend_schema(tags=["Conversations"], request=None, responses={200: OfferSerializer})
     def post(self, request, conversation_id, offer_id):
@@ -925,8 +939,8 @@ class ConversationOfferResendView(APIView):
     """
 
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_offer"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
 
     @extend_schema(
         tags=["Conversations"],
@@ -1019,8 +1033,8 @@ class ConversationOfferResendView(APIView):
 
 class ConversationReadView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_read"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_read"
 
     @extend_schema(
         tags=["Conversations"],
@@ -1046,8 +1060,8 @@ class ConversationReadView(APIView):
 
 class ConversationPaymentInitializeView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "payment_initialize"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "payment_initialize"
 
     @extend_schema(
         tags=["Conversations"],
@@ -1145,8 +1159,8 @@ class ConversationPaymentInitializeView(APIView):
 
 class ConversationDisputeView(APIView):
     permission_classes = [IsAuthenticated, IsConversationParticipant]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "conversation_dispute"
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_dispute"
 
     @extend_schema(
         tags=["Conversations"],

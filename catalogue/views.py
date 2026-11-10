@@ -23,13 +23,31 @@ def geography(request):
 @require_GET
 def geography_index(request):
     """country -> states (~80 KB), with the file that holds each area list."""
+    import os
+
     payload = sources.geography_index()
-    files = {
-        country: (
+
+    def _versioned(path):
+        # A content stamp per country file: when the data is republished the
+        # URL changes, so a browser holding the old copy fetches the new one
+        # instead of waiting out max-age. The index stores paths like
+        # "data/world-geography/x.json", relative to the catalogue folder
+        # (one level above DATA).
+        candidate = sources.DATA / path
+        if not candidate.is_file():
+            candidate = sources.DATA.parent / path
+        try:
+            stamp = str(int(os.path.getmtime(candidate)))
+        except (OSError, ValueError, TypeError):
+            stamp = ""
+        return (
             "/api/v1/catalogue/geography/countries/"
             + str(path).rsplit("/", 1)[-1].removesuffix(".json")
-            + "/"
+            + ("/" if not stamp else f"/?v={stamp}")
         )
+
+    files = {
+        country: _versioned(path)
         for country, path in (payload.get("files") or {}).items()
     }
     response = JsonResponse({"countries": payload.get("countries") or {}, "files": files})

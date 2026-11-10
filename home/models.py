@@ -407,6 +407,11 @@ class ArtisanService(models.Model):
     starting_price = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True
     )
+    # One located offering can carry both promises: this named place *and*
+    # availability everywhere (the "Available anywhere" switch), so a single
+    # form fills a single row. `location` staying NULL remains the legacy
+    # general/anywhere offering; the flag only ever sits on a located row.
+    available_anywhere = models.BooleanField(default=False)
 
     class Meta:
         indexes = [
@@ -425,6 +430,11 @@ class ArtisanService(models.Model):
                 fields=["artisan", "service", "location"],
                 condition=models.Q(location__isnull=False),
                 name="unique_artisan_service_location",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(available_anywhere=False)
+                | models.Q(location__isnull=False),
+                name="svc_anywhere_flag_needs_location",
             ),
         ]
 

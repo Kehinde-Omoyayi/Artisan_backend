@@ -115,6 +115,109 @@ def _validate_profile_institution(attrs, instance):
     return attrs
 
 
+def _save_profile_user(user, user_data):
+    """Write only the user fields that actually changed, and name a clash.
+
+    Two faults met here. The save always wrote ``phone_number`` even when the
+    request did not touch it, so an account whose number already collided with
+    another row could not save *anything* -- not a photo, not a name -- and the
+    API answered 409 "the request conflicts with the current state of the
+    resource", which no person can act on. And a genuine clash surfaced as that
+    same 409 instead of a field error beside the phone box.
+    """
+    from django.db import IntegrityError
+
+    def same(stored, submitted):
+        # "No number" is stored as NULL by one path and "" by another. Treating
+        # the two as different made a blank phone box look like an edit, and an
+        # edit of a column with a unique index is exactly what was failing.
+        if field == "phone_number":
+            return (stored or "") == (submitted or "")
+        return stored == submitted
+
+    changed = []
+    for field in ("first_name", "last_name", "phone_number"):
+        if field not in user_data:
+            continue
+        if not same(getattr(user, field), user_data[field]):
+            setattr(user, field, user_data[field])
+            changed.append(field)
+        # blank <-> NULL is not a change worth writing: the browser and every
+        # reader show "no number" either way, and the write is what trips the
+        # unique index when an older account already stores the blank.
+    if not changed:
+        return
+    try:
+        user.save(update_fields=[*changed, "updated_at"])
+    except IntegrityError as exc:
+        if "phone_number" in str(exc):
+            raise serializers.ValidationError(
+                {
+                    "phone_number": [
+                        "That phone number is already registered to another account. "
+                        "Use a different number, or sign in to the account that owns it."
+                    ]
+                }
+            ) from None
+        raise
+
+
+def _phone_variants(value):
+    """Every way one number can already be written in the phone column.
+
+    Old rows hold ``08031234567`` while the form now stores ``+2348031234567``.
+    Comparing only the normalized text let the same number live on several
+    accounts, and let a clash slip past the check and hit the unique index.
+    """
+    from home.phone_numbers import normalize_phone
+
+    variants = set()
+    if not value:
+        return variants
+    try:
+        normalized = normalize_phone(value)
+    except Exception:  # unparseable input is a validator problem, not ours
+        normalized = None
+    if normalized:
+        variants.add(normalized)
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    if digits:
+        variants.add(digits)
+        if digits.startswith("234") and len(digits) == 13:
+            national = digits[3:]
+            variants.update({national, "0" + national})
+        elif digits.startswith("0") and len(digits) == 11:
+            national = digits[1:]
+            variants.update({"+234" + national, "234" + national, national})
+    return variants
+
+
+def _phone_in_use(value, user):
+    """True when another account already holds this number, in any spelling."""
+    from django.contrib.auth import get_user_model
+
+    candidates = (
+        value if isinstance(value, (set, frozenset, list, tuple)) else _phone_variants(value)
+    )
+    candidates = {c for c in candidates if c}
+    if not candidates:
+        return False
+    others = get_user_model().objects.filter(phone_number__in=list(candidates))
+    if user is not None and user.pk:
+        others = others.exclude(pk=user.pk)
+    return others.exists()
+
+
+def _claims_number(stored, normalized):
+    """True when the stored number and the submitted one are the same number."""
+    if not stored:
+        return False
+    return stored in _phone_variants(normalized) or bool(
+        _phone_variants(stored) & _phone_variants(normalized)
+    )
+
+
+
 class ArtisanProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
     first_name = serializers.CharField(source="user.first_name")
@@ -200,7 +303,20 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
     def validate_phone_number(self, value):
         from home.serializers import normalize_phone
 
-        return normalize_phone(value)
+        normalized = normalize_phone(value)
+        owner = getattr(self.instance, "user", None) if self.instance else None
+        stored = getattr(owner, "phone_number", None) if owner is not None else None
+        if _claims_number(stored, normalized):
+            # The same number, perhaps written differently. Keep the saved text
+            # as it is: a value already in the column is not this request's
+            # fault, and must never be why a profile cannot be saved at all.
+            return stored
+        if _phone_in_use(normalized, owner):
+            raise serializers.ValidationError(
+                "That phone number is already registered to another account. "
+                "Use a different number, or sign in to the account that owns it."
+            )
+        return normalized
 
     def validate(self, attrs):
         attrs = _validate_profile_institution(attrs, self.instance)
@@ -285,17 +401,7 @@ class ArtisanProfileSerializer(serializers.ModelSerializer):
         try:
             with transaction.atomic(using=using):
                 user = instance.user
-                for field in ["first_name", "last_name", "phone_number"]:
-                    if field in user_data:
-                        setattr(user, field, user_data[field])
-                user.save(
-                    update_fields=[
-                        "first_name",
-                        "last_name",
-                        "phone_number",
-                        "updated_at",
-                    ]
-                )
+                _save_profile_user(user, user_data)
 
                 for field, value in validated_data.items():
                     setattr(instance, field, value)
@@ -455,7 +561,20 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
     def validate_phone_number(self, value):
         from home.serializers import normalize_phone
 
-        return normalize_phone(value)
+        normalized = normalize_phone(value)
+        owner = getattr(self.instance, "user", None) if self.instance else None
+        stored = getattr(owner, "phone_number", None) if owner is not None else None
+        if _claims_number(stored, normalized):
+            # The same number, perhaps written differently. Keep the saved text
+            # as it is: a value already in the column is not this request's
+            # fault, and must never be why a profile cannot be saved at all.
+            return stored
+        if _phone_in_use(normalized, owner):
+            raise serializers.ValidationError(
+                "That phone number is already registered to another account. "
+                "Use a different number, or sign in to the account that owns it."
+            )
+        return normalized
 
     def update(self, instance, validated_data):
         user_data = validated_data.pop("user", {})
@@ -469,17 +588,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
         try:
             with transaction.atomic(using=using):
                 user = instance.user
-                for field in ["first_name", "last_name", "phone_number"]:
-                    if field in user_data:
-                        setattr(user, field, user_data[field])
-                user.save(
-                    update_fields=[
-                        "first_name",
-                        "last_name",
-                        "phone_number",
-                        "updated_at",
-                    ]
-                )
+                _save_profile_user(user, user_data)
                 for field, value in validated_data.items():
                     setattr(instance, field, value)
 

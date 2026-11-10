@@ -167,7 +167,11 @@ def validate_artisan_location(*, artisan, service, location_id):
         ) from exc
     if (
         not ArtisanService.objects.filter(artisan=artisan, service=service)
-        .filter(Q(location=location) | Q(location__isnull=True))
+        .filter(
+            Q(location=location)
+            | Q(location__isnull=True)
+            | Q(available_anywhere=True)
+        )
         .exists()
     ):
         raise ValidationError(
@@ -1734,7 +1738,11 @@ def accept_offer(*, conversation, user, offer_id):
                     service__category=service_request.category,
                     service__is_active=True,
                 )
-                .filter(Q(location=service_request.location) | Q(location__isnull=True))
+                .filter(
+                    Q(location=service_request.location)
+                    | Q(location__isnull=True)
+                    | Q(available_anywhere=True)
+                )
                 .exists()
             ):
                 raise PermissionDenied(

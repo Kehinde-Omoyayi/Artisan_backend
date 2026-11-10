@@ -138,8 +138,13 @@ class PromotionApplicationSubmissionSerializer(serializers.Serializer):
         for offering in offerings:
             # A NULL service location is the existing marketplace contract for a general,
             # anywhere offer. It is eligible for a targeted application without claiming
-            # a physical office at the target.
-            if offering.location_id is None or promotion_type == PromotionApplication.PromotionType.HOMEPAGE:
+            # a physical office at the target; a located row flagged available_anywhere
+            # carries the same promise.
+            if (
+                offering.location_id is None
+                or offering.available_anywhere
+                or promotion_type == PromotionApplication.PromotionType.HOMEPAGE
+            ):
                 continue
             if promotion_type in {PromotionApplication.PromotionType.INSTITUTION, PromotionApplication.PromotionType.AREA}:
                 if target_location is None or offering.location_id != target_location.pk:

@@ -64,7 +64,9 @@ class CatalogueEndpointTests(SimpleTestCase):
         payload = response.json()
         self.assertGreaterEqual(len(payload["countries"]), 250)
         self.assertGreaterEqual(len(payload["countries"]["Nigeria"]), 37)
-        self.assertTrue(payload["files"]["Nigeria"].endswith("/nigeria/"))
+        # The country URL carries a content stamp so republished data changes
+        # the URL and a browser holding the old copy fetches the new one.
+        self.assertRegex(payload["files"]["Nigeria"], r"/nigeria/\?v=\d+$")
 
     def test_country_areas_are_served_per_country(self):
         response = self.client.get("/api/v1/catalogue/geography/countries/nigeria/")

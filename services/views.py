@@ -1168,10 +1168,12 @@ class LocationListCreateView(generics.ListCreateAPIView):
         return [AllowAny()]
 
     def get_queryset(self):
-        queryset = Locations.objects.all().order_by(
-            "country",
-            "state",
-            "area",
+        # One extra query for the whole page instead of one per row: see
+        # LocationSerializer.get_closest_institution.
+        queryset = (
+            Locations.objects.all()
+            .prefetch_related("institutions")
+            .order_by("country", "state", "area")
         )
 
         country = self.request.query_params.get("country")

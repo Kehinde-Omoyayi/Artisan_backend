@@ -479,6 +479,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
             "participants",
             "artisan_name",
             "artisan_business_name",
+            "service_request",
             "state",
             "unread",
             "unread_count",

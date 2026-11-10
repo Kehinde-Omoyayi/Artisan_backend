@@ -191,5 +191,16 @@ class StaffAdminMFAMiddleware(MiddlewareMixin):
         if request.path == "/admin" or request.path.startswith("/admin/"):
             response["Cache-Control"] = "no-store, private"
             response["Pragma"] = "no-cache"
-            response["Referrer-Policy"] = "same-origin"
+            # Never loosen a stricter policy the view already chose: the staff
+            # step-up pages send `no-referrer` so a one-time code page can not
+            # leak its address to anything it links to. Overwriting it here
+            # would quietly undo that.
+            existing = response.get("Referrer-Policy", "")
+            if not existing or existing in (
+                "strict-origin-when-cross-origin",
+                "same-origin",
+            ):
+                # Nothing under /admin/ should ever send its address anywhere:
+                # these are staff screens, and some of them carry step-up codes.
+                response["Referrer-Policy"] = "no-referrer"
         return response

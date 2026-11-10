@@ -159,39 +159,63 @@ class LocationSerializer(serializers.ModelSerializer):
         return value
 
     def get_closest_institution(self, location):
-        """The institution registered at this location, or None."""
+        """The institution registered at this location, or None.
+
+        One query per row made a 100-row page of locations 101 queries: ~250 ms
+        on SQLite/Windows, and a page that walks the whole location table paid it
+        thousands of times. When the queryset has been prefetched (the list view
+        does that), the answer comes from the prefetched rows and costs nothing.
+        """
         if location is None:
             return None
         cache = getattr(self, "_closest_institution_cache", None)
         if cache is None:
             cache = self._closest_institution_cache = {}
         key = str(location.pk)
-        if key not in cache:
-            candidates = Institution.objects.filter(location=location, is_active=True)
-            request = self.context.get("request")
-            selected = (
-                getattr(request, "query_params", {}).get("institution_id")
-                if request
-                else None
-            )
-            if selected:
-                try:
-                    from uuid import UUID
+        if key in cache:
+            return cache[key]
 
-                    candidates = candidates.filter(pk=UUID(str(selected)))
-                except ValueError:
-                    candidates = candidates.none()
-            matches = list(
-                candidates.order_by("name", "campus").values(
-                    "id", "name", "campus", "abbreviation"
-                )[:2]
-            )
+        request = self.context.get("request")
+        selected = (
+            getattr(request, "query_params", {}).get("institution_id")
+            if request
+            else None
+        )
+        prefetched = getattr(location, "_prefetched_objects_cache", None)
+        if prefetched is not None and "institutions" in prefetched and not selected:
+            rows = [
+                {
+                    "id": str(item.pk),
+                    "name": item.name,
+                    "campus": item.campus,
+                    "abbreviation": item.abbreviation,
+                }
+                for item in prefetched["institutions"]
+                if item.is_active
+            ]
+            rows.sort(key=lambda row: (row["name"], row["campus"]))
             # A city can host many institutions. Alphabetical order does not prove
             # which one is nearest; return no inferred choice when ambiguous.
-            row = matches[0] if len(matches) == 1 else None
-            if row:
-                row["id"] = str(row["id"])
-            cache[key] = row
+            cache[key] = rows[0] if len(rows) == 1 else None
+            return cache[key]
+
+        candidates = Institution.objects.filter(location=location, is_active=True)
+        if selected:
+            try:
+                from uuid import UUID
+
+                candidates = candidates.filter(pk=UUID(str(selected)))
+            except ValueError:
+                candidates = candidates.none()
+        matches = list(
+            candidates.order_by("name", "campus").values(
+                "id", "name", "campus", "abbreviation"
+            )[:2]
+        )
+        row = matches[0] if len(matches) == 1 else None
+        if row:
+            row["id"] = str(row["id"])
+        cache[key] = row
         return cache[key]
 
 
@@ -583,6 +607,11 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
         allow_null=True,
     )
 
+    available_anywhere = serializers.BooleanField(
+        required=False,
+        default=False,
+    )
+
     class Meta:
         model = ArtisanService
         fields = [
@@ -591,6 +620,7 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
             "category_name",
             "service_name",
             "location",
+            "available_anywhere",
             "starting_price",
         ]
 
@@ -629,6 +659,14 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
                     )
                 }
             )
+
+        # The everywhere flag only means something on a located row: a NULL
+        # location already is the anywhere contract, so never persist both.
+        effective_location = attrs.get(
+            "location", getattr(self.instance, "location", None)
+        )
+        if attrs.get("available_anywhere") and effective_location is None:
+            attrs["available_anywhere"] = False
 
         # An artisan may offer the same service as Anywhere (no location) *and*
         # at specific locations — those coexist — but an exact duplicate of the

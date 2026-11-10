@@ -91,6 +91,7 @@ INSTALLED_APPS = [
     "django_filters",
     "core.apps.CoreConfig",
     "manager.apps.ManagerConfig",
+    "catalogue.apps.CatalogueConfig",
     "rest_framework_simplejwt.token_blacklist",
 ]
 
@@ -110,6 +111,20 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# Local review harness only. A sandboxed preview frame (or any embedded
+# browser) posts with ``Origin: null``, which CSRF can never trust; this shim
+# rewrites that header to the host the request reached. It follows DEBUG: a
+# DEBUG server accepts those posts out of the box, and it is refused outright
+# when DEBUG is off, so production cannot use it. Cookies stay SameSite=Lax,
+# so a foreign site still cannot ride along.
+_sandboxed_origin = config("ALLOW_SANDBOXED_ORIGIN", default=DEBUG, cast=bool)
+if _sandboxed_origin and not DEBUG:
+    raise RuntimeError(
+        "ALLOW_SANDBOXED_ORIGIN is a local-review switch; never set it with DEBUG off."
+    )
+if _sandboxed_origin:
+    MIDDLEWARE.insert(0, "Artisan_platform.middleware.SandboxedOriginMiddleware")
 
 TEMPLATES = [
     {
@@ -202,9 +217,12 @@ REST_FRAMEWORK = {
     ],
 }
 
-# for faster registration time rate
+# Argon2id, with the work factor set by the machine (ARGON2_MEMORY_COST /
+# ARGON2_TIME_COST / ARGON2_PARALLELISM). Django's stock 100 MiB cost ~165 ms a
+# hash here and several hundred on a laptop, which is most of a slow sign-in.
+# Old hashes are upgraded in place at the next successful login.
 PASSWORD_HASHERS = [
-    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "Artisan_platform.hashers.TunableArgon2PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
 ]
 
@@ -404,6 +422,13 @@ TRUST_PROXY_SSL_HEADER = config(
 SECURE_PROXY_SSL_HEADER = (
     ("HTTP_X_FORWARDED_PROTO", "https") if TRUST_PROXY_SSL_HEADER else None
 )
+# The website (8080) and this API (8000) are often opened in one browser on one
+# host, and cookies ignore the port. Default cookie names would make each project
+# overwrite the other's "sessionid"/"csrftoken", which breaks the next form POST
+# with a CSRF mismatch. Distinct names keep them apart on one machine and on a
+# shared production domain.
+SESSION_COOKIE_NAME = config("SESSION_COOKIE_NAME", default="artisan_api_session")
+CSRF_COOKIE_NAME = config("CSRF_COOKIE_NAME", default="artisan_api_csrf")
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = config(
     "SESSION_COOKIE_SECURE", default=ENVIRONMENT == "production", cast=bool
@@ -429,7 +454,9 @@ SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin"
 SECURE_CROSS_ORIGIN_RESOURCE_POLICY = "same-origin"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
-SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+# same-origin: our own pages may tell us where a request came from; other
+# sites get nothing. Staff/admin screens still pin `no-referrer` themselves.
+SECURE_REFERRER_POLICY = "same-origin"
 
 if ENVIRONMENT == "production":
     if not SECURE_SSL_REDIRECT:

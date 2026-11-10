@@ -10,7 +10,11 @@ def matched_requests_for(artisan, *, include_dismissed=False):
         artisan__verification__verification_status='VERIFIED',
         artisan__user__is_active=True, service__is_active=True,
         service__category_id=OuterRef('category_id'),
-    ).filter(Q(location_id=OuterRef('location_id')) | Q(location__isnull=True))
+    ).filter(
+        Q(location_id=OuterRef('location_id'))
+        | Q(location__isnull=True)
+        | Q(available_anywhere=True)
+    )
     queryset = ServiceRequest.objects.filter(
         Exists(offerings), status=ServiceRequest.Status.OPEN,
     ).select_related('requester', 'service', 'category', 'location')

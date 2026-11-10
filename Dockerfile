@@ -1,28 +1,23 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DJANGO_SETTINGS_MODULE=frontend.settings
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PORT=8001 \
+    DJANGO_SETTINGS_MODULE=Artisan_platform.api_settings
+
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system artisan \
-    && useradd --system --gid artisan --home-dir /app artisan
-
 COPY requirements.txt ./requirements.txt
-RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir -r requirements.txt
-
-COPY --chown=artisan:artisan . .
-RUN mkdir -p /app/staticfiles /app/media /var/lib/artisan-market \
-    && chown -R artisan:artisan /app /var/lib/artisan-market \
-    && chmod +x /app/docker-entrypoint.sh
-
-USER artisan
-EXPOSE 8000
-
-ENTRYPOINT ["/app/docker-entrypoint.sh"]
-CMD ["gunicorn", "frontend.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "60"]
+RUN python -m pip install --no-cache-dir -r requirements.txt
+COPY . .
+RUN useradd --create-home --uid 10001 app \
+    && mkdir -p /app/staticfiles /app/media \
+    && chown -R app:app /app
+USER app
+EXPOSE 8001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8001')+'/health/live/', timeout=4)" || exit 1
+CMD ["sh", "-c", "exec gunicorn Artisan_platform.wsgi:application --bind 0.0.0.0:${PORT:-8001} --workers ${WEB_CONCURRENCY:-3} --timeout 60"]

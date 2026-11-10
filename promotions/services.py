@@ -410,7 +410,9 @@ def _approval_eligibility_errors(application, revision):
     if not active_offerings:
         errors.append("At least one selected active service offering is required to approve this application.")
     for offering in active_offerings:
-        if offering.location_id is None:
+        # A general (NULL location) or everywhere-flagged offering still keeps
+        # its promise for any target.
+        if offering.location_id is None or offering.available_anywhere:
             continue
         if application.promotion_type in {
             PromotionApplication.PromotionType.INSTITUTION,

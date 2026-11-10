@@ -101,6 +101,33 @@ class AuthenticationHardeningTests(TestCase):
         )
         self.assertEqual(replay.status_code, 400)
 
+    def test_staff_code_limit_reports_the_real_wait_not_the_resend_cooldown(self):
+        """The code allowance is hourly, so a 60-second promise would be wrong."""
+        staff = self.create_user(email="limited-agent@example.test", staff=True)
+        now = timezone.now()
+        StaffSecurityChallenge.objects.bulk_create(
+            [
+                StaffSecurityChallenge(
+                    user=staff,
+                    purpose=StaffSecurityChallenge.Purpose.LOGIN_MFA,
+                    otp_hash="x",
+                    created_at=now - timedelta(minutes=50 - index * 5),
+                    expires_at=now + timedelta(minutes=5),
+                )
+                for index in range(5)
+            ]
+        )
+        login = self.client.post(
+            "/api/v1/login/",
+            {"email": staff.email, "password": "Correct!Password95"},
+            format="json",
+        )
+        self.assertEqual(login.status_code, 429, login.data)
+        detail = str(login.data["detail"])
+        self.assertNotIn("60 seconds", detail)
+        # the oldest of the five leaves the rolling hour in about 10 minutes
+        self.assertIn("about 10 minutes", detail)
+
     def test_legacy_refresh_token_without_auth_time_is_rejected(self):
         user = self.create_user()
         legacy_refresh = RefreshToken.for_user(user)

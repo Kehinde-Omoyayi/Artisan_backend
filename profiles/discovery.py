@@ -115,19 +115,24 @@ def _service_filter_queryset(params, institution, *, available_anywhere):
     if institution:
         local_match &= Q(location_id=institution.location_id)
 
+    # A located offering flagged available_anywhere promises every place as
+    # well as its own, so it answers any geography filter (and is a valid
+    # "anywhere" result). Legacy NULL rows keep their strict meaning: they
+    # never bypass a country/state/area filter; available_anywhere=true is how
+    # a visitor asks for remote-only offers.
+    everywhere_claim = Q(available_anywhere=True)
+
     if available_anywhere is True:
-        rows = rows.filter(location__isnull=True)
+        rows = rows.filter(Q(location__isnull=True) | everywhere_claim)
     elif available_anywhere is False:
         rows = rows.filter(location__isnull=False)
         if has_location_filter:
-            rows = rows.filter(local_match)
+            rows = rows.filter(everywhere_claim | local_match)
     elif has_location_filter:
         # A location filter must actually restrict: only services whose coverage
-        # is *in* the requested geography qualify. Null-location ("available
-        # anywhere") offers never bypass a country/state/area/institution filter;
-        # the available_anywhere=true parameter exists for visitors who want
-        # remote-only offers instead.
-        rows = rows.filter(local_match)
+        # is *in* the requested geography qualify — plus everywhere-claiming
+        # rows, which the artisan explicitly marked as serving every place.
+        rows = rows.filter(everywhere_claim | local_match)
 
     return rows
 
@@ -154,8 +159,7 @@ def _public_queryset():
     anywhere_offer = ArtisanService.objects.filter(
         artisan_id=OuterRef("pk"),
         service__is_active=True,
-        location__isnull=True,
-    )
+    ).filter(Q(location__isnull=True) | Q(available_anywhere=True))
     return (
         ArtisanProfile.objects
         .select_related("user", "verification")
@@ -308,8 +312,8 @@ class ArtisanDiscoveryListView(generics.ListAPIView):
         queryset = _public_queryset()
         if available_anywhere is False:
             anywhere_offers = ArtisanService.objects.filter(
-                artisan_id=OuterRef("pk"), service__is_active=True, location__isnull=True
-            )
+                artisan_id=OuterRef("pk"), service__is_active=True
+            ).filter(Q(location__isnull=True) | Q(available_anywhere=True))
             queryset = queryset.filter(~Exists(anywhere_offers))
         search = _text_param(params, "q", 160)
         if has_service_filter:

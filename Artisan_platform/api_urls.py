@@ -14,6 +14,7 @@ urlpatterns = [
     # Versioned marketplace API.
     path("api/v1/", include("home.urls")),
     path("api/v1/services/", include("services.urls")),
+    path("api/v1/catalogue/", include("catalogue.urls")),
     path("api/v1/booking/", include("booking.urls")),
     path("api/v1/payments/", include("payments.urls")),
     path("api/v1/reviews/", include("reviews.urls")),

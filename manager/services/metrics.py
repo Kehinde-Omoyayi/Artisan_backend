@@ -194,22 +194,6 @@ def resolve_range(params, *, now=None):
     return Range(start=start, end=end, label=label, key=key)
 
 
-def filters_from_params(params):
-    """Whitelist of dimensions a manager may filter by."""
-    out = {}
-    for field, model_field in (
-        ("category", "category__name"),
-        ("service", "service__name"),
-        ("location", "location__name"),
-        ("payment_status", "status"),
-        ("booking_status", "status"),
-    ):
-        value = str(params.get(field) or "").strip()
-        if value:
-            out[field] = value[:80]
-    return out
-
-
 def viewer_fingerprint(user):
     from manager.services.auth import effective_permissions
 

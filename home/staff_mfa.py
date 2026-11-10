@@ -23,6 +23,43 @@ STAFF_MFA_RESEND_COOLDOWN = timedelta(seconds=60)
 STAFF_MFA_MAX_CHALLENGES_PER_HOUR = 5
 STAFF_MFA_MAX_ATTEMPTS = 5
 
+def _code_allowance_retry_seconds(user, now):
+    """Seconds until the hourly sign-in-code allowance frees a slot again.
+
+    The allowance is a rolling one-hour window, so quoting the 60-second
+    resend cooldown is wrong once the window is full. This measures the real
+    wait from the oldest challenge that is still counted.
+    """
+    oldest = (
+        StaffSecurityChallenge.objects.filter(
+            user=user,
+            purpose=StaffSecurityChallenge.Purpose.LOGIN_MFA,
+            created_at__gte=now - timedelta(hours=1),
+        )
+        .order_by("created_at")
+        .values_list("created_at", flat=True)
+        .first()
+    )
+    if oldest is None:
+        return int(STAFF_MFA_RESEND_COOLDOWN.total_seconds())
+    release_at = oldest + timedelta(hours=1)
+    return max(
+        int(STAFF_MFA_RESEND_COOLDOWN.total_seconds()),
+        int((release_at - now).total_seconds()) + 1,
+    )
+
+
+def _staff_code_throttled(user, now):
+    """A 429 that names the real wait instead of DRF's guessed one."""
+    wait = _code_allowance_retry_seconds(user, now)
+    minutes = max(1, (wait + 59) // 60)
+    return Throttled(
+        detail=(
+            "Too many staff sign-in codes were requested. "
+            f"Try again in about {minutes} minutes."
+        )
+    )
+
 
 def mask_staff_email(email):
     value = str(email or "").strip()
@@ -91,10 +128,7 @@ def begin_staff_mfa_challenge(*, user, request=None, method="password"):
             created_at__gte=now - timedelta(hours=1),
         ).count()
         if recent_count >= STAFF_MFA_MAX_CHALLENGES_PER_HOUR:
-            raise Throttled(
-                wait=60,
-                detail="Too many staff sign-in codes were requested. Wait before trying again.",
-            )
+            raise _staff_code_throttled(locked_user, now)
 
         StaffSecurityChallenge.objects.filter(
             user=locked_user,
@@ -226,10 +260,7 @@ def resend_staff_mfa_challenge(*, challenge_id, request=None):
             created_at__gte=now - timedelta(hours=1),
         ).count()
         if recent_count >= STAFF_MFA_MAX_CHALLENGES_PER_HOUR:
-            raise Throttled(
-                wait=60,
-                detail="Too many staff sign-in codes were requested. Wait before trying again.",
-            )
+            raise _staff_code_throttled(user, now)
 
         challenge.invalidated_at = now
         challenge.save(update_fields=["invalidated_at"])
