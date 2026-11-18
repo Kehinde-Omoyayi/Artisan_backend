@@ -43,6 +43,10 @@ from .models import (
 from .security import MAX_ATTACHMENTS_PER_MESSAGE, validate_attachment
 from .state import derive_conversation_state
 from core.audit import audit_request_action
+from core.pricing import (
+    MIN_INDIVIDUAL_PRICE,
+    MIN_INDIVIDUAL_PRICE_MESSAGE,
+)
 from core.state import BOOKING_ACTIVE_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -1166,9 +1170,9 @@ def _validate_material_items(items):
                 {"materials": f"Material row {index + 1}: quantity must be greater than zero."}
             )
         unit_price = _quantize_money(row.get("unit_price"), "materials")
-        if unit_price < 0:
+        if unit_price < MIN_INDIVIDUAL_PRICE:
             raise ValidationError(
-                {"materials": f"Material row {index + 1}: unit price cannot be negative."}
+                {"materials": f"Material row {index + 1}: {MIN_INDIVIDUAL_PRICE_MESSAGE}"}
             )
         line_total = (quantity * unit_price).quantize(Decimal("0.01"))
         subtotal += line_total
@@ -1298,12 +1302,19 @@ def _validate_offer_common(
     total = None if raw_total in (None, "") else _quantize_money(
         raw_total, "total_amount"
     )
-    if labour <= 0:
-        raise ValidationError(
-            {"labour_amount": "Enter the labour price for this work."}
-        )
+    if labour < MIN_INDIVIDUAL_PRICE:
+        if labour <= 0:
+            raise ValidationError(
+                {"labour_amount": "Enter the labour price for this work."}
+            )
+        raise ValidationError({"labour_amount": MIN_INDIVIDUAL_PRICE_MESSAGE})
     if materials < 0:
         raise ValidationError("Labour and materials amounts cannot be negative.")
+    if material_rows is None and materials and materials < MIN_INDIVIDUAL_PRICE:
+        # A client-supplied materials subtotal is a real artisan charge; a
+        # subtotal derived from validated rows may legitimately land below the
+        # minimum (quantity × unit price), so it is not re-checked here.
+        raise ValidationError({"materials_amount": MIN_INDIVIDUAL_PRICE_MESSAGE})
     if total is not None and total <= 0:
         raise ValidationError(
             {"total_amount": "Total amount must be greater than zero."}
@@ -1321,6 +1332,10 @@ def _validate_offer_common(
         or additional < 0
     ):
         raise ValidationError("Extra charges must be finite and nonnegative.")
+    if transport and transport < MIN_INDIVIDUAL_PRICE:
+        raise ValidationError({"transport_amount": MIN_INDIVIDUAL_PRICE_MESSAGE})
+    if additional and additional < MIN_INDIVIDUAL_PRICE:
+        raise ValidationError({"additional_amount": MIN_INDIVIDUAL_PRICE_MESSAGE})
     if additional and not str(payload.get("additional_charge_details", "")).strip():
         raise ValidationError(
             {"additional_charge_details": "Describe what the additional charge covers."}

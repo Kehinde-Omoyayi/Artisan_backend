@@ -714,8 +714,17 @@ class ArtisanServiceSerializer(serializers.ModelSerializer):
         return attrs
 
     def validate_starting_price(self, value):
-        if value is not None and value < Decimal("0.00"):
+        """Starting budget is an individual artisan price: blank is allowed
+        (the offering shows “Budget on request”), but any figure the artisan
+        actually sets must be at least ₦100.00."""
+        if value is None:
+            return value
+        from core.pricing import MIN_INDIVIDUAL_PRICE, MIN_INDIVIDUAL_PRICE_MESSAGE
+
+        if value < Decimal("0.00"):
             raise serializers.ValidationError("Starting price cannot be negative.")
+        if value < MIN_INDIVIDUAL_PRICE:
+            raise serializers.ValidationError(MIN_INDIVIDUAL_PRICE_MESSAGE)
         return value
 
     def _resolve_geographic_location(self, validated_data):

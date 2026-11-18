@@ -3,6 +3,11 @@ from decimal import Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
 from drf_spectacular.utils import extend_schema_field
+from core.pricing import (
+    MIN_INDIVIDUAL_PRICE,
+    MIN_INDIVIDUAL_PRICE_MESSAGE,
+)
+
 from rest_framework import serializers
 
 from home.models import Locations, Service, ServiceCategory
@@ -394,7 +399,10 @@ class OfferMaterialInputSerializer(serializers.Serializer):
         max_digits=10, decimal_places=2, min_value=Decimal("0.01")
     )
     unit_price = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal("0")
+        max_digits=12,
+        decimal_places=2,
+        min_value=MIN_INDIVIDUAL_PRICE,
+        error_messages={"min_value": MIN_INDIVIDUAL_PRICE_MESSAGE},
     )
 
 
@@ -415,7 +423,10 @@ class OfferCreateSerializer(serializers.Serializer):
         max_length=1500, required=False, allow_blank=True, default=""
     )
     labour_amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, min_value=Decimal("0")
+        max_digits=12,
+        decimal_places=2,
+        min_value=MIN_INDIVIDUAL_PRICE,
+        error_messages={"min_value": MIN_INDIVIDUAL_PRICE_MESSAGE},
     )
     materials_amount = serializers.DecimalField(
         max_digits=12, decimal_places=2, min_value=Decimal("0")
@@ -434,6 +445,21 @@ class OfferCreateSerializer(serializers.Serializer):
         choices=[("HOURS", "Hours"), ("DAYS", "Days"), ("WEEKS", "Weeks")]
     )
 
+
+    def validate_transport_amount(self, value):
+        if value and value < MIN_INDIVIDUAL_PRICE:
+            raise serializers.ValidationError(MIN_INDIVIDUAL_PRICE_MESSAGE)
+        return value
+
+    def validate_additional_amount(self, value):
+        if value and value < MIN_INDIVIDUAL_PRICE:
+            raise serializers.ValidationError(MIN_INDIVIDUAL_PRICE_MESSAGE)
+        return value
+
+    # materials_amount is re-derived from the itemized rows on the server, so
+    # it is never rejected at this layer: zero is "not charged", a positive
+    # value is either checked against the rows (rows supplied) or validated
+    # against the individual minimum by the service layer (rows absent).
 
 class CounterOfferSerializer(OfferCreateSerializer):
     parent_offer_id = serializers.UUIDField()
@@ -505,6 +531,7 @@ class MessageSerializer(serializers.ModelSerializer):
             "message_type",
             "body",
             "event_code",
+            "event_key",
             "metadata",
             "attachments",
             "created_at",

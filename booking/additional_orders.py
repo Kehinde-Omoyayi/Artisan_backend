@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from core.policies import MAX_SERVICE_AMOUNT_KOBO
+from core.pricing import MIN_INDIVIDUAL_PRICE, MIN_INDIVIDUAL_PRICE_MESSAGE
 from notifications.constants import NotificationEvent
 from payments.models import EscrowPayment
 from .models import Booking, BookingAdditionalOffer, BookingAdditionalOrder
@@ -18,6 +19,8 @@ def _normalize_addon_amount(value):
         raise ValidationError({"amount": "Enter a valid add-on order amount."}) from exc
     if not amount.is_finite() or amount <= 0:
         raise ValidationError({"amount": "Add-on order amount must be greater than zero."})
+    if amount < MIN_INDIVIDUAL_PRICE:
+        raise ValidationError({"amount": MIN_INDIVIDUAL_PRICE_MESSAGE})
     amount_kobo = int(amount * 100)
     if amount_kobo % 100:
         raise ValidationError({"amount": "Add-on payments must be in whole naira for the current payment provider."})

@@ -16,7 +16,7 @@ from .manager_snapshots import (
     latest_successful_snapshot,
 )
 from .models import ManagerSnapshotSchedule
-from .permissions import IsPlatformSuperuser
+from .permissions import IsPlatformOverviewAuthorized, IsPlatformSuperuser
 
 
 class ManagerSnapshotFrequencySerializer(serializers.Serializer):
@@ -70,7 +70,7 @@ def _private_manager_response(payload):
 class ManagerOverviewView(APIView):
     """Site-wide, aggregate-only manager dashboard API."""
 
-    permission_classes = [IsAuthenticated, IsPlatformSuperuser]
+    permission_classes = [IsAuthenticated, IsPlatformOverviewAuthorized]
 
     @extend_schema(
         tags=["Platform management"],

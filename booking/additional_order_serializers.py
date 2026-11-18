@@ -4,6 +4,8 @@ from django.core.exceptions import ObjectDoesNotExist
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.pricing import MIN_INDIVIDUAL_PRICE, MIN_INDIVIDUAL_PRICE_MESSAGE
+
 from .models import BookingAdditionalOffer, BookingAdditionalOrder
 
 
@@ -23,13 +25,24 @@ class AdditionalOrderOfferSerializer(serializers.ModelSerializer):
 
 
 class AdditionalOrderCreateSerializer(serializers.Serializer):
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"))
+    amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=MIN_INDIVIDUAL_PRICE,
+        error_messages={"min_value": MIN_INDIVIDUAL_PRICE_MESSAGE},
+    )
     description = serializers.CharField(max_length=3000, trim_whitespace=True)
 
 
 class AdditionalOrderResponseSerializer(serializers.Serializer):
     action = serializers.ChoiceField(choices=("accept", "decline", "counter"))
-    amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0.01"), required=False)
+    amount = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        min_value=MIN_INDIVIDUAL_PRICE,
+        error_messages={"min_value": MIN_INDIVIDUAL_PRICE_MESSAGE},
+        required=False,
+    )
     description = serializers.CharField(max_length=3000, trim_whitespace=True, required=False, allow_blank=False)
 
     def validate(self, attrs):

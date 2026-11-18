@@ -56,8 +56,28 @@ def _is_active_manager(user) -> bool:
 
 
 def _is_staff_work_path_allowed(user, path):
-    """Fail closed for staff outside their support role or the manager surface."""
+    """Fail closed for staff outside their support role or the manager surface.
+
+    A Django superuser is the authoritative Super Staff identity (the same
+    identity the manager layer provisions as Super Administrator): it is never
+    restricted by this boundary. Ordinary staff stay fail-closed and may read
+    their own per-user badge counters, which are self-scoped by the views.
+    """
     if _is_password_maintenance_path(path):
+        return True
+
+    if user.is_superuser:
+        # Super Staff: unrestricted. The support/manager services each enforce
+        # their own per-permission checks on top of this boundary, so nothing
+        # here weakens finer-grained authorisation for anyone else.
+        return True
+
+    # Personal, self-scoped counters: the views only ever count the caller's
+    # own notifications/conversations, so they carry no cross-account data.
+    if path in (
+        "/api/v1/notifications/unread-count/",
+        "/api/v1/conversations/unread-count/",
+    ):
         return True
 
     if path.startswith("/api/v1/manager/") and _is_active_manager(user):
@@ -65,16 +85,6 @@ def _is_staff_work_path_allowed(user, path):
         # object rules), so a staff account with a manager role is inside its
         # boundary here instead of being treated as a support-only account.
         return True
-
-    if user.is_superuser:
-        return (
-            path.startswith("/api/v1/manager/")
-            or path.startswith("/api/v1/support/cases/")
-            or path.startswith("/api/v1/promotions/management/")
-            or path.startswith("/api/v1/promotions/review/")
-            or path.startswith("/api/v1/profile/internal/artisans/")
-            or path.startswith("/api/v1/payments/payout-account/")
-        )
 
     from support.permissions import user_has_support_role
 

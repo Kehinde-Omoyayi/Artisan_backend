@@ -838,7 +838,41 @@ class ServiceRequestListCreateView(generics.ListCreateAPIView):
         ],
     )
     def post(self, request, *args, **kwargs):
-        return super().post(request, *args, **kwargs)
+        key = (request.headers.get("Idempotency-Key") or "").strip()
+        if key and len(key) > 255:
+            raise ValidationError(
+                {"Idempotency-Key": "Idempotency-Key must be 1 to 255 characters."}
+            )
+        if key:
+            existing = (
+                ServiceRequest.objects.filter(
+                    requester=request.user, idempotency_key=key
+                )
+                .select_related("service", "category", "location")
+                .first()
+            )
+            if existing is not None:
+                # Replay of an earlier create: hand back the original request,
+                # never a second one.
+                serializer = self.get_serializer(existing)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+        try:
+            return super().post(request, *args, **kwargs)
+        except IntegrityError:
+            if key:
+                # Two identical creates raced; the unique constraint let one
+                # win. The loser returns the stored request instead of a 500.
+                existing = (
+                    ServiceRequest.objects.filter(
+                        requester=request.user, idempotency_key=key
+                    )
+                    .select_related("service", "category", "location")
+                    .first()
+                )
+                if existing is not None:
+                    serializer = self.get_serializer(existing)
+                    return Response(serializer.data, status=status.HTTP_201_CREATED)
+            raise
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -922,9 +956,11 @@ class ServiceRequestListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         get_authenticated_customer(self.request.user)
 
+        key = (self.request.headers.get("Idempotency-Key") or "").strip() or None
         with transaction.atomic():
             service_request = serializer.save(
-                requester=self.request.user
+                requester=self.request.user,
+                idempotency_key=key,
             )
 
             notify_service_request_created(service_request)

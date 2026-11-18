@@ -379,9 +379,36 @@ def release_artisan_payout(self, payment_id):
         )
 
     try:
-        result = FlutterwaveClient().create_transfer(
+        client = FlutterwaveClient()
+
+        beneficiary_result = client._request(
+            "GET",
+            f"/beneficiaries/{int(beneficiary_id)}",
+        )
+
+        details = beneficiary_result.get("data") or {}
+        account_number = str(
+            details.get("account_number") or ""
+        ).strip()
+        bank_code = str(details.get("bank_code") or "").strip()
+
+        if (
+            str(details.get("id")) != str(beneficiary_id)
+            or bank_code != str(payout_account.bank_code)
+            or not account_number.isdigit()
+            or len(account_number) != 10
+            or account_number[-4:] != payout_account.account_number_last4
+        ):
+            raise FlutterwaveError(
+                "Flutterwave beneficiary details do not match "
+                "the verified artisan payout account."
+            )
+
+        result = client.create_transfer(
             amount_ngn=amount_ngn,
             beneficiary_id=beneficiary_id,
+            account_bank=bank_code,
+            account_number=account_number,
             reference=release_reference,
             narration=(
                 f"Artisan add-on payout {payment.addon_order_id}"
@@ -390,6 +417,7 @@ def release_artisan_payout(self, payment_id):
             ),
             callback_url=settings.FLW_TRANSFER_CALLBACK_URL,
         )
+
     except FlutterwaveUnknownError as exc:
         record_payment_ledger(
             payment=payment,
@@ -410,8 +438,23 @@ def release_artisan_payout(self, payment_id):
                 .get(pk=release.id)
             )
             release.status = EscrowRelease.Status.FAILED
-            release.failure_reason = str(exc)
-            release.save(update_fields=["status", "failure_reason", "updated_at"])
+            release.failure_reason = str(exc)[:500]
+            release.provider_payload = {
+                "submission_error": {
+                    "message": str(exc)[:240],
+                    "http_status": exc.status_code,
+                    "provider_code": exc.provider_code,
+                    "provider_response": exc.provider_payload,
+                }
+            }
+            release.save(
+                update_fields=[
+                    "status",
+                    "failure_reason",
+                    "provider_payload",
+                    "updated_at",
+                ]
+            )
             record_payment_ledger(
                 payment=release.payment,
                 event_type="PAYOUT_FAILED",
@@ -419,7 +462,21 @@ def release_artisan_payout(self, payment_id):
                 status_before=release.payment.status,
                 status_after=release.payment.status,
                 amount_kobo=release.amount_kobo,
-                metadata={"reason": release.failure_reason},
+                metadata={
+                    "reason": release.failure_reason,
+                    "http_status": exc.status_code,
+                    "provider_code": exc.provider_code,
+                    "provider_response": exc.provider_payload,
+                },
+            )
+            logger.warning(
+                "FLW_PAYOUT_REJECTED payment=%s release=%s http_status=%s "
+                "provider_code=%s provider_response=%s",
+                release.payment_id,
+                release.id,
+                exc.status_code,
+                exc.provider_code,
+                exc.provider_payload,
             )
             transaction.on_commit(lambda: notify_payout_failed(release.payment))
             from conversations.events import record_booking_event

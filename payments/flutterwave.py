@@ -15,12 +15,22 @@ PAYMENT_OPTIONS = "card, banktransfer"
 
 
 class FlutterwaveError(Exception):
-    """Definite provider or request rejection."""
+    """Definite provider or request rejection with sanitized diagnostics."""
 
-    def __init__(self, message, *, status_code=None, provider_code=None):
+    def __init__(
+        self,
+        message,
+        *,
+        status_code=None,
+        provider_code=None,
+        provider_payload=None,
+    ):
         super().__init__(message)
         self.status_code = status_code
         self.provider_code = provider_code
+        self.provider_payload = (
+            provider_payload if isinstance(provider_payload, dict) else {}
+        )
 
 
 class FlutterwaveUnknownError(Exception):
@@ -74,6 +84,45 @@ def _safe_provider_message(
     )
 
     return text[:240]
+
+
+def _safe_provider_payload(value):
+    """Keep useful provider diagnostics while removing personal data."""
+    sensitive_keys = {
+        "accountnumber",
+        "beneficiaryname",
+        "fullname",
+        "name",
+        "email",
+        "phone",
+        "mobilenumber",
+        "address",
+        "authorization",
+        "token",
+        "secret",
+        "password",
+    }
+
+    if isinstance(value, dict):
+        safe = {}
+        for key, item in list(value.items())[:40]:
+            normalized_key = re.sub(r"[^a-z0-9]", "", str(key).casefold())
+            if normalized_key in sensitive_keys:
+                safe[str(key)[:80]] = "[REDACTED]"
+            else:
+                safe[str(key)[:80]] = _safe_provider_payload(item)
+        return safe
+
+    if isinstance(value, list):
+        return [_safe_provider_payload(item) for item in value[:20]]
+
+    if isinstance(value, str):
+        return _safe_provider_message(value)
+
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+
+    return _safe_provider_message(value)
 
 
 def _is_duplicate_beneficiary_error(exc):
@@ -180,6 +229,7 @@ class FlutterwaveClient:
                 message,
                 status_code=response.status_code,
                 provider_code=provider_code,
+                provider_payload=_safe_provider_payload(payload),
             )
 
         return payload
@@ -687,16 +737,34 @@ class FlutterwaveClient:
     # TRANSFERS
     # =========================================================
 
+
     def create_transfer(
         self,
         *,
         amount_ngn,
         beneficiary_id,
+        account_bank,
+        account_number,
         reference,
         narration,
         callback_url,
     ):
+        bank_code = str(account_bank).strip()
+        account_number = str(account_number).strip()
+
+        if not bank_code.isascii() or not bank_code.isdigit():
+            raise FlutterwaveError("Invalid payout bank code.")
+
+        if (
+            not account_number.isascii()
+            or not account_number.isdigit()
+            or len(account_number) != 10
+        ):
+            raise FlutterwaveError("Invalid Nigerian bank account number.")
+
         payload = {
+            "account_bank": bank_code,
+            "account_number": account_number,
             "amount": _naira(amount_ngn),
             "beneficiary": _provider_id(beneficiary_id),
             "currency": "NGN",

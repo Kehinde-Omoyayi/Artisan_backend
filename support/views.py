@@ -264,8 +264,8 @@ class SupportCaseListCreateView(
     generics.ListCreateAPIView,
 ):
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_create"
+    ###throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_create"
 
     def get_serializer_class(self):
         if self.request.method == "POST":
@@ -429,8 +429,8 @@ class SupportAccessRequestView(generics.CreateAPIView):
 
     serializer_class = SupportAccessRequestSerializer
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_access"
+    ###throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_access"
 
     @extend_schema(
         tags=["Support Access"],
@@ -454,8 +454,8 @@ class SupportAccessVerifyView(generics.CreateAPIView):
 
     serializer_class = SupportAccessVerifySerializer
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_access"
+    ###throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_access"
 
     @extend_schema(
         tags=["Support Access"],
@@ -773,8 +773,8 @@ class SupportCaseNoteView(APIView):
 
 class SupportCaseMessageView(APIView):
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_message"
+    ##throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_message"
 
     @extend_schema(
         tags=["Support Cases"],
@@ -909,8 +909,8 @@ class SupportCaseCloseView(APIView):
 
 class SupportRefundRequestView(APIView):
     permission_classes = [SupportAgentPermission]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_refund_request"
+    ##throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_refund_request"
 
     @extend_schema(
         tags=["Support Refunds"],
@@ -1069,8 +1069,8 @@ class SupportRefundListView(generics.ListAPIView):
 
 class SupportRefundApproveView(APIView):
     permission_classes = [SupportSupervisorPermission]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_refund_approve"
+    ##throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_refund_approve"
 
     @extend_schema(
         tags=["Support Refunds"],
@@ -1118,8 +1118,8 @@ class SupportRefundApproveView(APIView):
 
 class SupportRefundRejectView(APIView):
     permission_classes = [SupportSupervisorPermission]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_refund_reject"
+    ##throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_refund_reject"
 
     @extend_schema(
         tags=["Support Refunds"],
@@ -1167,8 +1167,8 @@ class SupportRefundRejectView(APIView):
 
 class SupportRefundExecuteView(APIView):
     permission_classes = [SupportFinancePermission]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_refund_execute"
+    ##throttle_classes = [ScopedRateThrottle]
+    ###throttle_scope = "support_refund_execute"
 
     @extend_schema(
         tags=["Support Refunds"],
@@ -1208,8 +1208,8 @@ class SupportRefundExecuteView(APIView):
 
 class SupportRefundReconcileView(APIView):
     permission_classes = [SupportFinancePermission]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_refund_reconcile"
+    ###throttle_classes = [ScopedRateThrottle]
+    ##throttle_scope = "support_refund_reconcile"
 
     @extend_schema(
         tags=["Support Refunds"],
@@ -1303,8 +1303,8 @@ class SupportStaffListView(APIView):
     """List, create and assign customer support staff."""
 
     permission_classes = [SupportSupervisorPermission]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_risk"
+    ###throttle_classes = [ScopedRateThrottle]
+    ##throttle_scope = "support_risk"
 
     @extend_schema(
         tags=["Support Administration"],
@@ -1421,8 +1421,8 @@ class SupportStaffRemoveView(APIView):
     """
 
     permission_classes = [SupportAdminPermission]
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "support_risk"
+    ###throttle_classes = [ScopedRateThrottle]
+    ##throttle_scope = "support_risk"
 
     @extend_schema(
         tags=["Support Administration"],

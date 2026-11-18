@@ -18,6 +18,7 @@ SYSTEM_ADMIN = "system-admin"
 # code: (human label, category)
 PERMISSIONS = {
     # Dashboards and analysis
+    "analytics.overview": ("View the platform management overview", "Analytics"),
     "analytics.view": ("View management dashboards", "Analytics"),
     "analytics.financial": ("View financial intelligence", "Analytics"),
     "analytics.customer": ("View customer intelligence", "Analytics"),

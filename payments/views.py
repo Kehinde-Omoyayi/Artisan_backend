@@ -668,24 +668,20 @@ def _valid_flutterwave_signature(request):
 @csrf_exempt
 @require_POST
 def flutterwave_webhook(request):
-    print("FLW WEBHOOK DIAGNOSTIC")
-    print("Signature header:", bool(
-        request.headers.get("flutterwave-signature")
-    ))
-    print("Legacy hash header:", bool(
-        request.headers.get("verif-hash")
-    ))
-    print("Content type:", request.content_type)
+    # Never log the signature, the secret hash or the payload: the body may
+    # carry payer details. Only the shape of the request is recorded, which is
+    # enough to diagnose a malformed delivery (see the 400 branches below).
+    logger.info(
+        "flutterwave_webhook received signature_header=%s legacy_hash_header=%s content_type=%s body_length=%s",
+        bool(request.headers.get("flutterwave-signature")),
+        bool(request.headers.get("verif-hash")),
+        request.content_type or "",
+        len(request.body),
+    )
 
     if not _valid_flutterwave_signature(request):
-        print("FLW WEBHOOK AUTHENTICATION FAILED")
+        logger.warning("flutterwave_webhook signature_rejected content_type=%s", request.content_type or "")
         return HttpResponse(status=401)
-
-    print("FLW WEBHOOK AUTHENTICATION PASSED")
-    print("FORM FIELD NAMES:", list(request.POST.keys()))
-    print("EVENT PRESENT:", bool(request.POST.get("event")))
-    print("DATA PRESENT:", bool(request.POST.get("data")))
-    print("BODY LENGTH:", len(request.body))
 
     try:
         if request.content_type == "application/x-www-form-urlencoded":
@@ -715,10 +711,25 @@ def flutterwave_webhook(request):
         else:
             payload = json.loads(request.body)
 
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as exc:
+        # The body could not be parsed at all (wrong encoding, truncated
+        # delivery, a form post sent with a JSON content type, ...). Record
+        # the failure class -- never the body -- so the 400 is diagnosable.
+        logger.warning(
+            "flutterwave_webhook unparseable_body content_type=%s body_length=%s error=%s",
+            request.content_type or "",
+            len(request.body),
+            type(exc).__name__,
+        )
         return HttpResponse(status=400)
 
     if not isinstance(payload, dict):
+        logger.warning(
+            "flutterwave_webhook non_object_payload content_type=%s body_length=%s payload_type=%s",
+            request.content_type or "",
+            len(request.body),
+            type(payload).__name__,
+        )
         return HttpResponse(status=400)
 
     event_type = str(payload.get("event") or payload.get("event.type") or "")

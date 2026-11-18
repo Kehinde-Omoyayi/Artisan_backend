@@ -127,8 +127,22 @@ class ServiceRequest(models.Model):
     archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Replay guard for the create endpoint: a client that resends "the same"
+    # create (double click, dropped connection, resumed submission) sends the
+    # same key, and the marketplace records the request once. Optional: older
+    # rows and legacy clients simply have no key.
+    idempotency_key = models.CharField(
+        max_length=255, null=True, blank=True, editable=False
+    )
 
     class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["requester", "idempotency_key"],
+                condition=models.Q(idempotency_key__isnull=False),
+                name="svc_req_requester_key_uniq",
+            )
+        ]
         indexes = [
             models.Index(
                 fields=["requester", "-updated_at"],
