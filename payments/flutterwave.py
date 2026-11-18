@@ -13,9 +13,8 @@ logger = logging.getLogger(__name__)
 
 PAYMENT_OPTIONS = "card, banktransfer"
 
-
 class FlutterwaveError(Exception):
-    """Definite provider or request rejection with sanitized diagnostics."""
+    """Definite Flutterwave provider or request rejection."""
 
     def __init__(
         self,
@@ -25,12 +24,18 @@ class FlutterwaveError(Exception):
         provider_code=None,
         provider_payload=None,
     ):
-        super().__init__(message)
+        super().__init__(str(message))
+
         self.status_code = status_code
         self.provider_code = provider_code
         self.provider_payload = (
-            provider_payload if isinstance(provider_payload, dict) else {}
+            provider_payload
+            if isinstance(provider_payload, dict)
+            else {}
         )
+
+    def __str__(self):
+        return super().__str__()
 
 
 class FlutterwaveUnknownError(Exception):
@@ -166,6 +171,7 @@ class FlutterwaveClient:
             "Accept": "application/json",
         })
 
+
     def _request(self, method, path, **kwargs):
         try:
             response = self.session.request(
@@ -174,12 +180,10 @@ class FlutterwaveClient:
                 timeout=self.timeout,
                 **kwargs,
             )
-
         except (requests.Timeout, requests.ConnectionError) as exc:
             raise FlutterwaveUnknownError(
                 "Flutterwave request outcome is unknown."
             ) from exc
-
         except requests.RequestException as exc:
             raise FlutterwaveError(
                 "Unable to connect to Flutterwave."
@@ -197,11 +201,18 @@ class FlutterwaveClient:
 
         try:
             payload = response.json()
-
         except ValueError as exc:
             raise FlutterwaveError(
                 "Flutterwave returned an invalid response.",
                 status_code=response.status_code,
+                provider_payload={
+                    "http_status": response.status_code,
+                    "request_id": (
+                        response.headers.get("x-request-id")
+                        or response.headers.get("flw-request-id")
+                        or ""
+                    ),
+                },
             ) from exc
 
         if not isinstance(payload, dict):
@@ -210,29 +221,90 @@ class FlutterwaveClient:
                 status_code=response.status_code,
             )
 
-        provider_code = payload.get("code")
-
         data = payload.get("data")
-        if provider_code is None and isinstance(data, dict):
-            provider_code = data.get("code")
+        data = data if isinstance(data, dict) else {}
+
+        error = payload.get("error")
+        error = error if isinstance(error, dict) else {}
+
+        nested = data.get("error")
+        nested = nested if isinstance(nested, dict) else {}
+
+        code = (
+            error.get("code")
+            or nested.get("code")
+            or payload.get("code")
+            or data.get("code")
+        )
+
+        message = (
+            error.get("message")
+            or nested.get("message")
+            or payload.get("message")
+            or data.get("message")
+            or "Flutterwave request failed."
+        )
+
+        validation = (
+            error.get("validation_errors")
+            or nested.get("validation_errors")
+            or payload.get("validation_errors")
+            or []
+        )
+
+        safe_validation = []
+
+        if isinstance(validation, list):
+            for item in validation[:20]:
+                if isinstance(item, dict):
+                    safe_validation.append({
+                        "field": str(
+                            item.get("field_name") or ""
+                        )[:100],
+                        "message": _safe_provider_message(
+                            item.get("message")
+                        ),
+                    })
+
+        provider_details = {
+            "http_status": response.status_code,
+            "status": payload.get("status"),
+            "message": _safe_provider_message(message),
+            "error_code": str(code or "")[:50],
+            "error_type": str(
+                error.get("type") or nested.get("type") or ""
+            )[:100],
+            "validation_errors": safe_validation,
+            "request_id": (
+                response.headers.get("x-request-id")
+                or response.headers.get("flw-request-id")
+                or ""
+            ),
+        }
 
         if (
             not response.ok
-            or str(payload.get("status") or "").casefold() != "success"
+            or str(payload.get("status") or "").casefold()
+            != "success"
         ):
-            message = payload.get("message")
-
-            if not isinstance(message, str) or not message.strip():
-                message = "Flutterwave request failed."
+            logger.warning(
+                "FLW_REQUEST_REJECTED method=%s path=%s "
+                "http_status=%s provider_code=%s",
+                method,
+                path,
+                response.status_code,
+                code,
+            )
 
             raise FlutterwaveError(
                 message,
                 status_code=response.status_code,
-                provider_code=provider_code,
-                provider_payload=_safe_provider_payload(payload),
+                provider_code=code,
+                provider_payload=provider_details,
             )
 
         return payload
+
 
     # =========================================================
     # CUSTOMER PAYMENTS
