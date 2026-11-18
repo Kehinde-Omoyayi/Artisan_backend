@@ -1,0 +1,7 @@
+{% extends 'emails/base_marketplace.html' %}
+{% block eyebrow %}Your account · Latest activity{% endblock %}
+{% block email_content %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f0e8" style="width:100%;border:1px solid #e5dacf;border-top:3px solid #88583f;border-radius:15px;background-color:#f7f0e8;">
+  <tr><td class="email-detail" style="padding:24px;color:#5f5146;font-size:14px;line-height:1.85;overflow-wrap:anywhere;">{{ message|linebreaksbr }}</td></tr>
+</table>
+{% endblock %}

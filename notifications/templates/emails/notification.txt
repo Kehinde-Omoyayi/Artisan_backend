@@ -1,0 +1,11 @@
+{% autoescape off %}{{ subject }}
+
+Hello {{ recipient_name|default:"there" }},
+
+{{ message }}
+{% if action_url %}
+{{ action_label|default:"View details" }}: {{ action_url }}
+{% endif %}
+Artisan Market
+Open your account directly if you were not expecting this update.
+{% endautoescape %}

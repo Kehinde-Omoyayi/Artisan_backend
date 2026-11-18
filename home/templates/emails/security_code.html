@@ -1,0 +1,20 @@
+{% extends 'emails/base_marketplace.html' %}
+{% block preheader %}{{ preview_text }}{% endblock %}
+{% block eyebrow %}{{ purpose_label|default:'Account security' }}{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+{% block email_content %}
+<p style="margin:0 0 25px;color:#75665a;font-size:14px;line-height:1.8;">{{ intro }}</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f0e8" style="width:100%;border:1px solid #e5dacf;border-top:3px solid #88583f;border-radius:15px;background-color:#f7f0e8;">
+  <tr><td class="email-detail" align="center" style="padding:26px 22px;">
+    <p style="margin:0 0 14px;color:#80644f;font-size:9px;font-weight:bold;letter-spacing:1.6px;line-height:1.5;text-transform:uppercase;">{{ code_label }}</p>
+    <div class="email-code" dir="ltr" style="margin:0;color:#4c3025;font-family:'Courier New',Courier,monospace;font-size:38px;font-weight:bold;letter-spacing:8px;line-height:1.3;">{{ code }}</div>
+    <p style="margin:14px 0 0;color:#75665a;font-size:11px;line-height:1.6;">Expires in 5 minutes &nbsp;·&nbsp; single use</p>
+  </td></tr>
+</table>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:21px;"><tr>
+  <td valign="top" width="3" bgcolor="#965237" style="width:3px;background-color:#965237;">&nbsp;</td>
+  <td style="padding:0 0 0 13px;color:#75665a;font-size:12px;line-height:1.8;"><strong style="color:#4c3025;">Keep this code private.</strong><br>{{ security_note }}</td>
+</tr></table>
+{% endblock %}
+{% block footer_note %}This automated security message was sent by Artisan Market. If you did not request this code, ignore it and do not share it with anyone.{% endblock %}
+{% block outside_note %}We will never ask you to share a one-time code in a chat or phone call.{% endblock %}

@@ -1,0 +1,96 @@
+# OPTIONAL runtime blueprint only: no deployment is performed by this delivery.
+# Operator must provision the existing DB/Redis/SMTP/provider settings in this group.
+# Recordings stay OFF; do not enable without the shared durable external ledger,
+# private bucket/replica, chargeback and restore acceptance gates in the runbook.
+# Every queue routed in CELERY_TASK_ROUTES gets its own Render worker, so a slow
+# or failing workload never starves another (payments stay independent of email,
+# email stays independent of exports).
+services:
+  - type: web
+    name: artisan-marketplace-api
+    runtime: docker
+    dockerCommand: sh -c 'gunicorn Artisan_platform.wsgi:application --bind 0.0.0.0:${PORT:-8001}'
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-payments
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q payments --concurrency=2 -Ofair --max-tasks-per-child=200 --hostname=payments@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-verification
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q verification --concurrency=4 -Ofair --max-tasks-per-child=200 --hostname=verification@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-notifications
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q notifications --concurrency=4 -Ofair --max-tasks-per-child=200 --hostname=notifications@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-media
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q media --concurrency=2 -Ofair --max-tasks-per-child=200 --hostname=media@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-maintenance
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q maintenance --concurrency=2 -Ofair --max-tasks-per-child=200 --hostname=maintenance@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-manager
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q manager --concurrency=2 -Ofair --max-tasks-per-child=200 --hostname=manager@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-exports
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q exports --concurrency=1 -Ofair --max-tasks-per-child=200 --hostname=exports@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-campaigns
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q campaigns --concurrency=2 -Ofair --max-tasks-per-child=200 --hostname=campaigns@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-worker-default
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform worker -l info -Q celery --concurrency=2 -Ofair --max-tasks-per-child=200 --hostname=default@%h
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'
+  - type: worker
+    name: artisan-marketplace-beat
+    runtime: docker
+    dockerCommand: celery -A Artisan_platform beat -l info
+    envVars:
+      - fromGroup: artisan-marketplace-production
+      - key: CONVERSATION_RECORDINGS_ENABLED
+        value: 'false'

@@ -1,0 +1,96 @@
+import os
+from celery import Celery
+from celery.schedules import crontab
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "Artisan_platform.api_settings")
+
+app = Celery("Artisan_platform")
+app.config_from_object("django.conf:settings", namespace="CELERY")
+app.autodiscover_tasks()
+
+app.conf.beat_schedule = {
+    "dispatch-outbox-every-minute": {
+        "task": "core.tasks.dispatch_outbox_events",
+        "schedule": crontab(),
+    },
+    "purge-core-retention-every-day": {
+        "task": "core.tasks.purge_core_retention",
+        "schedule": crontab(hour=3, minute=0),
+    },
+    "reconcile-stale-payments-every-five-minutes": {
+        "task": "payments.tasks.reconcile_stale_payments",
+        "schedule": 300,
+    },
+    "auto-verify-ready-transfers-every-minute": {
+        "task": "payments.tasks.auto_verify_ready_transfers",
+        "schedule": 60,
+    },
+    "reconcile-unknown-bank-transfers-every-ten-minutes": {
+        "task": "payments.tasks.reconcile_unknown_bank_transfers",
+        "schedule": 600,
+    },
+    "reconcile-promotion-campaigns-every-minute": {
+        "task": "promotions.tasks.reconcile_promotion_campaigns",
+        "schedule": crontab(),
+    },
+    "purge-promotion-performance-dedupe-every-day": {
+        "task": "promotions.maintenance_tasks.purge_performance_dedupe_rows",
+        "schedule": crontab(hour=3, minute=30),
+    },
+    "reconcile-financial-ledger-every-day": {
+        "task": "payments.tasks.reconcile_financial_ledger",
+        "schedule": crontab(hour=5, minute=0),
+    },
+    "delete-unverified-accounts-every-day": {
+        "task": "home.tasks.delete_unverified_accounts",
+        "schedule": crontab(hour=2, minute=0),
+    },
+    "purge-expired-staff-security-challenges-every-day": {
+        "task": "home.tasks.purge_expired_staff_security_challenges",
+        "schedule": crontab(hour=3, minute=15),
+    },
+    "dispatch-manager-analytics-snapshots-every-minute": {
+        "task": "home.tasks.dispatch_manager_snapshot_if_due",
+        "schedule": crontab(),
+    },
+    "expire-conversation-offers-every-minute": {
+        "task": "conversations.tasks.expire_conversation_offers",
+        "schedule": crontab(),
+    },
+    "reconcile-recording-retention-every-minute": {
+        "task": "conversations.tasks.reconcile_recording_retention",
+        "schedule": crontab(),
+    },
+    "conversation-reminders-every-30-minutes": {
+        "task": "conversations.tasks.send_conversation_reminders",
+        "schedule": 1800,
+    },
+    # Manager console: operational snapshots honour the configured interval inside the
+    # task, so beat can tick every minute without ever capturing too often.
+    "manager-operational-snapshot-every-minute": {
+        "task": "manager.tasks.capture_operational_snapshot",
+        "schedule": crontab(),
+    },
+    "manager-dispatch-due-campaigns-every-minute": {
+        "task": "manager.tasks.dispatch_due_campaigns",
+        "schedule": crontab(),
+    },
+    "manager-requeue-stalled-jobs-every-five-minutes": {
+        "task": "manager.tasks.requeue_stalled_jobs",
+        "schedule": 300,
+    },
+    "manager-rebuild-daily-aggregates-hourly": {
+        "task": "manager.tasks.run_aggregation_job",
+        "schedule": crontab(minute=20),
+    },
+    "manager-purge-retention-every-day": {
+        "task": "manager.tasks.purge_manager_retention",
+        "schedule": crontab(hour=4, minute=10),
+    },
+    # Security-code mail whose broker was down at dispatch time stays recorded;
+    # re-offer it every minute until it ships or the code's validity window closes.
+    "dispatch-queued-emails-every-minute": {
+        "task": "home.tasks.dispatch_queued_emails",
+        "schedule": crontab(),
+    },
+}

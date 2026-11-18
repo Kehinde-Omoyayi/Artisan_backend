@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block title %}Staff verification{% endblock %}
+{% block content %}
+<div class="module aligned">
+  <h1>Verify your Django admin sign-in</h1>
+  <p>Enter the six-digit code sent to your registered staff email{% if request.session.admin_mfa_masked_email %} ({{ request.session.admin_mfa_masked_email }}){% endif %}. It expires in five minutes and can be used once.</p>
+  <form method="post" autocomplete="on">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="form-row">
+      {{ form.code.errors }}
+      {{ form.code.label_tag }}
+      {{ form.code }}
+    </div>
+    <div class="submit-row"><button type="submit" name="action" value="verify">Verify and continue</button></div>
+  </form>
+  <form method="post">
+    {% csrf_token %}
+    <div class="submit-row"><button type="submit" name="action" value="resend">Resend code</button></div>
+  </form>
+  <p>If you did not try to sign in, do not share the code and contact your platform manager.</p>
+  <p><a href="{% url 'admin:logout' %}">Cancel and log out</a></p>
+</div>
+{% endblock %}

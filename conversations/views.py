@@ -1,0 +1,1500 @@
+import logging
+
+from django.db import DatabaseError, transaction
+from django.db.models import Count, Exists, OuterRef, Q, Subquery
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+logger = logging.getLogger(__name__)
+
+from drf_spectacular.utils import (
+    OpenApiExample,
+    OpenApiParameter,
+    OpenApiResponse,
+    OpenApiTypes,
+    extend_schema,
+    inline_serializer,
+)
+from rest_framework import generics, serializers, status
+from rest_framework.exceptions import ValidationError, NotFound, PermissionDenied
+from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.views import APIView
+from booking.models import Booking
+from core.audit import audit_request_action
+from home.models import ArtisanService
+from home.profile_completion import (
+    RequireCompleteCustomerProfile,
+    RequireCompleteMarketplaceProfile,
+)
+from core.idempotency import begin, finish, idempotent_action
+from payments.models import EscrowPayment
+from payments.tasks import initialize_prepared_payment
+from .models import (
+    Conversation,
+    ConversationReadState,
+    Message,
+    Offer,
+    OfferRevision,
+)
+from .permissions import IsConversationParticipant
+from .serializers import (
+    ConversationCreateSerializer,
+    ConversationDetailSerializer,
+    ConversationDisputeSerializer,
+    ConversationListSerializer,
+    ConversationRequestPatchSerializer,
+    ConversationStartSerializer,
+    CounterOfferSerializer,
+    ConversationMessageCreateResponseSerializer,
+    MessageCreateSerializer,
+    MessageSerializer,
+    OfferCreateSerializer,
+    OfferEditSerializer,
+    OfferRevisionSerializer,
+    OfferSerializer,
+    OfferWithdrawSerializer,
+)
+from .services import (
+    _booking_for_conversation,
+    accept_offer,
+    apply_request_patch,
+    confirm_description,
+    create_offer,
+    decline_offer,
+    delete_message,
+    edit_offer,
+    get_conversation_for_user,
+    mark_offer_seen,
+    hydrate_conversation,
+    mark_conversation_read,
+    open_conversation_dispute,
+    send_message,
+    start_conversation,
+    withdraw_offer,
+)
+
+MessagePageSerializer = inline_serializer(
+    name="ConversationMessagePage",
+    fields={
+        "count": serializers.IntegerField(),
+        "next": serializers.URLField(allow_null=True),
+        "previous": serializers.URLField(allow_null=True),
+        "results": MessageSerializer(many=True),
+    },
+)
+OfferPageSerializer = inline_serializer(
+    name="ConversationOfferPage",
+    fields={
+        "count": serializers.IntegerField(),
+        "next": serializers.URLField(allow_null=True),
+        "previous": serializers.URLField(allow_null=True),
+        "results": OfferSerializer(many=True),
+    },
+)
+
+
+def _require_key(request):
+    key = request.headers.get("Idempotency-Key", "").strip()
+    if not key:
+        return None, Response(
+            {
+                "code": "IDEMPOTENCY_KEY_REQUIRED",
+                "message": "Idempotency-Key is required for this operation.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return key, None
+
+
+class ConversationCreateView(APIView):
+    permission_classes = [IsAuthenticated, RequireCompleteMarketplaceProfile]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_start"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        responses={200: ConversationListSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return ConversationListView.as_view()(request._request, *args, **kwargs)
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=ConversationCreateSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            201: ConversationDetailSerializer,
+            200: ConversationDetailSerializer,
+            400: OpenApiResponse(description="Invalid conversation payload."),
+            403: OpenApiResponse(description="Conversation is not allowed."),
+        },
+    )
+    @idempotent_action("conversation.create", resource_type="Conversation")
+    def post(self, request):
+        serializer = ConversationCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        # Direct chats are retired: every new customer↔artisan conversation is a
+        # service-request conversation (see serializers.ConversationCreateSerializer).
+        conversation, created = start_conversation(
+            user=request.user,
+            artisan_id=data["artisan_id"],
+            service_id=data.get("service_id"),
+        )
+        initial_message = data.get("initial_message", "").strip()
+        if initial_message and created:
+            key = request.headers.get("Idempotency-Key", "").strip()
+            send_message(
+                conversation=conversation,
+                user=request.user,
+                body=initial_message,
+                idempotency_key=f"{key}:initial",
+            )
+        hydrate_conversation(conversation, user=request.user, unread_count=True)
+        response = Response(
+            ConversationDetailSerializer(
+                conversation, context={"request": request}
+            ).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+        response._conversation_created = created
+        return response
+
+
+class ConversationDescriptionConfirmView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+
+    @extend_schema(
+        tags=["Conversations"],
+        summary="Confirm the clarified work description (Description Done)",
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            200: ConversationDetailSerializer,
+            400: OpenApiResponse(description="Description cannot be confirmed yet."),
+            403: OpenApiResponse(description="Only the assigned artisan can confirm."),
+        },
+    )
+    def post(self, request, conversation_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        with transaction.atomic():
+            record, created, cached = begin(
+                actor=request.user,
+                operation="conversation.description.confirm",
+                key=key,
+                payload={"conversation_id": str(conversation_id)},
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+            )
+            if not created:
+                return Response(cached[1], status=cached[0])
+            conversation = confirm_description(
+                conversation=conversation, user=request.user
+            )
+            hydrate_conversation(conversation, user=request.user, unread_count=True)
+            data = ConversationDetailSerializer(
+                conversation, context={"request": request}
+            ).data
+            finish(
+                record,
+                status_code=200,
+                body=data,
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+            )
+            audit_request_action(
+                request=request,
+                action="DESCRIPTION_CONFIRMED",
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+                metadata={},
+            )
+        return Response(data)
+
+
+class ConversationStartView(APIView):
+    permission_classes = [IsAuthenticated, RequireCompleteMarketplaceProfile]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_start"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=ConversationStartSerializer,
+        responses={
+            201: ConversationDetailSerializer,
+            200: ConversationDetailSerializer,
+            400: OpenApiResponse(description="Invalid artisan or service."),
+            403: OpenApiResponse(
+                description="Customer or artisan eligibility failure."
+            ),
+        },
+    )
+    def post(self, request):
+        serializer = ConversationStartSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        if data.get("request_id"):
+            from .services import claim_request_room
+
+            conversation, created = claim_request_room(
+                user=request.user, request_id=data["request_id"]
+            )
+        elif data.get("artisan_id"):
+            conversation, created = start_conversation(
+                user=request.user,
+                artisan_id=data["artisan_id"],
+                service_id=data.get("service_id"),
+            )
+        else:
+            from .services import start_category_request
+
+            conversation, created = start_category_request(
+                user=request.user,
+                category_id=data.get("category_id"),
+                service_id=data.get("service_id"),
+            )
+        hydrate_conversation(conversation, user=request.user, unread_count=True)
+        audit_request_action(
+            request=request,
+            action="CONVERSATION_STARTED" if created else "CONVERSATION_RESUMED",
+            resource_type="Conversation",
+            resource_id=str(conversation.id),
+            metadata={"artisan_id": str(conversation.artisan_id)},
+        )
+        return Response(
+            ConversationDetailSerializer(
+                conversation, context={"request": request}
+            ).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+
+
+class ConversationListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ConversationListSerializer
+    ordering = ["-updated_at"]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Conversation.objects.none()
+        user = self.request.user
+        now = timezone.now()
+        latest_message = Message.objects.filter(conversation=OuterRef("pk")).order_by(
+            "-created_at"
+        )
+        latest_booking = Booking.objects.filter(
+            request_id=OuterRef("service_request_id")
+        ).order_by("-created_at")
+        active_offer = Offer.objects.filter(
+            conversation=OuterRef("pk"),
+            status=Offer.Status.PROPOSED,
+            expires_at__gt=now,
+        )
+        payment = EscrowPayment.objects.filter(
+            booking__request_id=OuterRef("service_request_id"), addon_order__isnull=True
+        ).order_by("-created_at")
+        return (
+            Conversation.objects.select_related(
+                "service_request",
+                "customer__artisan_profile",
+                "customer__customer_profile",
+                "artisan__user__artisan_profile",
+                "artisan__user__customer_profile",
+            )
+            .prefetch_related(
+                "participants__artisan_profile", "participants__customer_profile"
+            )
+            .filter(Q(participants=user) | Q(customer=user) | Q(artisan__user=user))
+            .distinct()
+            .annotate(
+                last_message_at=Subquery(latest_message.values("created_at")[:1]),
+                last_message_sender_id=Subquery(latest_message.values("sender_id")[:1]),
+                last_message_body=Subquery(latest_message.values("body")[:1]),
+                last_message_type=Subquery(latest_message.values("message_type")[:1]),
+                booking_status=Subquery(latest_booking.values("status")[:1]),
+                payment_status=Subquery(payment.values("status")[:1]),
+                has_active_offer=Exists(active_offer),
+            )
+            .order_by("-updated_at")
+        )
+
+    def filter_queryset(self, queryset):
+        """Let a customer ask which conversation belongs to one service request.
+
+        The marketplace gives each request a single working room, so the request
+        page needs exactly that room rather than the whole inbox.
+        """
+        queryset = super().filter_queryset(queryset)
+        service_request = str(
+            self.request.query_params.get("service_request") or ""
+        ).strip()
+        if service_request.isdigit():
+            return queryset.filter(service_request_id=int(service_request))
+        return queryset
+
+    @extend_schema(
+        tags=["Conversations"], responses={200: ConversationListSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        conversations = list(page if page is not None else queryset)
+        ids = [conversation.id for conversation in conversations]
+        read_map = (
+            {
+                row.conversation_id: row.last_read_at
+                for row in ConversationReadState.objects.filter(
+                    user=request.user, conversation_id__in=ids
+                )
+            }
+            if ids
+            else {}
+        )
+
+        unread_filter = Q()
+        for conversation in conversations:
+            read_at = read_map.get(conversation.id)
+            message_filter = Q(conversation_id=conversation.id)
+            if read_at is not None:
+                message_filter &= Q(created_at__gt=read_at)
+            unread_filter |= message_filter
+
+        unread_counts = {}
+        if ids:
+            unread_counts = dict(
+                Message.objects.filter(unread_filter)
+                .exclude(sender=request.user)
+                .values("conversation_id")
+                .annotate(message_count=Count("pk"))
+                .values_list("conversation_id", "message_count")
+            )
+
+        for conversation in conversations:
+            booking_status = getattr(conversation, "booking_status", None)
+            payment_status = getattr(conversation, "payment_status", None)
+            if (
+                conversation.service_request_id
+                and conversation.service_request.status == "CLOSED"
+            ):
+                state = "CLOSED"
+            elif (
+                booking_status == Booking.Status.DISPUTED
+                or payment_status == EscrowPayment.Status.DISPUTED
+            ):
+                state = "DISPUTED"
+            elif booking_status == Booking.Status.COMPLETED:
+                state = "COMPLETED"
+            elif (
+                booking_status
+                in {Booking.Status.IN_PROGRESS, Booking.Status.COMPLETION_REQUESTED}
+                or payment_status == EscrowPayment.Status.HELD
+            ):
+                state = "ACTIVE"
+            elif booking_status in {
+                Booking.Status.REQUESTED,
+                Booking.Status.ACCEPTED,
+            } or payment_status in {
+                EscrowPayment.Status.PAYMENT_PENDING,
+                EscrowPayment.Status.RELEASE_PENDING,
+                EscrowPayment.Status.REFUND_PENDING,
+            }:
+                state = "BOOKING"
+            elif booking_status in {Booking.Status.CANCELLED, Booking.Status.REJECTED}:
+                state = "CLOSED"
+            elif getattr(conversation, "has_active_offer", False):
+                state = "NEGOTIATING"
+            else:
+                state = "OPEN"
+
+            conversation._conversation_state = state
+            conversation._last_message_at = getattr(
+                conversation, "last_message_at", None
+            )
+            read_at = read_map.get(conversation.id)
+            latest_sender = getattr(conversation, "last_message_sender_id", None)
+            # Keep the legacy boolean semantics: the latest message must be from another participant.
+            conversation._unread = bool(
+                conversation._last_message_at
+                and (not read_at or conversation._last_message_at > read_at)
+                and latest_sender != request.user.id
+            )
+            # The numeric count follows the per-user read watermark used by message retrieval.
+            conversation._unread_count = int(unread_counts.get(conversation.id, 0))
+
+        # One batched lookup supplies the "trade" line under each counterparty name.
+        person_ids = set()
+        for conversation in conversations:
+            person_ids.update(
+                person.id for person in self._participant_cache(conversation)
+            )
+            if conversation.customer_id:
+                person_ids.add(conversation.customer_id)
+            if conversation.artisan_id and conversation.artisan:
+                person_ids.add(conversation.artisan.user_id)
+        service_labels = {}
+        if person_ids:
+            rows = (
+                ArtisanService.objects.filter(
+                    artisan__user_id__in=person_ids, service__is_active=True
+                )
+                .order_by("service__name")
+                .values_list("artisan__user_id", "service__name")
+            )
+            for user_id, service_name in rows:
+                service_labels.setdefault(user_id, service_name)
+
+        payload = [
+            ConversationListSerializer(
+                item, context={"request": request, "service_labels": service_labels}
+            ).data
+            for item in conversations
+        ]
+        return (
+            self.get_paginated_response(payload)
+            if page is not None
+            else Response(payload)
+        )
+
+    @staticmethod
+    def _participant_cache(conversation):
+        return conversation.participants.all()
+
+
+class ConversationDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+
+    @extend_schema(
+        tags=["Conversations"],
+        responses={
+            200: ConversationDetailSerializer,
+            404: OpenApiResponse(description="Conversation not found."),
+        },
+    )
+    def get(self, request, conversation_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        hydrate_conversation(conversation, user=request.user, unread_count=True)
+        # Opening the conversation is the moment the customer is shown the
+        # price: from here the artisan may no longer rewrite it silently.
+        _mark_pending_offer_seen(conversation, user=request.user)
+        return Response(
+            ConversationDetailSerializer(
+                conversation, context={"request": request}
+            ).data
+        )
+
+
+def _mark_pending_offer_seen(conversation, *, user):
+    """Close the edit window on the quote the customer is now looking at.
+
+    Runs after `hydrate_conversation` so the current offer is already loaded on
+    the conversation: this costs no extra query. Deliberately non-fatal —
+    showing the conversation must never fail because a bookkeeping write could
+    not run.
+    """
+    if conversation.customer_id != user.id:
+        return
+    offer = getattr(conversation, "_active_offer", None)
+    if offer is None:
+        return
+    try:
+        if offer.status == Offer.Status.PROPOSED and offer.customer_seen_at is None:
+            mark_offer_seen(offer=offer, user=user)
+    except Exception:  # pragma: no cover - bookkeeping must never break a read
+        logging.getLogger(__name__).exception(
+            "offer_seen_marking_failed conversation=%s", conversation.id
+        )
+
+
+class ConversationMessageListCreateView(APIView):
+    permission_classes = [
+        IsAuthenticated,
+        IsConversationParticipant,
+        RequireCompleteMarketplaceProfile,
+    ]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_message"
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    @extend_schema(
+        tags=["Conversations"],
+        responses={200: MessagePageSerializer},
+        parameters=[
+            OpenApiParameter(
+                "limit",
+                OpenApiTypes.INT,
+                OpenApiParameter.QUERY,
+                description="Maximum messages to return (max 100).",
+            ),
+            OpenApiParameter(
+                "offset",
+                OpenApiTypes.INT,
+                OpenApiParameter.QUERY,
+                description="Number of messages to skip.",
+            ),
+            OpenApiParameter(
+                "since",
+                OpenApiTypes.DATETIME,
+                OpenApiParameter.QUERY,
+                description=(
+                    "Optional ISO-8601 lower bound for incremental sync. Returns "
+                    "messages created at or after the instant, plus tombstoned "
+                    "messages deleted at or after it (newest first), so deletes "
+                    "for everyone still propagate. Clients should de-duplicate "
+                    "by message id; the bound is inclusive to never skip a "
+                    "message written in the same microsecond."
+                ),
+            ),
+        ],
+    )
+    def get(self, request, conversation_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        qs = (
+            Message.objects.filter(conversation=conversation)
+            .select_related("sender")
+            .prefetch_related("attachments")
+            .order_by("-created_at")
+        )
+        since_raw = (request.query_params.get("since") or "").strip()
+        if since_raw:
+            from django.utils.dateparse import parse_datetime
+            from django.db.models import Q
+
+            since_ts = parse_datetime(since_raw)
+            if since_ts is None:
+                return Response(
+                    {
+                        "code": "INVALID_CURSOR",
+                        "detail": "The 'since' query parameter must be an ISO-8601 datetime.",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if timezone.is_naive(since_ts):
+                from datetime import timezone as _dt_timezone
+
+                since_ts = timezone.make_aware(since_ts, _dt_timezone.utc)
+            qs = qs.filter(
+                Q(created_at__gte=since_ts) | Q(deleted_at__gte=since_ts)
+            )
+        paginator = LimitOffsetPagination()
+        paginator.default_limit = 50
+        paginator.max_limit = 100
+        page = paginator.paginate_queryset(qs, request, view=self)
+        response = paginator.get_paginated_response(
+            MessageSerializer(page, many=True, context={"request": request}).data
+        )
+        hydrate_conversation(conversation, user=request.user)
+        response.data["guidance"] = ConversationDetailSerializer(
+            conversation, context={"request": request}
+        ).get_guidance(conversation)
+        return response
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=MessageCreateSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            201: ConversationMessageCreateResponseSerializer,
+            400: OpenApiResponse(description="Invalid message or attachment."),
+            403: OpenApiResponse(description="Not a conversation participant."),
+        },
+        examples=[
+            OpenApiExample(
+                "Text message",
+                request_only=True,
+                value={"body": "The sockets in the bedroom have stopped working."},
+            )
+        ],
+    )
+    def post(self, request, conversation_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        serializer = MessageCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        attachments = serializer.validated_data.get(
+            "attachments", request.FILES.getlist("attachments")
+        )
+        message = send_message(
+            conversation=conversation,
+            user=request.user,
+            body=serializer.validated_data.get("body", ""),
+            attachments=attachments,
+            idempotency_key=key,
+        )
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        hydrate_conversation(conversation, user=request.user, unread_count=True)
+        data = MessageSerializer(message, context={"request": request}).data
+        data["guidance"] = ConversationDetailSerializer(
+            conversation, context={"request": request}
+        ).get_guidance(conversation)
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class ConversationMessageDeleteView(APIView):
+    """Withdraw something you wrote, for everyone in the conversation.
+
+    Both sides can do it, and both see the same thing afterwards: a plain line
+    where the message was. The record itself is kept -- a marketplace chat is
+    evidence once a booking is in dispute -- so this removes the content, not
+    the history.
+
+    The same rules the button applies in the browser are enforced here: only
+    the author, only their own chat message, never a service update.
+    """
+
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        responses={
+            200: MessageSerializer,
+            400: OpenApiResponse(description="That message cannot be deleted."),
+            403: OpenApiResponse(description="You can only delete messages you sent."),
+            404: OpenApiResponse(description="Message not found."),
+        },
+    )
+    def delete(self, request, conversation_id, message_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        message = delete_message(
+            conversation=conversation, user=request.user, message_id=message_id
+        )
+        return Response(
+            MessageSerializer(message, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class ConversationRequestView(APIView):
+    permission_classes = [
+        IsAuthenticated,
+        IsConversationParticipant,
+        RequireCompleteCustomerProfile,
+    ]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_request"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=ConversationRequestPatchSerializer,
+        responses={
+            200: ConversationDetailSerializer,
+            400: OpenApiResponse(description="Invalid or incomplete request data."),
+            403: OpenApiResponse(
+                description="Only the customer can edit request details."
+            ),
+            409: OpenApiResponse(description="Request is locked by an active booking."),
+        },
+    )
+    def patch(self, request, conversation_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        serializer = ConversationRequestPatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        _, conversation = apply_request_patch(
+            conversation=conversation,
+            user=request.user,
+            payload=serializer.validated_data,
+        )
+        hydrate_conversation(conversation, user=request.user, unread_count=True)
+        return Response(
+            ConversationDetailSerializer(
+                conversation, context={"request": request}
+            ).data
+        )
+
+
+class ConversationOfferListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+    serializer_class = OfferSerializer
+    pagination_class = LimitOffsetPagination
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Offer.objects.none()
+        conversation = get_conversation_for_user(
+            user=self.request.user, conversation_id=self.kwargs["conversation_id"]
+        )
+        return conversation.offers.select_related(
+            "created_by", "parent_offer"
+        ).order_by("-created_at")
+
+    @extend_schema(tags=["Conversations"], responses={200: OfferPageSerializer})
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=OfferCreateSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            201: OfferSerializer,
+            400: OpenApiResponse(description="Invalid offer."),
+            403: OpenApiResponse(
+                description="Only the artisan can create the initial offer."
+            ),
+        },
+    )
+    def post(self, request, conversation_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        serializer = OfferCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        offer = create_offer(
+            conversation=conversation,
+            user=request.user,
+            payload=serializer.validated_data,
+            idempotency_key=key,
+        )
+        return Response(OfferSerializer(offer).data, status=status.HTTP_201_CREATED)
+
+
+class ConversationOfferCounterView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_counter"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=CounterOfferSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={201: OfferSerializer},
+    )
+    def post(self, request, conversation_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        serializer = CounterOfferSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        parent_id = data.pop("parent_offer_id")
+        offer = create_offer(
+            conversation=conversation,
+            user=request.user,
+            payload=data,
+            parent_offer_id=parent_id,
+            idempotency_key=key,
+        )
+        return Response(OfferSerializer(offer).data, status=status.HTTP_201_CREATED)
+
+
+class ConversationOfferEditView(APIView):
+    """Rewrite an offer the customer has not seen yet.
+
+    Every rule the interface relies on is enforced again here, on locked rows:
+    ownership, pending status, unexpired, still the newest version, and not yet
+    seen by the customer. The previous terms are written to the revision history
+    before anything changes, and the customer is notified.
+    """
+
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=OfferEditSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=False,
+            )
+        ],
+        responses={
+            200: OfferSerializer,
+            400: OpenApiResponse(description="The offer can no longer be edited."),
+            403: OpenApiResponse(description="Only the artisan who sent it can edit it."),
+            404: OpenApiResponse(description="Offer not found in this conversation."),
+        },
+    )
+    def patch(self, request, conversation_id, offer_id):
+        return self._apply(request, conversation_id, offer_id)
+
+    def post(self, request, conversation_id, offer_id):
+        return self._apply(request, conversation_id, offer_id)
+
+    def _apply(self, request, conversation_id, offer_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        serializer = OfferEditSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        key = request.headers.get("Idempotency-Key", "")
+        with transaction.atomic():
+            offer = edit_offer(
+                conversation=conversation,
+                user=request.user,
+                offer_id=offer_id,
+                payload=dict(serializer.validated_data),
+                idempotency_key=key or None,
+            )
+            audit_request_action(
+                request=request,
+                action="OFFER_EDITED",
+                resource_type="Offer",
+                resource_id=str(offer.id),
+                metadata={"conversation_id": str(conversation_id)},
+            )
+        return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
+
+
+class ConversationOfferWithdrawView(APIView):
+    """Take an offer back. Soft delete: the row and its revisions are kept."""
+
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=OfferWithdrawSerializer,
+        responses={
+            200: OfferSerializer,
+            400: OpenApiResponse(description="The offer can no longer be withdrawn."),
+            403: OpenApiResponse(description="Only the artisan who sent it can withdraw it."),
+            404: OpenApiResponse(description="Offer not found in this conversation."),
+        },
+    )
+    def post(self, request, conversation_id, offer_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        serializer = OfferWithdrawSerializer(data=request.data or {})
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            offer = withdraw_offer(
+                conversation=conversation,
+                user=request.user,
+                offer_id=offer_id,
+                reason=serializer.validated_data.get("reason", ""),
+            )
+            audit_request_action(
+                request=request,
+                action="OFFER_WITHDRAWN",
+                resource_type="Offer",
+                resource_id=str(offer.id),
+                metadata={"conversation_id": str(conversation_id)},
+            )
+        return Response(OfferSerializer(offer).data, status=status.HTTP_200_OK)
+
+
+class ConversationOfferRevisionsView(generics.ListAPIView):
+    """The audit trail of an offer: what it said before each edit or withdrawal."""
+
+    serializer_class = OfferRevisionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return OfferRevision.objects.none()
+        conversation_id = self.kwargs["conversation_id"]
+        offer_id = self.kwargs["offer_id"]
+        return (
+            OfferRevision.objects.select_related("actor")
+            .filter(offer_id=offer_id, offer__conversation_id=conversation_id)
+            .order_by("created_at")
+        )
+
+    def get(self, request, *args, **kwargs):
+        get_conversation_for_user(
+            user=request.user, conversation_id=kwargs["conversation_id"]
+        )
+        return super().get(request, *args, **kwargs)
+
+
+class ConversationOfferAcceptView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            200: ConversationDetailSerializer,
+            400: OpenApiResponse(description="Offer cannot be accepted."),
+            403: OpenApiResponse(description="Only the customer can accept an offer."),
+            409: OpenApiResponse(
+                description="The operation is already being processed."
+            ),
+        },
+    )
+    def post(self, request, conversation_id, offer_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        with transaction.atomic():
+            record, created, cached = begin(
+                actor=request.user,
+                operation="conversation.offer.accept",
+                key=key,
+                payload={
+                    "conversation_id": str(conversation_id),
+                    "offer_id": str(offer_id),
+                },
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+            )
+            if not created:
+                return Response(cached[1], status=cached[0])
+            booking, _, _ = accept_offer(
+                conversation=conversation, user=request.user, offer_id=offer_id
+            )
+            hydrate_conversation(conversation, user=request.user, unread_count=True)
+            data = ConversationDetailSerializer(
+                conversation, context={"request": request}
+            ).data
+            finish(
+                record,
+                status_code=200,
+                body=data,
+                resource_type="Booking",
+                resource_id=str(booking.id),
+            )
+            audit_request_action(
+                request=request,
+                action="OFFER_ACCEPTED",
+                resource_type="Offer",
+                resource_id=str(offer_id),
+                metadata={"booking_id": str(booking.id)},
+            )
+        return Response(data)
+
+
+class ConversationOfferDeclineView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            200: OfferSerializer,
+            400: OpenApiResponse(description="Offer cannot be declined."),
+            403: OpenApiResponse(description="Only the customer can decline an offer."),
+            409: OpenApiResponse(
+                description="The operation is already being processed."
+            ),
+        },
+    )
+    def post(self, request, conversation_id, offer_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        with transaction.atomic():
+            record, created, cached = begin(
+                actor=request.user,
+                operation="conversation.offer.decline",
+                key=key,
+                payload={
+                    "conversation_id": str(conversation_id),
+                    "offer_id": str(offer_id),
+                    "request_revision": request.data.get("request_revision", False),
+                },
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+            )
+            if not created:
+                return Response(cached[1], status=cached[0])
+            from .services import request_quote_revision
+
+            operation = (
+                request_quote_revision
+                if request.data.get("request_revision") is True
+                else decline_offer
+            )
+            offer = operation(
+                conversation=conversation, user=request.user, offer_id=offer_id
+            )
+            data = OfferSerializer(offer).data
+            finish(
+                record,
+                status_code=200,
+                body=data,
+                resource_type="Offer",
+                resource_id=str(offer.id),
+            )
+            audit_request_action(
+                request=request,
+                action="OFFER_DECLINED",
+                resource_type="Offer",
+                resource_id=str(offer.id),
+                metadata={"conversation_id": str(conversation_id)},
+            )
+        return Response(data)
+
+
+class ConversationUnreadCountView(APIView):
+    permission_classes = [IsAuthenticated]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_read"
+
+    @extend_schema(
+        tags=["Conversations"],
+        responses={
+            200: OpenApiResponse(
+                description="Unread message count for the authenticated user, separate from workflow notifications."
+            )
+        },
+    )
+    def get(self, request):
+        from .services import unread_message_total
+
+        return Response({"unread_count": unread_message_total(user=request.user)})
+
+
+class ConversationOfferRenotifyView(APIView):
+    """Retry the delivery of an offer notification.
+
+    A saved offer is never lost because an alert failed; this endpoint exists so
+    the sender can retry only the delivery step.
+    """
+
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+
+    @extend_schema(tags=["Conversations"], request=None, responses={200: OfferSerializer})
+    def post(self, request, conversation_id, offer_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        try:
+            offer = conversation.offers.select_related(
+                "conversation__customer",
+                "conversation__artisan__user",
+                "conversation__service_request__category",
+                "created_by",
+            ).prefetch_related("materials").get(pk=offer_id)
+        except Offer.DoesNotExist as exc:
+            raise NotFound("Offer not found.") from exc
+        if offer.created_by_id != request.user.id:
+            raise PermissionDenied("Only the sender can retry this notification.")
+        from notifications.events import notify_offer_received
+
+        notify_offer_received(offer, counter=bool(offer.parent_offer_id))
+        return Response(OfferSerializer(offer).data)
+
+
+class ConversationOfferResendView(APIView):
+    """Re-send the terms of an earlier agreement as a fresh, acceptable quote.
+
+    Used after a booking is cancelled: the artisan can push the same itemised
+    agreement back to the customer without retyping it, or edit it first through
+    the normal quote form. The request is reopened by the cancellation itself, so
+    the customer can accept the new quote and a fresh booking is created.
+    """
+
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_offer"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            201: OfferSerializer,
+            400: OpenApiResponse(description="The agreement cannot be resent."),
+            403: OpenApiResponse(description="Only the sender can resend this agreement."),
+        },
+    )
+    def post(self, request, conversation_id, offer_id):
+        from datetime import timedelta
+
+        from conversations.serializers import OfferCreateSerializer
+
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        try:
+            source = conversation.offers.prefetch_related("materials").get(pk=offer_id)
+        except Offer.DoesNotExist as exc:
+            raise NotFound("Offer not found.") from exc
+        if source.created_by_id != request.user.id:
+            raise PermissionDenied("Only the sender can resend this agreement.")
+        # A retried request (network retry, double click) with the same
+        # Idempotency-Key replays the quote it already produced instead of being
+        # rejected by the "an open quote already exists" guard below.
+        replay = conversation.offers.filter(
+            created_by=request.user, idempotency_key=key
+        ).first()
+        if replay is not None:
+            return Response(OfferSerializer(replay).data, status=status.HTTP_201_CREATED)
+        if conversation.offers.filter(
+            status=Offer.Status.PROPOSED, expires_at__gt=timezone.now()
+        ).exists():
+            raise ValidationError(
+                "There is already an open quote here. Wait for the customer to respond to it."
+            )
+
+        scheduled_start = request.data.get("scheduled_start") or source.scheduled_start
+        try:
+            scheduled_start = parse_datetime(str(scheduled_start))
+        except (TypeError, ValueError):
+            scheduled_start = None
+        if scheduled_start is None:
+            scheduled_start = source.scheduled_start
+        if timezone.is_naive(scheduled_start):
+            scheduled_start = timezone.make_aware(scheduled_start)
+        now = timezone.now()
+        # A cancelled agreement usually carries a start date that has already
+        # passed; roll it forward in whole days so the schedule keeps its shape.
+        while scheduled_start <= now:
+            scheduled_start = scheduled_start + timedelta(days=1)
+
+        payload = {
+            "labour_amount": source.labour_amount,
+            "materials_amount": source.materials_amount,
+            "materials_included": source.materials_included,
+            "transport_amount": source.transport_amount,
+            "additional_amount": source.additional_amount,
+            "additional_charge_details": source.additional_charge_details,
+            "scheduled_start": scheduled_start,
+            "duration_value": source.duration_value,
+            "duration_unit": source.duration_unit,
+        }
+        rows = [
+            {
+                "name": item.name,
+                "unit": item.unit,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+            }
+            for item in source.materials.all().order_by("position", "created_at")
+        ]
+        if rows:
+            payload["materials"] = rows
+        serializer = OfferCreateSerializer(data=payload)
+        serializer.is_valid(raise_exception=True)
+        offer = create_offer(
+            conversation=conversation,
+            user=request.user,
+            payload=serializer.validated_data,
+            idempotency_key=key,
+        )
+        return Response(OfferSerializer(offer).data, status=status.HTTP_201_CREATED)
+
+
+class ConversationReadView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "conversation_read"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        responses={200: OpenApiResponse(description="Conversation marked as read.")},
+    )
+    def post(self, request, conversation_id):
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        from rest_framework import serializers
+
+        class ReadMarkerSerializer(serializers.Serializer):
+            last_message_id = serializers.UUIDField(required=False)
+
+        marker = ReadMarkerSerializer(data=request.data)
+        marker.is_valid(raise_exception=True)
+        try:
+            remaining = mark_conversation_read(
+                conversation=conversation, user=request.user, **marker.validated_data
+            )
+        except DatabaseError:
+            # Never report success when the marker genuinely failed to move;
+            # the client may retry and the update is idempotent.
+            logger.warning(
+                "read_marker_update_failed conversation=%s user=%s",
+                conversation.id,
+                request.user.id,
+                exc_info=True,
+            )
+            response = Response(
+                {
+                    "code": "SERVICE_UNAVAILABLE",
+                    "message": "The service is temporarily unavailable. Please retry shortly.",
+                    "detail": "The service is temporarily unavailable. Please retry shortly.",
+                    "unread_count": None,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+            response["Retry-After"] = "5"
+            return response
+        return Response({"status": "read", "unread_count": remaining})
+
+
+class ConversationPaymentInitializeView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "payment_initialize"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            202: OpenApiResponse(description="Payment initialization queued."),
+            403: OpenApiResponse(
+                description="Only the customer can initialize payment."
+            ),
+            409: OpenApiResponse(
+                description="Payment is not ready for initialization."
+            ),
+        },
+    )
+    def post(self, request, conversation_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        booking = _booking_for_conversation(conversation)
+        if conversation.customer_id != request.user.id:
+            return Response(
+                {"detail": "Only the customer can initialize payment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not booking or booking.status != Booking.Status.ACCEPTED:
+            return Response(
+                {"detail": "Booking is not ready for payment."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        payment = (
+            EscrowPayment.objects.filter(booking=booking, addon_order__isnull=True)
+            .order_by("created_at")
+            .first()
+        )
+        if payment is None:
+            return Response(
+                {"detail": "Escrow payment is not prepared."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if payment.status != EscrowPayment.Status.PAYMENT_PENDING:
+            return Response(
+                {
+                    "detail": "Payment is not awaiting initialization.",
+                    "status": payment.status,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        with transaction.atomic():
+            record, created, cached = begin(
+                actor=request.user,
+                operation="conversation.payment.initialize",
+                key=key,
+                payload={
+                    "conversation_id": str(conversation_id),
+                    "payment_id": str(payment.id),
+                },
+                resource_type="Payment",
+                resource_id=str(payment.id),
+            )
+            if not created:
+                return Response(cached[1], status=cached[0])
+            data = {"payment_id": str(payment.id), "status": "initialization_pending"}
+            finish(
+                record,
+                status_code=202,
+                body=data,
+                resource_type="Payment",
+                resource_id=str(payment.id),
+            )
+            transaction.on_commit(
+                lambda payment_id=str(payment.id): initialize_prepared_payment.delay(
+                    payment_id
+                )
+            )
+            audit_request_action(
+                request=request,
+                action="PAYMENT_INITIALIZATION_QUEUED",
+                resource_type="Payment",
+                resource_id=str(payment.id),
+                metadata={"booking_id": str(booking.id)},
+            )
+        return Response(data, status=status.HTTP_202_ACCEPTED)
+
+
+class ConversationDisputeView(APIView):
+    permission_classes = [IsAuthenticated, IsConversationParticipant]
+    #throttle_classes = [ScopedRateThrottle]
+    #throttle_scope = "conversation_dispute"
+
+    @extend_schema(
+        tags=["Conversations"],
+        request=ConversationDisputeSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            )
+        ],
+        responses={
+            200: ConversationDetailSerializer,
+            400: OpenApiResponse(
+                description="Booking is not disputable or reason is invalid."
+            ),
+            403: OpenApiResponse(
+                description="Only the customer can dispute the booking."
+            ),
+        },
+    )
+    def post(self, request, conversation_id):
+        key, error = _require_key(request)
+        if error:
+            return error
+        conversation = get_conversation_for_user(
+            user=request.user, conversation_id=conversation_id
+        )
+        serializer = ConversationDisputeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            record, created, cached = begin(
+                actor=request.user,
+                operation="conversation.dispute.create",
+                key=key,
+                payload={
+                    "conversation_id": str(conversation_id),
+                    "reason": serializer.validated_data["reason"],
+                },
+                resource_type="Conversation",
+                resource_id=str(conversation_id),
+            )
+            if not created:
+                return Response(cached[1], status=cached[0])
+            booking, case = open_conversation_dispute(
+                conversation=conversation,
+                user=request.user,
+                reason=serializer.validated_data["reason"].strip(),
+            )
+            hydrate_conversation(conversation, user=request.user, unread_count=True)
+            data = ConversationDetailSerializer(
+                conversation, context={"request": request}
+            ).data
+            finish(
+                record,
+                status_code=200,
+                body=data,
+                resource_type="SupportCase",
+                resource_id=str(case.id),
+            )
+            audit_request_action(
+                request=request,
+                action="DISPUTE_OPENED",
+                resource_type="SupportCase",
+                resource_id=str(case.id),
+                metadata={"booking_id": str(booking.id)},
+            )
+        return Response(data)
