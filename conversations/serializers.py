@@ -168,6 +168,7 @@ class ConversationDisputeCaseSummarySerializer(serializers.ModelSerializer):
 
 class ConversationBookingSummarySerializer(serializers.Serializer):
     id = serializers.UUIDField()
+    created_at = serializers.DateTimeField(read_only=True)
     status = serializers.CharField()
     scheduled_start = serializers.DateTimeField(source="scheduled_time_start")
     scheduled_end = serializers.DateTimeField(source="scheduled_time_end")
@@ -205,6 +206,7 @@ class ConversationPaymentSummarySerializer(serializers.Serializer):
     customer_fee = serializers.SerializerMethodField()
     total_amount = serializers.SerializerMethodField()
     authorization_url = serializers.SerializerMethodField()
+    created_at = serializers.DateTimeField(read_only=True)
     verified_at = serializers.DateTimeField(allow_null=True)
     held_at = serializers.DateTimeField(allow_null=True)
     released_at = serializers.DateTimeField(allow_null=True)
